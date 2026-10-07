@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T21:39:47.803Z",
+  "generatedAt": "2026-10-07T21:57:10.380Z",
   "collections": [
     {
       "name": "users",
@@ -29,21 +29,30 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "role",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["ADMINISTRADOR", "GESTOR", "VENDEDOR"]
+          "selectValues": [
+            "ADMINISTRADOR",
+            "GESTOR",
+            "VENDEDOR"
+          ]
         }
       ],
       "indexes": [
@@ -101,14 +110,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -181,14 +195,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -262,14 +281,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -300,7 +324,10 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["VENDAS", "POS_VENDA"]
+          "selectValues": [
+            "VENDAS",
+            "POS_VENDA"
+          ]
         },
         {
           "name": "stage",
@@ -313,7 +340,11 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Frio", "Morno", "Quente"]
+          "selectValues": [
+            "Frio",
+            "Morno",
+            "Quente"
+          ]
         },
         {
           "name": "contact_id",
@@ -403,14 +434,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -470,7 +506,11 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Pendente", "Concluída", "Cancelada"]
+          "selectValues": [
+            "Pendente",
+            "Concluída",
+            "Cancelada"
+          ]
         },
         {
           "name": "notes",
@@ -504,14 +544,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -582,14 +627,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -682,7 +732,12 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["Ativo", "Cancelado", "Em Implantação", "Pendente Renovação"]
+          "selectValues": [
+            "Ativo",
+            "Cancelado",
+            "Em Implantação",
+            "Pendente Renovação"
+          ]
         },
         {
           "name": "assigned_to",
@@ -703,14 +758,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
