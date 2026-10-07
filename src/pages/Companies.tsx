@@ -191,10 +191,12 @@ export default function Companies() {
   return (
     <div className="space-y-6">
       {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white border border-[#E4E7EC] shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-[#101828]">Empresas & Clientes PJ</h2>
-          <p className="text-xs text-[#667085]">
+          <h2 className="text-base sm:text-lg font-bold text-[#101828] dark:text-foreground">
+            Empresas & Clientes PJ
+          </h2>
+          <p className="text-xs text-[#667085] dark:text-muted-foreground">
             Cadastro único por empresa — gerencie múltiplos produtos e oportunidades ao longo do
             tempo
           </p>
@@ -203,7 +205,7 @@ export default function Companies() {
         <Button
           size="sm"
           onClick={openCreateModal}
-          className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+          className="bg-[#1B2A4A] dark:bg-primary text-white text-xs hover:bg-[#2A3D6B]"
         >
           <Plus className="h-4 w-4 mr-1.5" /> Nova Empresa
         </Button>
@@ -211,17 +213,17 @@ export default function Companies() {
 
       {/* Search Input */}
       <div className="max-w-md relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085]" />
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085] dark:text-muted-foreground" />
         <Input
           placeholder="Buscar por nome fantasia, razão social, CNPJ ou cidade..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9 text-xs bg-white border-[#E4E7EC]"
+          className="pl-9 h-9 text-xs bg-white dark:bg-card border-[#E4E7EC] dark:border-[#24324D]"
         />
       </div>
 
       {/* Companies Table */}
-      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-border rounded-xl overflow-x-auto shadow-sm">
+      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] rounded-xl overflow-x-auto shadow-sm">
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -234,37 +236,47 @@ export default function Companies() {
           </div>
         ) : (
           <Table className="min-w-[650px]">
-            <TableHeader className="bg-[#F5F7FA]">
+            <TableHeader className="bg-[#F5F7FA] dark:bg-muted/50">
               <TableRow>
-                <TableHead className="text-xs font-bold text-[#101828]">Nome Fantasia</TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  Nome Fantasia
+                </TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
                   Razão Social / CNPJ
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">Cidade / UF</TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">Segmento</TableHead>
-                <TableHead className="text-xs font-bold text-right">Ações</TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  Cidade / UF
+                </TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  Segmento
+                </TableHead>
+                <TableHead className="text-xs font-bold text-right dark:text-foreground">
+                  Ações
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {companies.map((comp) => (
                 <TableRow key={comp.id} className="text-xs">
-                  <TableCell className="font-bold text-[#101828]">
+                  <TableCell className="font-bold text-[#101828] dark:text-foreground">
                     <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-[#1B2A4A] shrink-0" />
+                      <Building2 className="h-4 w-4 text-[#1B2A4A] dark:text-primary shrink-0" />
                       <span>{comp.trade_name}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="text-[#101828]">{comp.legal_name || '—'}</span>
+                      <span className="text-[#101828] dark:text-foreground">
+                        {comp.legal_name || '—'}
+                      </span>
                       {comp.cnpj && (
-                        <span className="text-[11px] font-mono text-[#667085]">
+                        <span className="text-[11px] font-mono text-[#667085] dark:text-muted-foreground">
                           CNPJ: {comp.cnpj}
                         </span>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-[#667085]">
+                  <TableCell className="text-[#667085] dark:text-muted-foreground">
                     {comp.city ? (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />
@@ -276,7 +288,7 @@ export default function Companies() {
                   </TableCell>
                   <TableCell>
                     {comp.segment ? (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-[10px] dark:border-[#24324D]">
                         {comp.segment}
                       </Badge>
                     ) : (
@@ -291,7 +303,7 @@ export default function Companies() {
                         size="sm"
                         onClick={() => openNewOppForCompany(comp)}
                         title="Nova Oportunidade no Funil de Vendas"
-                        className="h-7 text-[11px] px-2 text-[#1B2A4A] border-[#1B2A4A]/20 hover:bg-[#1B2A4A] hover:text-white"
+                        className="h-7 text-[11px] px-2 text-[#1B2A4A] dark:text-primary border-[#1B2A4A]/20 dark:border-[#24324D] hover:bg-[#1B2A4A] hover:text-white dark:hover:bg-primary dark:hover:text-primary-foreground"
                       >
                         <Plus className="h-3 w-3 mr-1" /> Oportunidade
                       </Button>
@@ -299,7 +311,7 @@ export default function Companies() {
                         variant="ghost"
                         size="icon"
                         onClick={() => openEditModal(comp)}
-                        className="h-7 w-7 text-[#667085] hover:text-[#101828]"
+                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-[#101828] dark:hover:text-foreground"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
@@ -307,7 +319,7 @@ export default function Companies() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(comp.id)}
-                        className="h-7 w-7 text-[#667085] hover:text-red-600"
+                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -324,10 +336,10 @@ export default function Companies() {
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#101828]">
+            <DialogTitle className="text-base font-bold text-[#101828] dark:text-foreground">
               {editingCompany ? 'Editar Empresa' : 'Nova Empresa / Cliente PJ'}
             </DialogTitle>
-            <DialogDescription className="text-xs text-[#667085]">
+            <DialogDescription className="text-xs text-[#667085] dark:text-muted-foreground">
               Dados cadastrais da empresa tomadora de seguros e benefícios
             </DialogDescription>
           </DialogHeader>
@@ -444,10 +456,10 @@ export default function Companies() {
       <Dialog open={isNewOppModalOpen} onOpenChange={setIsNewOppModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#101828]">
+            <DialogTitle className="text-base font-bold text-[#101828] dark:text-foreground">
               Nova Oportunidade no Funil de Vendas
             </DialogTitle>
-            <DialogDescription className="text-xs text-[#667085]">
+            <DialogDescription className="text-xs text-[#667085] dark:text-muted-foreground">
               Cria uma nova oportunidade para {targetCompany?.trade_name} sem alterar os produtos
               ativos existentes.
             </DialogDescription>

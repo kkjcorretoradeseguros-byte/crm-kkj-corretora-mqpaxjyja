@@ -185,10 +185,12 @@ export default function Contacts() {
   return (
     <div className="space-y-6">
       {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white border border-[#E4E7EC] shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-[#101828]">Gestão de Contatos</h2>
-          <p className="text-xs text-[#667085]">
+          <h2 className="text-base sm:text-lg font-bold text-[#101828] dark:text-foreground">
+            Gestão de Contatos
+          </h2>
+          <p className="text-xs text-[#667085] dark:text-muted-foreground">
             Cadastro de pessoas físicas, decisores de RH, sócios e titulares
           </p>
         </div>
@@ -198,14 +200,14 @@ export default function Contacts() {
             variant="outline"
             size="sm"
             onClick={exportCSV}
-            className="text-xs border-[#E4E7EC] text-[#667085]"
+            className="text-xs border-[#E4E7EC] dark:border-[#24324D] text-[#667085] dark:text-muted-foreground hover:text-foreground"
           >
             <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Exportar CSV
           </Button>
           <Button
             size="sm"
             onClick={openCreateModal}
-            className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+            className="bg-[#1B2A4A] dark:bg-primary text-white text-xs hover:bg-[#2A3D6B]"
           >
             <Plus className="h-4 w-4 mr-1.5" /> Novo Contato
           </Button>
@@ -214,17 +216,17 @@ export default function Contacts() {
 
       {/* Search Input */}
       <div className="max-w-md relative">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085]" />
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085] dark:text-muted-foreground" />
         <Input
           placeholder="Buscar por nome, telefone, e-mail ou cargo..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-9 text-xs bg-white border-[#E4E7EC]"
+          className="pl-9 h-9 text-xs bg-white dark:bg-card border-[#E4E7EC] dark:border-[#24324D]"
         />
       </div>
 
       {/* Contacts Table */}
-      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-border rounded-xl overflow-x-auto shadow-sm">
+      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] rounded-xl overflow-x-auto shadow-sm">
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -237,31 +239,41 @@ export default function Contacts() {
           </div>
         ) : (
           <Table className="min-w-[650px]">
-            <TableHeader className="bg-[#F5F7FA]">
+            <TableHeader className="bg-[#F5F7FA] dark:bg-muted/50">
               <TableRow>
-                <TableHead className="text-xs font-bold text-[#101828]">Nome</TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  Nome
+                </TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
                   Telefone / WhatsApp
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">E-mail</TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">Cargo</TableHead>
-                <TableHead className="text-xs font-bold text-[#101828]">
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  E-mail
+                </TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                  Cargo
+                </TableHead>
+                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
                   Empresa Vinculada
                 </TableHead>
-                <TableHead className="text-xs font-bold text-right">Ações</TableHead>
+                <TableHead className="text-xs font-bold text-right dark:text-foreground">
+                  Ações
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {contacts.map((contact) => (
                 <TableRow key={contact.id} className="text-xs">
-                  <TableCell className="font-bold text-[#101828]">{contact.name}</TableCell>
+                  <TableCell className="font-bold text-[#101828] dark:text-foreground">
+                    {contact.name}
+                  </TableCell>
                   <TableCell>
-                    <span className="flex items-center gap-1.5 text-[#1B2A4A] font-medium">
-                      <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="flex items-center gap-1.5 text-[#1B2A4A] dark:text-primary font-medium">
+                      <Phone className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                       {contact.phone}
                     </span>
                   </TableCell>
-                  <TableCell className="text-[#667085]">
+                  <TableCell className="text-[#667085] dark:text-muted-foreground">
                     {contact.email ? (
                       <span className="flex items-center gap-1.5">
                         <Mail className="h-3.5 w-3.5" />
@@ -271,15 +283,22 @@ export default function Contacts() {
                       '—'
                     )}
                   </TableCell>
-                  <TableCell className="text-[#667085]">{contact.position || '—'}</TableCell>
+                  <TableCell className="text-[#667085] dark:text-muted-foreground">
+                    {contact.position || '—'}
+                  </TableCell>
                   <TableCell>
                     {contact.expand?.company_id ? (
-                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-[10px]">
+                      <Badge
+                        variant="secondary"
+                        className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px]"
+                      >
                         <Building2 className="h-3 w-3 mr-1" />
                         {contact.expand.company_id.trade_name}
                       </Badge>
                     ) : (
-                      <span className="text-[#667085]">Pessoa Física / Sem Empresa</span>
+                      <span className="text-[#667085] dark:text-muted-foreground">
+                        Pessoa Física / Sem Empresa
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -288,7 +307,7 @@ export default function Contacts() {
                         variant="ghost"
                         size="icon"
                         onClick={() => openEditModal(contact)}
-                        className="h-7 w-7 text-[#667085] hover:text-[#101828]"
+                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-[#101828] dark:hover:text-foreground"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
@@ -296,7 +315,7 @@ export default function Contacts() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(contact.id)}
-                        className="h-7 w-7 text-[#667085] hover:text-red-600"
+                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -313,10 +332,10 @@ export default function Contacts() {
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#101828]">
+            <DialogTitle className="text-base font-bold text-[#101828] dark:text-foreground">
               {editingContact ? 'Editar Contato' : 'Novo Contato'}
             </DialogTitle>
-            <DialogDescription className="text-xs text-[#667085]">
+            <DialogDescription className="text-xs text-[#667085] dark:text-muted-foreground">
               Preencha as informações do contato
             </DialogDescription>
           </DialogHeader>
