@@ -304,8 +304,8 @@ CREATE TABLE IF NOT EXISTS public.contracts (
 COMMENT ON TABLE public.contracts IS 'Contratos consolidados e apólices ativas. Dados financeiros sensíveis em contract_financials.';
 
 -- 2.12 DADOS FINANCEIROS SENSÍVEIS DO CONTRATO (Proteção Real no PostgreSQL)
--- Separado fisicamente para garantir que corretores não leiam faturamento, repasses,
--- margem ou resultado da KKJ mesmo via chamadas diretas ao PostgREST.
+-- Separado fisicamente para garantir que corretores e gestores não leiam faturamento bruto,
+-- comissões da operadora, impostos, margens ou resultado da KKJ via PostgREST/API.
 CREATE TABLE IF NOT EXISTS public.contract_financials (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contract_id UUID NOT NULL UNIQUE REFERENCES public.contracts(id) ON DELETE CASCADE,
@@ -315,12 +315,45 @@ CREATE TABLE IF NOT EXISTS public.contract_financials (
   impostos_descontos NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   comissao_liquida NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   repasse_vendedor NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  bonificacao_vendedor NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   resultado_kkj NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   comissao_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
-COMMENT ON TABLE public.contract_financials IS 'Dados financeiros ultrassensíveis da KKJ protegidos por RLS estrita (Admin e Gestor).';
+COMMENT ON TABLE public.contract_financials IS 'Dados financeiros ultrassensíveis da KKJ protegidos por RLS estrita (exclusivo Administrador).';
+
+-- 2.12.1 VISÃO SEGURA DE REPASSE DO VENDEDOR (SECURITY BARRIER / SECURITY DEFINER)
+-- Expõe ao vendedor estritamente os campos autorizados pelo cliente:
+-- valor das próprias vendas, próprio repasse/comissão, própria bonificação e total a receber.
+-- NENHUM dado de faturamento KKJ, comissão de operadora, impostos ou resultado é exposto.
+CREATE OR REPLACE VIEW public.v_vendedor_financeiro
+WITH (security_barrier = true)
+AS
+  SELECT
+    c.id AS contract_id,
+    c.numero_contrato,
+    c.responsavel_id AS vendedor_id,
+    c.operadora,
+    c.plano,
+    c.valor_venda,
+    f.repasse_vendedor,
+    f.bonificacao_vendedor,
+    (f.repasse_vendedor + f.bonificacao_vendedor) AS total_a_receber,
+    c.status AS status_contrato,
+    c.data_inicio_vigencia,
+    c.data_pagamento
+  FROM public.contracts c
+  INNER JOIN public.contract_financials f ON f.contract_id = c.id
+  WHERE (
+    -- Administrador pode consultar todos
+    public.is_admin()
+    -- Vendedor consulta estritamente os contratos sob sua responsabilidade direta
+    OR (c.responsavel_id = auth.uid() AND public.is_vendedor())
+    -- Gestor consulta caso tenha permissão no sistema granular (ou responsável direto)
+    OR (c.responsavel_id = auth.uid() AND public.is_gestor())
+  );
+COMMENT ON VIEW public.v_vendedor_financeiro IS 'Visão de segurança (security barrier) para vendedores consultarem exclusivamente suas próprias comissões e bonificações sem acesso aos dados internos da KKJ.';
 
 -- 2.13 AUDIT LOG (Auditoria Geral do Sistema — Append-Only)
 CREATE TABLE IF NOT EXISTS public.audit_log (
@@ -539,25 +572,16 @@ BEGIN
 END $$;
 
 -- 5.2 Criação Automática de Profile no Signup (auth.users -> public.profiles)
+-- Regra estrita: TODO novo signup nasce SEMPRE como 'vendedor'.
+-- Não existe auto-promoção ao primeiro signup. A promoção a 'administrador' é realizada
+-- via instrução SQL explícita de bootstrap (ver seção 5.2.1 abaixo).
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  assigned_role public.user_role;
-  has_admin BOOLEAN;
 BEGIN
-  -- Se for o primeiro usuário de todos no sistema, pode assumir como administrador
-  SELECT EXISTS (SELECT 1 FROM public.profiles WHERE role = 'administrador') INTO has_admin;
-  
-  IF NOT has_admin THEN
-    assigned_role := 'administrador';
-  ELSE
-    assigned_role := 'vendedor';
-  END IF;
-
   INSERT INTO public.profiles (
     id,
     nome,
@@ -572,7 +596,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'nome', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
     NEW.email,
     NEW.raw_user_meta_data->>'celular',
-    assigned_role,
+    'vendedor'::public.user_role,
     true,
     true
   )
@@ -588,6 +612,50 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 5.2.1 INSTRUÇÃO SQL SEPARADA DE BOOTSTRAP PARA PROMOÇÃO DO ADMINISTRADOR INICIAL
+-- Como todo signup nasce como 'vendedor', execute o comando abaixo no Supabase SQL Editor
+-- APÓS criar sua conta inicial para promover especificamente seu usuário a 'administrador':
+-- 
+-- ------------------------------------------------------------------------------
+-- COMANDO DE BOOTSTRAP INICIAL (EXECUTAR MANUALMENTE NO SQL EDITOR APÓS SIGNUP):
+-- ------------------------------------------------------------------------------
+-- UPDATE public.profiles
+-- SET role = 'administrador',
+--     updated_at = timezone('utc'::text, now())
+-- WHERE id = (
+--   SELECT id FROM auth.users 
+--   WHERE lower(email) = lower('SEU_EMAIL_AQUI@DOMINIO.COM')
+--   LIMIT 1
+-- );
+-- ------------------------------------------------------------------------------
+
+-- 5.2.2 TRIGGER DE PROTEÇÃO: IMPEDIR ALTERAÇÃO DE ROLE POR NÃO-ADMINISTRADORES
+CREATE OR REPLACE FUNCTION public.check_profile_role_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Se o campo role foi alterado, apenas um administrador ativo ou a service_role pode fazer isso
+  IF OLD.role IS DISTINCT FROM NEW.role THEN
+    IF auth.role() = 'service_role' THEN
+      RETURN NEW;
+    END IF;
+    IF NOT public.is_admin() THEN
+      RAISE EXCEPTION 'Apenas usuários administradores podem alterar a role de um perfil.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_profile_role ON public.profiles;
+CREATE TRIGGER trg_protect_profile_role
+  BEFORE UPDATE OF role ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.check_profile_role_update();
 
 -- 5.3 Timeline Automática ao Mudar de Etapa ou Responsável na Oportunidade
 CREATE OR REPLACE FUNCTION public.handle_opportunity_changes()
@@ -713,16 +781,28 @@ BEGIN
 END;
 $$;
 
--- Aplica auditoria em Contratos e Perfis
-DROP TRIGGER IF EXISTS trg_audit_contracts ON public.contracts;
-CREATE TRIGGER trg_audit_contracts
-  AFTER INSERT OR UPDATE OR DELETE ON public.contracts
-  FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();
-
-DROP TRIGGER IF EXISTS trg_audit_profiles ON public.profiles;
-CREATE TRIGGER trg_audit_profiles
-  AFTER UPDATE OR DELETE ON public.profiles
-  FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();
+-- Aplica auditoria em todas as entidades críticas solicitadas:
+-- opportunities, contracts, contract_financials, profiles, produtos, etapas do pipeline, motivos de perda
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'opportunities',
+      'contracts',
+      'contract_financials',
+      'profiles',
+      'products',
+      'pipeline_stages',
+      'loss_reasons',
+      'task_types'
+    ])
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_%I ON public.%I;', tbl, tbl);
+    EXECUTE format('CREATE TRIGGER trg_audit_%I AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();', tbl, tbl);
+  END LOOP;
+END $$;
 
 -- ------------------------------------------------------------------------------
 -- 6. POLÍTICAS DE ROW LEVEL SECURITY (RLS REAL)
@@ -759,7 +839,7 @@ CREATE POLICY "profiles_update_own_or_admin"
   TO authenticated
   USING (id = auth.uid() OR public.is_admin())
   WITH CHECK (
-    -- Usuário comum não pode promover o próprio role
+    -- Usuário comum só pode atualizar seu próprio perfil e NUNCA alterar sua própria role
     (id = auth.uid() AND role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid()))
     OR public.is_admin()
   );
@@ -809,7 +889,16 @@ CREATE POLICY "companies_select_policy" ON public.companies FOR SELECT TO authen
 
 DROP POLICY IF EXISTS "companies_insert_policy" ON public.companies;
 CREATE POLICY "companies_insert_policy" ON public.companies FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    -- Administradores e gestores podem cadastrar empresas
+    public.is_manager_or_admin()
+    -- Vendedor autenticado pode cadastrar se assumir a autoria (created_by)
+    -- ou se created_by for nulo e for preenchido com seu uid
+    OR created_by = auth.uid()
+    OR created_by IS NULL
+    -- Integrações server-side com service_role
+    OR auth.role() = 'service_role'
+  );
 
 DROP POLICY IF EXISTS "companies_update_policy" ON public.companies;
 CREATE POLICY "companies_update_policy" ON public.companies FOR UPDATE TO authenticated
@@ -835,7 +924,25 @@ CREATE POLICY "contacts_select_policy" ON public.contacts FOR SELECT TO authenti
 
 DROP POLICY IF EXISTS "contacts_insert_policy" ON public.contacts;
 CREATE POLICY "contacts_insert_policy" ON public.contacts FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    -- Administradores e gestores podem cadastrar contatos
+    public.is_manager_or_admin()
+    -- Vendedor pode cadastrar contato para si próprio ou associado à sua carteira/empresa
+    OR created_by = auth.uid()
+    OR created_by IS NULL
+    OR (
+      company_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.companies comp
+        WHERE comp.id = contacts.company_id
+        AND (
+          comp.created_by = auth.uid()
+          OR EXISTS (SELECT 1 FROM public.opportunities o WHERE o.company_id = comp.id AND o.owner_id = auth.uid())
+        )
+      )
+    )
+    -- Integrações server-side com service_role
+    OR auth.role() = 'service_role'
+  );
 
 DROP POLICY IF EXISTS "contacts_update_policy" ON public.contacts;
 CREATE POLICY "contacts_update_policy" ON public.contacts FOR UPDATE TO authenticated
@@ -945,19 +1052,23 @@ CREATE POLICY "contracts_delete_policy" ON public.contracts FOR DELETE TO authen
   USING (public.is_admin());
 
 -- 6.9 FINANCEIRO SENSÍVEL (Contract Financials — Proteção Real de Comissões e Margens)
--- Vendedores NÃO possuem política de SELECT nesta tabela.
--- Apenas Administradores e Gestores têm acesso autorizado.
+-- Informações ultrassensíveis da KKJ: faturamento bruto, comissão de operadora, impostos e margem.
+-- Regra estrita: POR PADRÃO, SOMENTE ADMINISTRADOR TEM ACESSO (SELECT/INSERT/UPDATE/DELETE).
+-- GESTOR NÃO RECEBE ACESSO DEFAULT. Vendedores não têm acesso direto à tabela.
 DROP POLICY IF EXISTS "financials_admin_gestor_select" ON public.contract_financials;
-CREATE POLICY "financials_admin_gestor_select" ON public.contract_financials FOR SELECT TO authenticated
-  USING (public.is_manager_or_admin());
+DROP POLICY IF EXISTS "financials_admin_select" ON public.contract_financials;
+CREATE POLICY "financials_admin_select" ON public.contract_financials FOR SELECT TO authenticated
+  USING (public.is_admin());
 
 DROP POLICY IF EXISTS "financials_admin_gestor_insert" ON public.contract_financials;
-CREATE POLICY "financials_admin_gestor_insert" ON public.contract_financials FOR INSERT TO authenticated
-  WITH CHECK (public.is_manager_or_admin());
+DROP POLICY IF EXISTS "financials_admin_insert" ON public.contract_financials;
+CREATE POLICY "financials_admin_insert" ON public.contract_financials FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "financials_admin_update" ON public.contract_financials;
 CREATE POLICY "financials_admin_update" ON public.contract_financials FOR UPDATE TO authenticated
-  USING (public.is_manager_or_admin());
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "financials_admin_delete" ON public.contract_financials;
 CREATE POLICY "financials_admin_delete" ON public.contract_financials FOR DELETE TO authenticated
@@ -971,7 +1082,11 @@ CREATE POLICY "audit_select_admin" ON public.audit_log FOR SELECT TO authenticat
 
 DROP POLICY IF EXISTS "audit_insert_system" ON public.audit_log;
 CREATE POLICY "audit_insert_system" ON public.audit_log FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    -- Triggers security definer inserem no audit_log
+    -- Permite inserção por usuário autenticado se vinculado a si mesmo, admin ou service_role
+    user_id = auth.uid() OR user_id IS NULL OR public.is_admin() OR auth.role() = 'service_role'
+  );
 
 -- 6.11 CONVERSAS E MENSAGENS (WhatsApp)
 DROP POLICY IF EXISTS "conversations_select_policy" ON public.conversations;
@@ -984,11 +1099,25 @@ CREATE POLICY "conversations_select_policy" ON public.conversations FOR SELECT T
 
 DROP POLICY IF EXISTS "conversations_insert_policy" ON public.conversations;
 CREATE POLICY "conversations_insert_policy" ON public.conversations FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    public.is_manager_or_admin()
+    OR responsible_user_id = auth.uid()
+    OR (
+      opportunity_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.opportunities o
+        WHERE o.id = conversations.opportunity_id AND o.owner_id = auth.uid()
+      )
+    )
+    OR auth.role() = 'service_role'
+  );
 
 DROP POLICY IF EXISTS "conversations_update_policy" ON public.conversations;
 CREATE POLICY "conversations_update_policy" ON public.conversations FOR UPDATE TO authenticated
-  USING (public.is_manager_or_admin() OR responsible_user_id = auth.uid());
+  USING (
+    public.is_manager_or_admin()
+    OR responsible_user_id = auth.uid()
+    OR auth.role() = 'service_role'
+  );
 
 DROP POLICY IF EXISTS "messages_select_policy" ON public.messages;
 CREATE POLICY "messages_select_policy" ON public.messages FOR SELECT TO authenticated
@@ -997,13 +1126,28 @@ CREATE POLICY "messages_select_policy" ON public.messages FOR SELECT TO authenti
     OR EXISTS (
       SELECT 1 FROM public.conversations c
       WHERE c.id = messages.conversation_id
-      AND (c.responsible_user_id = auth.uid() OR public.is_manager_or_admin())
+      AND (
+        c.responsible_user_id = auth.uid()
+        OR EXISTS (SELECT 1 FROM public.opportunities o WHERE o.id = c.opportunity_id AND o.owner_id = auth.uid())
+      )
     )
+    OR auth.role() = 'service_role'
   );
 
 DROP POLICY IF EXISTS "messages_insert_policy" ON public.messages;
 CREATE POLICY "messages_insert_policy" ON public.messages FOR INSERT TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.conversations c
+      WHERE c.id = messages.conversation_id
+      AND (
+        c.responsible_user_id = auth.uid()
+        OR EXISTS (SELECT 1 FROM public.opportunities o WHERE o.id = c.opportunity_id AND o.owner_id = auth.uid())
+      )
+    )
+    OR auth.role() = 'service_role'
+  );
 
 -- ------------------------------------------------------------------------------
 -- 7. SEEDS DE CONFIGURAÇÃO ADMINISTRATIVA (IDEMPOTENTES VIA ON CONFLICT)
@@ -1012,7 +1156,7 @@ CREATE POLICY "messages_insert_policy" ON public.messages FOR INSERT TO authenti
 -- 7.1 Catálogo Inicial de Produtos de Seguros & Benefícios
 INSERT INTO public.products (nome, categoria, descricao, ativo)
 VALUES
-  ('Saúde PME', 'Saúde PME', 'Planos de saúde corporativos para empresas de 2 a 99 vidas', true),
+  ('Saúde PME', 'Saúde PME', 'Planos de saúde empresariais para empresas.', true),
   ('Saúde PF', 'Saúde PF', 'Planos individuais e familiares diretos', true),
   ('Adesão', 'Adesão', 'Planos coletivos por adesão vinculados a entidades de classe', true),
   ('Odontológico', 'Odontológico', 'Planos odontológicos individuais e corporativos', true),

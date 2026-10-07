@@ -12,9 +12,9 @@ O schema foi projetado especificamente para as operações da **KKJ Corretora de
 
 - **Tabelas do Domínio:** `profiles`, `products`, `companies`, `contacts`, `pipeline_stages`, `loss_reasons`, `task_types`, `opportunities`, `tasks`, `opportunity_timeline`, `contracts`, `contract_financials`, `audit_log`, `message_templates`, `conversations`, `messages`.
 - **Enums PostgreSQL:** `user_role`, `funnel_type`, `temperature`, `task_status`, `task_type`, `opp_status`, `doc_status`, `contract_status`, `timeline_action_type`, `message_direction`, `message_delivery_status`.
-- **Proteção Financeira Real:** A tabela `contract_financials` é **fisicamente separada** de `contracts`. Vendedores (`role = 'vendedor'`) não possuem política de `SELECT` nela — o PostgreSQL bloqueia no nível de kernel do banco, impedindo leitura de margens, resultado KKJ ou comissões globais mesmo por requisições manuais via API REST/GraphQL.
+- **Proteção Financeira Real:** A tabela `contract_financials` é **fisicamente separada** de `contracts`. Por padrão, **somente administradores (`public.is_admin()`)** têm acesso a ela (SELECT, INSERT, UPDATE, DELETE). Gestores NÃO recebem acesso default a faturamento bruto, impostos e margem global. Vendedores consultam suas próprias vendas e repasses através da visão segura `public.v_vendedor_financeiro` (SECURITY BARRIER).
 - **Timeline Imutável:** A tabela `opportunity_timeline` é _append-only_. Nenhuma política concede `UPDATE` ou `DELETE`, garantindo histórico inalterável de notas e movimentações de etapa.
-- **Auditoria Automática:** Trigger em `opportunities` registra transições de etapa, trocas de corretor responsável e alterações no valor de venda. Auditoria contínua grava em `audit_log`.
+- **Auditoria Contínua e Abrangente:** Triggers de auditoria cobrem `opportunities`, `contracts`, `contract_financials`, `profiles`, `products`, `pipeline_stages`, `loss_reasons` e `task_types`. A tabela `audit_log` é append-only e restrita exclusivamente ao Administrador.
 
 ---
 
@@ -36,32 +36,50 @@ O schema foi projetado especificamente para as operações da **KKJ Corretora de
 
 ---
 
-## 3. Como Promover o Primeiro Usuário a Administrador
+## 3. Como Promover o Primeiro Usuário a Administrador (Bootstrap Inicial)
 
-Por padrão, a trigger `on_auth_user_created` define:
+Por padrão e por motivos estritos de segurança, a trigger `on_auth_user_created` define:
 
-- Se não houver nenhum administrador no banco, o primeiro usuário cadastrado via signup recebe automaticamente a role `'administrador'`.
-- Os demais usuários recebem a role padrão `'vendedor'`.
+- **TODO novo cadastro (signup) nasce obrigatoriamente como `'vendedor'`.**
+- **NÃO existe auto-promoção** a administrador (nem mesmo para o primeiro usuário criado). Isso elimina qualquer janela de vulnerabilidade ou risco caso em algum momento não exista um perfil administrador.
+- Uma trigger `trg_protect_profile_role` impede que qualquer usuário altere sua própria coluna `role`. Somente administradores (ou processos com privilégio de servidor `service_role`) podem alterar a role de um perfil.
 
-Para promover manualmente qualquer usuário para `'administrador'` (ou `'gestor'`), execute o comando abaixo no **SQL Editor**:
+### Instrução de Bootstrap Inicial:
+
+Após criar sua conta de usuário no Supabase (seja via painel de autenticação ou via signup no frontend), execute a instrução SQL separada abaixo no **SQL Editor** substituindo pelo seu e-mail:
 
 ```sql
--- Promover usuário para Administrador
+-- ==============================================================================
+-- BOOTSTRAP: PROMOVER USUÁRIO ESPECÍFICO PARA ADMINISTRADOR
+-- (Execute no SQL Editor após realizar o primeiro signup)
+-- ==============================================================================
 UPDATE public.profiles
 SET role = 'administrador',
     updated_at = timezone('utc'::text, now())
-WHERE email = 'seu-email@kkjekabson.com.br';
+WHERE id = (
+  SELECT id FROM auth.users
+  WHERE lower(email) = lower('seu-email@kkjekabson.com.br')
+  LIMIT 1
+);
 
--- Ou promover para Gestor Comercial
+-- Verificar se a promoção foi aplicada com sucesso:
+SELECT id, nome, email, role, ativo
+FROM public.profiles
+WHERE lower(email) = lower('seu-email@kkjekabson.com.br');
+```
+
+Caso queira promover um usuário para `'gestor'`, basta executar:
+
+```sql
+-- Promover usuário para Gestor Comercial
 UPDATE public.profiles
 SET role = 'gestor',
     updated_at = timezone('utc'::text, now())
-WHERE email = 'gestor@kkjekabson.com.br';
-
--- Verificar a alteração
-SELECT id, nome, email, role, ativo
-FROM public.profiles
-WHERE email = 'seu-email@kkjekabson.com.br';
+WHERE id = (
+  SELECT id FROM auth.users
+  WHERE lower(email) = lower('gestor@kkjekabson.com.br')
+  LIMIT 1
+);
 ```
 
 ---
