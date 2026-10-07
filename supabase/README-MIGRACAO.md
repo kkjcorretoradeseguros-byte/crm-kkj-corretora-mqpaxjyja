@@ -10,6 +10,18 @@ O schema foi projetado especificamente para as operações da **KKJ Corretora de
 
 ### Destaques da Estrutura:
 
+- **Ordem de Execução Estrita (Resolução de Dependências):**
+  1. Extensões (`uuid-ossp`, `pgcrypto`)
+  2. Enums do Domínio
+  3. Tabela `public.profiles`
+  4. Funções Helper de Autenticação/Autorização (`current_role`, `is_admin`, `is_gestor`, `is_vendedor`, `is_manager_or_admin`)
+  5. Demais Tabelas do Domínio KKJ (com integridade de FKs)
+  6. Índices de Performance e Integridade
+  7. Triggers Operacionais e de Negócio
+  8. RLS e Policies de Segurança
+  9. RPC `get_meu_financeiro` (SECURITY DEFINER)
+  10. Triggers de Auditoria (`audit_log`)
+  11. Seeds de Configuração Administrativa
 - **Tabelas do Domínio:** `profiles`, `products`, `companies`, `contacts`, `pipeline_stages`, `loss_reasons`, `task_types`, `opportunities`, `tasks`, `opportunity_timeline`, `contracts`, `contract_financials`, `audit_log`, `message_templates`, `conversations`, `messages`.
 - **Enums PostgreSQL:** `user_role`, `funnel_type`, `temperature`, `task_status`, `task_type`, `opp_status`, `doc_status`, `contract_status`, `timeline_action_type`, `message_direction`, `message_delivery_status`.
 - **Proteção Financeira Real:** A tabela `contract_financials` é **fisicamente separada** de `contracts`. Por padrão, **somente administradores (`public.is_admin()`)** têm acesso direto a ela (SELECT, INSERT, UPDATE, DELETE). Nem corretores nem gestores têm permissão de SELECT direto em `contract_financials` via PostgREST/API. Vendedores e gestores consultam exclusivamente suas próprias vendas, comissões/repasses e bonificações através da função RPC `SECURITY DEFINER` minimalista `public.get_meu_financeiro()`, que filtra internamente por `responsavel_id = auth.uid()` e jamais expõe faturamento bruto KKJ, comissão de operadora, impostos ou margens internas.
