@@ -459,6 +459,7 @@ CREATE TABLE IF NOT EXISTS public.pipeline_stages (
   nome TEXT NOT NULL,
   ordem INTEGER NOT NULL,
   e_saida BOOLEAN NOT NULL DEFAULT false,
+  is_fechamento BOOLEAN NOT NULL DEFAULT false,
   ativo BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -1279,7 +1280,8 @@ REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM authenticated;
 
 -- 8.4 Trigger de Validação de Etapa, Funil, Perda e Proteção de Autotransferência de Leads
 -- Totalmente segregado por TG_OP: não acessa OLD no caminho de INSERT.
--- Venda ganha tratada com robustez: fallback por ordem máxima caso renomeada.
+-- Venda ganha / fechamento identificada pelo identificador explícito e estável is_fechamento = true
+-- na pipeline_stages (evitando depender de texto livre de nome ou posição por maior ordem).
 CREATE OR REPLACE FUNCTION public.validate_opportunity_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1288,12 +1290,12 @@ SET search_path = ''
 AS $$
 DECLARE
   v_stage_funnel public.funnel_type;
-  v_stage_name TEXT;
+  v_stage_is_fechamento BOOLEAN;
   v_won_stage_id UUID;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     -- 1. Validar coerência entre etapa (stage_id) e o funnel_type da oportunidade no INSERT
-    SELECT ps.funnel_type, ps.nome INTO v_stage_funnel, v_stage_name
+    SELECT ps.funnel_type, ps.is_fechamento INTO v_stage_funnel, v_stage_is_fechamento
     FROM public.pipeline_stages ps
     WHERE ps.id = NEW.stage_id;
 
@@ -1316,18 +1318,19 @@ BEGIN
       NEW.loss_notes := NULL;
     END IF;
 
-    -- Identificar etapa "Venda ganha" com fallback robusto (nome = 'Venda ganha' ou maior ordem do funil de vendas)
+    -- Identificar etapa de fechamento pelo campo explícito is_fechamento
     IF NEW.funnel_type = 'vendas' THEN
       SELECT ps.id INTO v_won_stage_id
       FROM public.pipeline_stages ps
-      WHERE ps.funnel_type = 'vendas'
-      ORDER BY (ps.nome = 'Venda ganha') DESC, ps.ordem DESC
+      WHERE ps.funnel_type = 'vendas' AND ps.is_fechamento = true
       LIMIT 1;
 
-      IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
-        NEW.status := 'ganha';
-      ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id THEN
-        NEW.stage_id := v_won_stage_id;
+      IF v_won_stage_id IS NOT NULL THEN
+        IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+          NEW.status := 'ganha';
+        ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id THEN
+          NEW.stage_id := v_won_stage_id;
+        END IF;
       END IF;
     END IF;
 
@@ -1335,7 +1338,7 @@ BEGIN
 
   ELSIF TG_OP = 'UPDATE' THEN
     -- 1. Validar coerência entre etapa (stage_id) e o funnel_type no UPDATE
-    SELECT ps.funnel_type, ps.nome INTO v_stage_funnel, v_stage_name
+    SELECT ps.funnel_type, ps.is_fechamento INTO v_stage_funnel, v_stage_is_fechamento
     FROM public.pipeline_stages ps
     WHERE ps.id = NEW.stage_id;
 
@@ -1359,19 +1362,20 @@ BEGIN
       NEW.loss_notes := NULL;
     END IF;
 
-    -- Identificar etapa "Venda ganha" com fallback robusto
+    -- Identificar etapa de fechamento pelo campo explícito is_fechamento
     IF NEW.funnel_type = 'vendas' THEN
       SELECT ps.id INTO v_won_stage_id
       FROM public.pipeline_stages ps
-      WHERE ps.funnel_type = 'vendas'
-      ORDER BY (ps.nome = 'Venda ganha') DESC, ps.ordem DESC
+      WHERE ps.funnel_type = 'vendas' AND ps.is_fechamento = true
       LIMIT 1;
 
-      IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
-        NEW.status := 'ganha';
-      ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id AND NEW.stage_id = OLD.stage_id THEN
-        -- Se marcado como ganho sem mudar de etapa manualmente, ajusta para a etapa ganha
-        NEW.stage_id := v_won_stage_id;
+      IF v_won_stage_id IS NOT NULL THEN
+        IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+          NEW.status := 'ganha';
+        ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id AND NEW.stage_id = OLD.stage_id THEN
+          -- Se marcado como ganho sem mudar de etapa manualmente, ajusta para a etapa ganha
+          NEW.stage_id := v_won_stage_id;
+        END IF;
       END IF;
     END IF;
 
@@ -1676,6 +1680,60 @@ CREATE TRIGGER trg_opportunity_created
 
 REVOKE ALL ON FUNCTION public.handle_opportunity_creation() FROM PUBLIC;
 
+-- 8.8 Trigger de Proteção Estrutural de Contratos no UPDATE (2.4)
+-- Impede que vendedores alterem responsavel_id, carrier_id, product_id, valor_mensal, valor_venda
+-- ou vinculem a contrato oportunidade pertencente a outro corretor.
+-- Gestores e administradores possuem permissão irrestrita.
+CREATE OR REPLACE FUNCTION public.check_contract_update_permissions()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT public.is_manager_or_admin() THEN
+    -- Vendedor comum não pode alterar responsavel_id
+    IF OLD.responsavel_id IS DISTINCT FROM NEW.responsavel_id THEN
+      RAISE EXCEPTION 'Vendedor não possui permissão para alterar a responsabilidade do contrato.';
+    END IF;
+
+    -- Vendedor comum não pode alterar a operadora (carrier_id) ou o produto
+    IF OLD.carrier_id IS DISTINCT FROM NEW.carrier_id THEN
+      RAISE EXCEPTION 'Operadora do contrato não pode ser modificada por vendedor. Solicite à gerência.';
+    END IF;
+
+    IF OLD.product_id IS DISTINCT FROM NEW.product_id THEN
+      RAISE EXCEPTION 'Produto do contrato não pode ser modificado por vendedor. Solicite à gerência.';
+    END IF;
+
+    -- Vendedor comum não pode alterar valores comerciais e de venda diretamente no contrato
+    IF OLD.valor_mensal IS DISTINCT FROM NEW.valor_mensal OR OLD.valor_venda IS DISTINCT FROM NEW.valor_venda THEN
+      RAISE EXCEPTION 'Valores financeiros do contrato não podem ser alterados diretamente por vendedor.';
+    END IF;
+
+    -- Vendedor comum não pode alterar vínculo de oportunidade para oportunidade de terceiro
+    IF OLD.opportunity_id IS DISTINCT FROM NEW.opportunity_id AND NEW.opportunity_id IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.opportunities o
+        WHERE o.id = NEW.opportunity_id AND o.owner_id = auth.uid()
+      ) THEN
+        RAISE EXCEPTION 'Não é permitido vincular contrato a oportunidade de outro corretor.';
+      END IF;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_check_contract_update ON public.contracts;
+CREATE TRIGGER trg_check_contract_update
+  BEFORE UPDATE ON public.contracts
+  FOR EACH ROW
+  EXECUTE FUNCTION public.check_contract_update_permissions();
+
+REVOKE ALL ON FUNCTION public.check_contract_update_permissions() FROM PUBLIC;
+
 -- ------------------------------------------------------------------------------
 -- 9. POLÍTICAS DE ROW LEVEL SECURITY (RLS REAL EM TODAS AS 32 TABELAS)
 -- ------------------------------------------------------------------------------
@@ -1722,6 +1780,12 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 -- Os campos administrativos (role, ativo, recebe_leads_automaticos) são protegidos de forma
 -- hermética pelo trigger BEFORE UPDATE check_profile_role_update(), ELIMINANDO QUALQUER SUBQUERY RECURSIVA na policy.
 DROP POLICY IF EXISTS "profiles_select_all_authenticated" ON public.profiles;
+-- 2.5: Decisão de Arquitetura RLS Profiles:
+-- Manter capacidade de qualquer usuário autenticado listar profiles (necessário para dropdowns
+-- de responsáveis em tarefas, contratos, pipelines, distribuição e histórico de equipe sem quebrar a UI).
+-- Dados ultrassensíveis (senhas e tokens) ficam isolados em auth.users e jamais são gravados em public.profiles.
+-- A elevação de privilégios (role, ativo, recebe_leads_automaticos) é estritamente bloqueada pelo trigger
+-- check_profile_role_update(), garantindo que vendedores nunca alterem permissões nem papéis.
 CREATE POLICY "profiles_select_all_authenticated"
   ON public.profiles FOR SELECT
   TO authenticated
@@ -1903,28 +1967,29 @@ CREATE POLICY "tasks_select_policy" ON public.tasks FOR SELECT TO authenticated
   );
 
 DROP POLICY IF EXISTS "tasks_insert_policy" ON public.tasks;
--- Vendedor comum pode criar tarefa para si mesmo (assignee_id = auth.uid())
--- ou para oportunidade da qual é owner (assignee_id = auth.uid() AND owner_id = auth.uid()).
--- Não pode atribuir arbitrariamente tarefas a outros corretores.
--- Gestores e Administradores possuem permissão irrestrita de atribuição a terceiros.
+-- 2.1: Vendedores somente criam tarefas atribuídas a si próprios (assignee_id = auth.uid()).
+-- Ser owner de oportunidade NÃO autoriza atribuir tarefa a outro vendedor.
+-- Gestores/administradores possuem permissão de atribuir tarefas conforme permissões.
 CREATE POLICY "tasks_insert_policy" ON public.tasks FOR INSERT TO authenticated
   WITH CHECK (
     public.is_manager_or_admin()
     OR (
       created_by = auth.uid()
+      AND assignee_id = auth.uid()
       AND (
-        assignee_id = auth.uid()
-        OR (
-          opportunity_id IS NOT NULL AND EXISTS (
-            SELECT 1 FROM public.opportunities o
-            WHERE o.id = tasks.opportunity_id AND o.owner_id = auth.uid()
-          )
+        opportunity_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.opportunities o
+          WHERE o.id = tasks.opportunity_id
+            AND (o.owner_id = auth.uid() OR (o.owner_id IS NULL AND public.has_permission('visualizar_todos_leads')))
         )
       )
     )
   );
 
 DROP POLICY IF EXISTS "tasks_update_policy" ON public.tasks;
+-- Vendedores comuns podem atualizar o status e observações de suas tarefas atribuídas,
+-- mas não podem alterar indevidamente assignee_id, created_by nem transferir opportunity_id para terceiros.
 CREATE POLICY "tasks_update_policy" ON public.tasks FOR UPDATE TO authenticated
   USING (
     public.is_manager_or_admin()
@@ -1932,7 +1997,10 @@ CREATE POLICY "tasks_update_policy" ON public.tasks FOR UPDATE TO authenticated
   )
   WITH CHECK (
     public.is_manager_or_admin()
-    OR assignee_id = auth.uid()
+    OR (
+      assignee_id = auth.uid()
+      AND created_by = auth.uid()
+    )
   );
 
 DROP POLICY IF EXISTS "tasks_delete_policy" ON public.tasks;
@@ -1953,16 +2021,18 @@ CREATE POLICY "timeline_select_policy" ON public.opportunity_timeline FOR SELECT
   );
 
 DROP POLICY IF EXISTS "timeline_insert_policy" ON public.opportunity_timeline;
--- Usuário comum somente pode inserir notas manuais: tipo_evento = 'nota' AND user_id = auth.uid()
--- AND ter acesso à oportunidade. Eventos automáticos (mudanca_etapa, mudanca_responsavel,
--- venda_contrato, sistema) são gravados exclusivamente pelas funções/triggers internas SECURITY DEFINER.
+-- 2.2: INSERT manual de authenticated somente tipo_evento = 'nota', user_id = auth.uid(),
+-- com acesso autorizado à oportunidade — valendo TAMBÉM para gestores e administradores no acesso normal do frontend.
+-- Eventos automáticos (mudanca_etapa, mudanca_responsavel, venda_contrato, sistema) são gravados
+-- exclusivamente pelos mecanismos internos autorizados (triggers SECURITY DEFINER), impedindo que qualquer
+-- usuário injete eventos automáticos forjados diretamente via cliente. Preserva append-only (sem UPDATE/DELETE).
 CREATE POLICY "timeline_insert_policy" ON public.opportunity_timeline FOR INSERT TO authenticated
   WITH CHECK (
-    public.is_manager_or_admin()
-    OR (
-      tipo_evento = 'nota'::public.timeline_action_type
-      AND user_id = auth.uid()
-      AND EXISTS (
+    tipo_evento = 'nota'::public.timeline_action_type
+    AND user_id = auth.uid()
+    AND (
+      public.is_manager_or_admin()
+      OR EXISTS (
         SELECT 1 FROM public.opportunities o
         WHERE o.id = opportunity_timeline.opportunity_id
           AND (o.owner_id = auth.uid() OR (o.owner_id IS NULL AND public.has_permission('visualizar_todos_leads')))
@@ -2004,16 +2074,42 @@ CREATE POLICY "contracts_select_policy" ON public.contracts FOR SELECT TO authen
   );
 
 DROP POLICY IF EXISTS "contracts_insert_policy" ON public.contracts;
+-- 2.4: Vendedores não podem vincular contratos a oportunidades de outros vendedores
+-- nem modificar arbitrariamente campos estruturais/financeiros.
 CREATE POLICY "contracts_insert_policy" ON public.contracts FOR INSERT TO authenticated
   WITH CHECK (
     public.is_manager_or_admin()
-    OR responsavel_id = auth.uid()
+    OR (
+      responsavel_id = auth.uid()
+      AND (
+        opportunity_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.opportunities o
+          WHERE o.id = contracts.opportunity_id AND o.owner_id = auth.uid()
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "contracts_update_policy" ON public.contracts;
+-- Vendedor responsável pode atualizar dados operacionais de implantação e acompanhamento de seus contratos,
+-- mas não pode transferir responsabilidade a terceiros nem alterar vínculo com oportunidade de outro vendedor.
+-- A proteção de campos financeiros e vínculos é assegurada tanto no WITH CHECK quanto no trigger check_contract_update_permissions.
 CREATE POLICY "contracts_update_policy" ON public.contracts FOR UPDATE TO authenticated
   USING (public.is_manager_or_admin() OR responsavel_id = auth.uid())
-  WITH CHECK (public.is_manager_or_admin() OR responsavel_id = auth.uid());
+  WITH CHECK (
+    public.is_manager_or_admin()
+    OR (
+      responsavel_id = auth.uid()
+      AND (
+        opportunity_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.opportunities o
+          WHERE o.id = contracts.opportunity_id AND o.owner_id = auth.uid()
+        )
+      )
+    )
+  );
 
 DROP POLICY IF EXISTS "contracts_delete_policy" ON public.contracts;
 CREATE POLICY "contracts_delete_policy" ON public.contracts FOR DELETE TO authenticated
@@ -2105,14 +2201,28 @@ CREATE POLICY "post_sale_select_policy" ON public.post_sale_requests FOR SELECT 
   );
 
 DROP POLICY IF EXISTS "post_sale_insert_policy" ON public.post_sale_requests;
+-- 2.6: Solicitações de Pós-Venda:
+-- Vendedor pode criar solicitação desde que seja o autor/responsável e o contrato/contato vinculado
+-- pertença à sua própria carteira (ou não tenha contrato informado).
+-- Gestores e administradores possuem permissão irrestrita.
 CREATE POLICY "post_sale_insert_policy" ON public.post_sale_requests FOR INSERT TO authenticated
   WITH CHECK (
     public.is_manager_or_admin()
-    OR responsavel_id = auth.uid()
-    OR created_by = auth.uid()
+    OR (
+      (responsavel_id = auth.uid() OR created_by = auth.uid())
+      AND (
+        contract_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.contracts c
+          WHERE c.id = post_sale_requests.contract_id AND c.responsavel_id = auth.uid()
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "post_sale_update_policy" ON public.post_sale_requests;
+-- Vendedor pode atualizar solicitações sob sua responsabilidade, mas não pode vincular
+-- indevidamente a contratos de outros corretores.
 CREATE POLICY "post_sale_update_policy" ON public.post_sale_requests FOR UPDATE TO authenticated
   USING (
     public.is_manager_or_admin()
@@ -2120,7 +2230,16 @@ CREATE POLICY "post_sale_update_policy" ON public.post_sale_requests FOR UPDATE 
   )
   WITH CHECK (
     public.is_manager_or_admin()
-    OR responsavel_id = auth.uid()
+    OR (
+      responsavel_id = auth.uid()
+      AND (
+        contract_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.contracts c
+          WHERE c.id = post_sale_requests.contract_id AND c.responsavel_id = auth.uid()
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "post_sale_delete_policy" ON public.post_sale_requests;
@@ -2232,6 +2351,8 @@ CREATE POLICY "conversations_insert_policy" ON public.conversations FOR INSERT T
   );
 
 DROP POLICY IF EXISTS "conversations_update_policy" ON public.conversations;
+-- 2.6: Regras de atualização de conversas:
+-- Impedir que vendedores associem conversas a oportunidades ou contatos de terceiros sem autorização.
 CREATE POLICY "conversations_update_policy" ON public.conversations FOR UPDATE TO authenticated
   USING (
     public.is_manager_or_admin()
@@ -2239,7 +2360,17 @@ CREATE POLICY "conversations_update_policy" ON public.conversations FOR UPDATE T
   )
   WITH CHECK (
     public.is_manager_or_admin()
-    OR responsible_user_id = auth.uid()
+    OR (
+      responsible_user_id = auth.uid()
+      AND (
+        opportunity_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.opportunities o
+          WHERE o.id = conversations.opportunity_id
+            AND (o.owner_id = auth.uid() OR (o.owner_id IS NULL AND public.has_permission('visualizar_todos_leads')))
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "messages_select_policy" ON public.messages;
@@ -2326,9 +2457,15 @@ $$;
 COMMENT ON FUNCTION public.get_meu_financeiro() IS 'Função RPC SECURITY DEFINER para consulta do extrato financeiro pessoal do vendedor sem conceder SELECT direto em contract_financials. Operadora obtida exclusivamente via JOIN em carriers.';
 
 REVOKE ALL ON FUNCTION public.get_meu_financeiro() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_meu_financeiro() FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_meu_financeiro() TO authenticated;
 
 -- 10.2 RPC get_minhas_parcelas: Extrato de parcelas do vendedor
+-- 2.7: Correção de duplicação de bonificação:
+-- A bonificação contratual (f.bonificacao_vendedor) é vinculada à capa do contrato.
+-- Retorná-la repetida em todas as parcelas causava soma duplicada no frontend.
+-- Agora, bonificacao_parcela_vendedor é atribuída EXCLUSIVAMENTE na 1ª parcela ativa (numero_parcela = 1),
+-- zerando nas demais parcelas (0.00), enquanto bonificacao_contrato_vendedor expõe o valor total do contrato.
 CREATE OR REPLACE FUNCTION public.get_minhas_parcelas()
 RETURNS TABLE (
   contract_id UUID,
@@ -2340,7 +2477,8 @@ RETURNS TABLE (
   repasse_pago_vendedor NUMERIC(14, 2),
   data_repasse DATE,
   status TEXT,
-  bonificacao_vendedor NUMERIC(14, 2)
+  bonificacao_vendedor NUMERIC(14, 2),
+  bonificacao_contrato_total NUMERIC(14, 2)
 )
 LANGUAGE sql
 STABLE
@@ -2357,7 +2495,12 @@ AS $$
     ci.repasse_pago_vendedor,
     ci.data_repasse,
     ci.status,
-    COALESCE(f.bonificacao_vendedor, 0.00) AS bonificacao_vendedor
+    -- Atribui a bonificação somente na 1ª parcela para evitar repetição/soma cumulativa indevida no cliente
+    CASE
+      WHEN ci.numero_parcela = 1 THEN COALESCE(f.bonificacao_vendedor, 0.00)
+      ELSE 0.00
+    END AS bonificacao_vendedor,
+    COALESCE(f.bonificacao_vendedor, 0.00) AS bonificacao_contrato_total
   FROM public.commission_installments ci
   INNER JOIN public.contracts c ON c.id = ci.contract_id
   LEFT JOIN public.contract_financials f ON f.contract_id = c.id
@@ -2371,6 +2514,7 @@ $$;
 COMMENT ON FUNCTION public.get_minhas_parcelas() IS 'Função RPC SECURITY DEFINER para consulta segura de parcelas do vendedor sem SELECT direto em commission_installments.';
 
 REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas() TO authenticated;
 
 -- ------------------------------------------------------------------------------
@@ -2468,33 +2612,35 @@ SET categoria = EXCLUDED.categoria,
 
 -- 12.3 Etapas Exatas do Funil de Vendas (Comercial - 7)
 -- 1. Novo Lead -> 2. Contato realizado -> 3. Qualificado -> 4. Cotação -> 5. Follow-up -> 6. Negociação -> 7. Venda ganha
-INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, ativo)
+INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, is_fechamento, ativo)
 VALUES
-  ('vendas', 'Novo Lead', 1, false, true),
-  ('vendas', 'Contato realizado', 2, false, true),
-  ('vendas', 'Qualificado', 3, false, true),
-  ('vendas', 'Cotação', 4, false, true),
-  ('vendas', 'Follow-up', 5, false, true),
-  ('vendas', 'Negociação', 6, false, true),
-  ('vendas', 'Venda ganha', 7, false, true)
+  ('vendas', 'Novo Lead', 1, false, false, true),
+  ('vendas', 'Contato realizado', 2, false, false, true),
+  ('vendas', 'Qualificado', 3, false, false, true),
+  ('vendas', 'Cotação', 4, false, false, true),
+  ('vendas', 'Follow-up', 5, false, false, true),
+  ('vendas', 'Negociação', 6, false, false, true),
+  ('vendas', 'Venda ganha', 7, false, true, true)
 ON CONFLICT (funnel_type, nome) DO UPDATE
 SET ordem = EXCLUDED.ordem,
     e_saida = EXCLUDED.e_saida,
+    is_fechamento = EXCLUDED.is_fechamento,
     ativo = EXCLUDED.ativo;
 
 -- 12.4 Etapas Exatas do Funil de Pós-Venda (Implantação & Ativação - 5)
 -- 1. Documentação -> 2. Implantação -> 3. Aguardando pagamento -> 4. Implantado -> 5. Cliente ativo
 -- PROIBIDO criar etapa "Proposta na operadora"
-INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, ativo)
+INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, is_fechamento, ativo)
 VALUES
-  ('pos_venda', 'Documentação', 1, false, true),
-  ('pos_venda', 'Implantação', 2, false, true),
-  ('pos_venda', 'Aguardando pagamento', 3, false, true),
-  ('pos_venda', 'Implantado', 4, false, true),
-  ('pos_venda', 'Cliente ativo', 5, false, true)
+  ('pos_venda', 'Documentação', 1, false, false, true),
+  ('pos_venda', 'Implantação', 2, false, false, true),
+  ('pos_venda', 'Aguardando pagamento', 3, false, false, true),
+  ('pos_venda', 'Implantado', 4, false, false, true),
+  ('pos_venda', 'Cliente ativo', 5, false, true, true)
 ON CONFLICT (funnel_type, nome) DO UPDATE
 SET ordem = EXCLUDED.ordem,
     e_saida = EXCLUDED.e_saida,
+    is_fechamento = EXCLUDED.is_fechamento,
     ativo = EXCLUDED.ativo;
 
 -- 12.5 Motivos de Perda Padronizados (Seeds Exatos - 9)

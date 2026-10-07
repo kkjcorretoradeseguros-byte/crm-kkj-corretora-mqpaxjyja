@@ -437,6 +437,7 @@ export interface MinhasParcelasItem {
   data_repasse?: string
   status: string
   bonificacao_vendedor: number
+  bonificacao_contrato_total?: number
 }
 
 // ------------------------------------------------------------------------------
