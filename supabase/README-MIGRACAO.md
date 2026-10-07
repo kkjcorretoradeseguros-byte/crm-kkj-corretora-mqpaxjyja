@@ -1,74 +1,81 @@
 # Guia de Migração Supabase — CRM KK JEKABSON Corretora de Seguros (KKJ)
 
-Este guia orienta o administrador da **KK JEKABSON Corretora de Seguros e Benefícios (KKJ)** no processo de execução e validação da migration SQL consolidada no painel Supabase do cliente.
+Este guia orienta o administrador da **KK JEKABSON Corretora de Seguros e Benefícios (KKJ)** no processo de execução e validação da migration SQL consolidada (`supabase/migrations/0001_kkj_initial_schema.sql`) no painel Supabase do cliente.
 
 ---
 
 ## 1. Visão Geral e Arquitetura Consolidada V1
 
-O schema foi projetado especificamente para as operações da **KKJ Corretora de Seguros e Benefícios**, especializada em planos de saúde (PME, PF, Adesão, Odonto) e seguros em geral (Vida, Auto, Consórcio e Patrimonial).
+O schema foi projetado especificamente para as operações da **KKJ Corretora de Seguros e Benefícios**, especializada em planos de saúde (PME, PF, Adesão, Odonto) e seguros em geral (Vida, Auto, Consórcio e Riscos Diversos).
 
-### Destaques da Estrutura:
+### Destaques da Estrutura e Ordem Linear de Instalação Limpa (Clean Install):
 
-- **Ordem de Execução Estrita (Resolução de Dependências para Instalação Clean):**
-  1. Extensões (`uuid-ossp`, `pgcrypto`)
-  2. Enums do Domínio (15 tipos enumerados)
-  3. Tabela `public.profiles`
-  4. Tabela de permissões granulares `permissions` e `user_permissions`
-  5. Funções Helper de Autenticação/Autorização (`current_role`, `is_admin`, `is_gestor`, `is_vendedor`, `is_manager_or_admin`, `has_permission`)
-  6. Demais Tabelas do Domínio KKJ (28 tabelas) na ordem rigorosa de Foreign Keys:
-     - `carriers`, `products`, `carrier_products`, `companies`, `contacts`, `pipeline_stages`, `loss_reasons`, `task_types`
-     - `opportunities`, `tasks`, FK circular de `proxima_tarefa_id` via ALTER TABLE
-     - `opportunity_timeline`, `opportunity_assignments`, `opportunity_stage_history`
-     - `contracts`, `commission_rules`, `bonus_campaigns`, `contract_financials`, `commission_installments`
-     - `document_checklist_templates`, `document_checklist_items`, `post_sale_requests`
-     - `custom_field_definitions`, `custom_field_values`, `user_preferences`, `audit_log`
-     - `whatsapp_channels`, `message_templates`, `conversations`, `messages`
-  7. Índices de Performance, Integridade e Busca Otimizada (GIN para `health_data` e `attribution`)
-  8. Triggers Operacionais e de Negócio (`handle_updated_at`, `handle_new_user`, `check_profile_role_update`, `handle_opportunity_changes`, `handle_opportunity_creation`)
-  9. Políticas de Row Level Security (RLS) habilitadas e ativas em TODAS as 28 tabelas
-  10. RPC Financeira `get_meu_financeiro()` (SECURITY DEFINER, `SET search_path = ''`, execução revogada de PUBLIC e concedida exclusivamente a `authenticated`)
-  11. Triggers de Auditoria Geral (`handle_audit_trigger` em 15 tabelas críticas)
-  12. Seeds Idempotentes de Configuração Administrativa (Carriers, Produtos, Etapas, Motivos, Tarefas, Permissões, Templates e Canal)
+1. **Extensões**: `uuid-ossp` e `pgcrypto`.
+2. **Enums do Domínio**: 17 tipos enumerados (`user_role`, `funnel_type`, `temperature`, `task_status`, `task_type`, `opp_status`, `doc_status`, `contract_status`, `timeline_action_type`, `message_direction`, `message_delivery_status`, `assignment_origin`, `post_sale_type`, `post_sale_status`, `calc_type`, `custom_field_type`, `custom_field_target`).
+3. **Tabela 1: `public.profiles`**: criada antes das funções helper para evitar qualquer erro de relação inexistente (`relation public.profiles does not exist`).
+4. **Tabelas 2 e 3: Permissões Granulares**: `permissions` e `user_permissions`.
+5. **Funções Helper SECURITY DEFINER**: (`current_role`, `is_admin`, `is_gestor`, `is_vendedor`, `is_manager_or_admin`, `has_permission`) compiladas com `SET search_path = ''` e objetos schema-qualified.
+6. **Tabelas do Domínio KKJ (29 tabelas seguintes, totalizando EXATAMENTE 32 TABELAS)** na ordem rigorosa de dependências de chaves estrangeiras:
+   - `carriers`, `products`, `carrier_products`, `companies`, `contacts`, `pipeline_stages`, `loss_reasons`, `task_types`
+   - `opportunities`, `tasks`, FK circular de `proxima_tarefa_id` via `ALTER TABLE` posterior
+   - `opportunity_timeline`, `opportunity_assignments`, `opportunity_stage_history`
+   - `contracts`, `commission_rules`, `bonus_campaigns`, `contract_financials`, `commission_installments`
+   - `document_checklist_templates`, `document_checklist_items`, `post_sale_requests`
+   - `custom_field_definitions`, `custom_field_values`, `user_preferences`, `audit_log`
+   - `whatsapp_channels`, `message_templates`, `conversations`, `messages`
+7. **Índices de Performance, Integridade e Busca Indexada**: GIN para `health_data` e `attribution`; índices únicos parciais para evitar concorrência (`uq_stage_history_active`, `uq_cfv_definition_opportunity`, etc.).
+8. **Triggers Operacionais e de Negócio**:
+   - `handle_updated_at`: atualização automática do carimbo de data/hora.
+   - `handle_new_user`: signup cria profile que nasce SEMPRE como vendedor (`'vendedor'`).
+   - `check_profile_role_update`: impede alteração de `role` por não-administrador.
+   - `validate_opportunity_rules`: integridade de stage/funnel, exigência de `loss_reason_id` em status 'perdida' e bloqueio real no banco de autotransferência de leads por corretores.
+   - `validate_custom_field_target`: garantia de coerência entre o alvo da definição e a FK informada.
+   - `handle_opportunity_changes` e `handle_opportunity_creation`: registro automático na timeline e no histórico estruturado de etapas/atribuições.
+9. **Políticas de Row Level Security (RLS)**: habilitadas e ativas em TODAS as 32 tabelas com `USING` e `WITH CHECK` explícitos.
+10. **Funções RPC Financeiras Seguras (SECURITY DEFINER)**:
+    - `get_meu_financeiro()`: extrato consolidado de contratos do corretor responsável com JOIN exclusivo em `carriers` (sem coluna textual legada).
+    - `get_minhas_parcelas()`: extrato detalhado de repasses de parcelas do vendedor sem conceder SELECT direto em `commission_installments`.
+11. **Triggers de Auditoria Append-Only**: `handle_audit_trigger` em tabelas críticas, sem DELETE/UPDATE e sem permissão direta de INSERT por usuários comuns.
+12. **Seeds Idempotentes**: 8 Operadoras, 8 Produtos com descrição neutra em PME, 7 Etapas de Vendas, 5 Etapas de Pós-Venda (sem etapa 'Proposta na operadora'), 9 Motivos de Perda, 9 Tipos de Tarefa, 6 Permissões e 3 Templates WhatsApp. O canal `whatsapp_channels` inicia VAZIO, sem nenhum número de telefone fictício.
 
 ---
 
-## 2. Inventário Completo das 28 Tabelas do Banco de Dados
+## 2. Inventário Completo das 32 Tabelas do Banco de Dados
 
-| #   | Tabela                         | Descrição e Finalidade                                                                                                                                 |
-| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | `profiles`                     | Perfil estendido dos usuários do CRM vinculado a `auth.users`. Possui coluna `recebe_leads_automaticos` para round-robin.                              |
-| 2   | `permissions`                  | Catálogo de permissões granulares (`visualizar_todos_leads`, `redistribuir_leads`, etc.).                                                              |
-| 3   | `user_permissions`             | Associação direta de permissões adicionais a gestores/vendedores sem alteração de código.                                                              |
-| 4   | `carriers`                     | Operadoras de saúde e seguradoras parceiras (Amil, Bradesco, SulAmérica, etc.).                                                                        |
-| 5   | `products`                     | Modalidades de seguros e planos de benefícios (Saúde PME, PF, Adesão, Odonto, Vida, Auto, Consórcio, Outros).                                          |
-| 6   | `carrier_products`             | Associação configurável entre operadoras e produtos comercializados.                                                                                   |
-| 7   | `companies`                    | Empresas clientes estipulantes de planos de saúde PJ / PME e apólices coletivas.                                                                       |
-| 8   | `contacts`                     | Pessoas físicas, titulares ou interlocutores corporativos de empresas.                                                                                 |
-| 9   | `pipeline_stages`              | Etapas operacionais dos dois funis (Funil de Vendas e Funil de Pós-Venda).                                                                             |
-| 10  | `loss_reasons`                 | Motivos padronizados de encerramento sem fechamento no funil de vendas.                                                                                |
-| 11  | `task_types`                   | Tipos parametrizáveis de tarefas comerciais e operacionais.                                                                                            |
-| 12  | `opportunities`                | Entidade central dos negócios com saúde (`health_data`), atribuição de marketing (`attribution`), operadora (`carrier_id`) e responsável (`owner_id`). |
-| 13  | `tasks`                        | Tarefas e compromissos operacionais vinculados a oportunidades e corretores.                                                                           |
-| 14  | `opportunity_timeline`         | Timeline append-only para acompanhamento cronológico de ações e notas.                                                                                 |
-| 15  | `opportunity_assignments`      | Histórico estruturado de mudanças de responsável (manual, round-robin, redistribuição).                                                                |
-| 16  | `opportunity_stage_history`    | Histórico estruturado de transições de etapa com data de entrada, saída e duração para BI de funil sem parsing textual.                                |
-| 17  | `contracts`                    | Contratos e apólices vigentes com dados de envio, implantação, vigência, cancelamento e alertas de renovação (90/60/30 dias).                          |
-| 18  | `commission_rules`             | Regras configuráveis de comissionamento por operadora/produto/modalidade (percentual, valor fixo, múltiplos, parcelamento).                            |
-| 19  | `bonus_campaigns`              | Campanhas de bonificação independentes da comissão comercial com metas e faixas.                                                                       |
-| 20  | `contract_financials`          | **Tabela ultrassensível de comissões e margens da KKJ**. Restrita exclusivamente ao Administrador via RLS.                                             |
-| 21  | `commission_installments`      | Detalhamento do cronograma de parcelas da comissão (previsto x recebido) da corretora e do vendedor.                                                   |
-| 22  | `document_checklist_templates` | Templates de documentos exigidos configuráveis por tipo de produto comercializado.                                                                     |
-| 23  | `document_checklist_items`     | Controle de status de documentação do cliente/contrato com links externos (sem binários pesados no PostgreSQL).                                        |
-| 24  | `post_sale_requests`           | Solicitações operacionais de pós-venda (inclusão, exclusão, 2ª via, faturamento, reembolso, etc.) separadas do fluxo comercial.                        |
-| 25  | `custom_field_definitions`     | Definição dinâmica de campos personalizados por produto (texto, moeda, número, data, seleção, múltipla seleção).                                       |
-| 26  | `custom_field_values`          | Armazenamento flexível dos valores dos campos personalizados vinculados a oportunidades e contratos.                                                   |
-| 27  | `user_preferences`             | Preferências do usuário: tema Claro/Escuro/Sistema, densidade visual e preferências de notificação.                                                    |
-| 28  | `audit_log`                    | Auditoria append-only de alterações críticas no CRM acessível exclusivamente por administradores.                                                      |
-| \*  | `whatsapp_channels`            | Canais e números de WhatsApp independentes de fornecedor (Meta, Z-API, Evolution, Baileys).                                                            |
-| \*  | `message_templates`            | Templates de mensagem WhatsApp com substituição de tags ({nome}, {empresa}, {vendedor}, {operadora}, {data}).                                          |
-| \*  | `conversations`                | Sessões de atendimento de WhatsApp vinculadas a canais, oportunidades e contatos.                                                                      |
-| \*  | `messages`                     | Mensagens individuais com direção, status de entrega e metadados.                                                                                      |
+| #   | Tabela                         | Descrição e Finalidade                                                                                                                              |
+| --- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `profiles`                     | Perfil estendido vinculado a `auth.users`. RLS sem recursão e proteção de papel (`role`) por trigger e policy.                                      |
+| 2   | `permissions`                  | Catálogo de permissões granulares (`visualizar_todos_leads`, `redistribuir_leads`, etc.).                                                           |
+| 3   | `user_permissions`             | Associação de permissões adicionais a gestores/vendedores sem alteração de código.                                                                  |
+| 4   | `carriers`                     | Operadoras de saúde e seguradoras parceiras (Amil, Bradesco Saúde, SulAmérica, Porto Seguro, Alice, Seguros Unimed, MedSênior, UniHosp).            |
+| 5   | `products`                     | Modalidades de seguros e benefícios (Saúde PME, PF, Adesão, Odonto, Vida, Auto, Consórcio, Outros).                                                 |
+| 6   | `carrier_products`             | Associação configurável entre operadoras e produtos comercializados.                                                                                |
+| 7   | `companies`                    | Empresas clientes estipulantes de planos de saúde PJ / PME e apólices coletivas. `created_by` restrito a `auth.uid()`.                              |
+| 8   | `contacts`                     | Pessoas físicas, titulares ou interlocutores corporativos de empresas. `created_by` restrito a `auth.uid()`.                                        |
+| 9   | `pipeline_stages`              | Etapas operacionais dos dois funis (Vendas: 7 etapas; Pós-Venda: 5 etapas).                                                                         |
+| 10  | `loss_reasons`                 | Motivos padronizados de encerramento sem fechamento no funil de vendas (9 motivos).                                                                 |
+| 11  | `task_types`                   | Tipos parametrizáveis de tarefas comerciais e operacionais (9 tipos).                                                                               |
+| 12  | `opportunities`                | Entidade central dos negócios. Possui `carrier_id` (cotada), `current_carrier_id` (anterior), `attribution` e dados de saúde (`health_data`).       |
+| 13  | `tasks`                        | Tarefas e follow-ups operacionais vinculados a oportunidades e corretores.                                                                          |
+| 14  | `opportunity_timeline`         | Timeline append-only para acompanhamento cronológico de ações e notas. Sem UPDATE/DELETE para usuários.                                             |
+| 15  | `opportunity_assignments`      | Histórico estruturado de mudanças de responsável (manual, round-robin, redistribuição).                                                             |
+| 16  | `opportunity_stage_history`    | Histórico estruturado de transições de etapa com índice parcial `uq_stage_history_active` garantindo uma única etapa aberta por oportunidade.       |
+| 17  | `contracts`                    | Contratos e apólices vigentes. Nome da operadora obtido EXCLUSIVAMENTE via FK `carrier_id` (coluna legado `operadora TEXT` removida).               |
+| 18  | `commission_rules`             | Regras configuráveis de comissionamento por operadora/produto/modalidade (percentual, valor fixo, múltiplos, parcelamento).                         |
+| 19  | `bonus_campaigns`              | Campanhas de bonificação independentes da comissão comercial com metas e faixas.                                                                    |
+| 20  | `contract_financials`          | **Tabela ultrassensível de faturamento e margens da KKJ**. Restrita EXCLUSIVAMENTE ao Administrador ativo via RLS.                                  |
+| 21  | `commission_installments`      | Cronograma de parcelas com integridade referencial composta ao contrato. Restrita a Admin via RLS (vendedor consulta via RPC).                      |
+| 22  | `document_checklist_templates` | Templates de documentos exigidos configuráveis por tipo de produto comercializado.                                                                  |
+| 23  | `document_checklist_items`     | Controle de documentação com links externos e constraint `chk_checklist_item_target` impedindo itens órfãos.                                        |
+| 24  | `post_sale_requests`           | Solicitações operacionais de pós-venda (inclusão, exclusão, 2ª via, faturamento, reembolso, etc.) com constraint de prioridade.                     |
+| 25  | `custom_field_definitions`     | Definição dinâmica de campos personalizados por produto e alvo (`oportunidade` ou `contrato`).                                                      |
+| 26  | `custom_field_values`          | Valores dinâmicos com integridade referencial: FKs `opportunity_id` e `contract_id` com CHECK garantindo exatamente um alvo preenchido.             |
+| 27  | `user_preferences`             | Preferências do usuário: tema Claro/Escuro/Sistema com CHECK, densidade visual e preferências de notificação.                                       |
+| 28  | `audit_log`                    | Auditoria append-only de alterações críticas no CRM acessível exclusivamente por administradores; gravação exclusiva por triggers SECURITY DEFINER. |
+| 29  | `whatsapp_channels`            | Canais de WhatsApp cadastrados no CRM. Inicia vazio sem números de telefone fictícios.                                                              |
+| 30  | `message_templates`            | Templates de mensagem WhatsApp com substituição de tags e CHECK em `modo_disparo`.                                                                  |
+| 31  | `conversations`                | Sessões de atendimento de WhatsApp com CHECK em `status`. Sessões sem responsável visíveis apenas para gestor/admin ou com permissão expressa.      |
+| 32  | `messages`                     | Mensagens individuais enviadas e recebidas com metadados de entrega.                                                                                |
 
 ---
 
@@ -84,216 +91,149 @@ O schema foi projetado especificamente para as operações da **KKJ Corretora de
 5. Copie **todo o conteúdo** do arquivo e cole no editor do Supabase.
 6. Clique no botão verde **Run** (ou pressione `Ctrl + Enter` / `Cmd + Enter`).
 7. Ao término, a mensagem `Success. No rows returned` será exibida.
-8. Verifique as tabelas criadas clicando em **Table Editor** no menu lateral.
+8. Verifique as 32 tabelas criadas clicando em **Table Editor** no menu lateral.
 
-> **Nota de Idempotência:** O script foi construído com verificações `IF NOT EXISTS`, blocos `DO $$` condicionais e cláusulas `ON CONFLICT (...) DO UPDATE`. Caso precise reexecutá-lo, nenhuma informação de configuração será duplicada ou perdida.
+> **Nota de Idempotência e Limpeza:** Este script foi desenhado primariamente para **instalação limpa (clean install)** em um banco Supabase recém-criado. Instruções `CREATE TABLE IF NOT EXISTS` garantem não duplicar tabelas, mas não alteram nem migram colunas de tabelas existentes. Em caso de reexecução corretiva em bancos que já possuam schemas antigos, recomenda-se executar em banco limpo.
 
 ---
 
 ## 4. Regras de Segurança e Proteção Financeira Invioláveis
 
-### 4.1 Separação Física e RLS Estrita em `contract_financials`:
+### 4.1 Separação Física e RLS Estrita em `contract_financials` e `commission_installments`:
 
-- A tabela `contract_financials` é **fisicamente separada** de `contracts`.
+- As tabelas `contract_financials` e `commission_installments` são **fisicamente separadas** de `contracts`.
 - As políticas de Row Level Security concedem acesso direto (SELECT, INSERT, UPDATE, DELETE) **exclusivamente a usuários administradores ativos (`public.is_admin()`)**.
-- Nem corretores (vendedores) nem gestores comerciais têm permissão de `SELECT` direto em `contract_financials` via API PostgREST.
+- Nem corretores (vendedores) nem gestores comerciais têm permissão de `SELECT` direto em `contract_financials` ou `commission_installments` via API PostgREST.
 
-### 4.2 Como o Vendedor Consulta o Próprio Financeiro:
+### 4.2 Como o Vendedor Consulta o Próprio Financeiro de Forma Segura:
 
-O corretor/vendedor consulta o seu extrato de repasses e bonificações exclusivamente chamando a função RPC segura:
+O corretor/vendedor consulta o seu extrato de repasses e parcelas exclusivamente chamando as funções RPC seguras:
+
+1. **Extrato Consolidado por Contrato:**
 
 ```sql
-SELECT contract_id, numero_contrato, valor_venda, repasse_vendedor, bonificacao_vendedor, total_a_receber
+SELECT contract_id, numero_contrato, vendedor_id, operadora, plano, valor_venda, repasse_vendedor, bonificacao_vendedor, total_a_receber, status_contrato, data_inicio_vigencia, data_pagamento
 FROM public.get_meu_financeiro();
 ```
 
-- A função foi compilada com `SECURITY DEFINER` e `SET search_path = ''`.
-- Ela filtra internamente por `responsavel_id = auth.uid()` (ou retorna todos os contratos caso quem a chame seja um administrador).
-- Ela retorna **apenas**: `contract_id`, `numero_contrato`, `vendedor_id`, `operadora`, `plano`, `valor_venda`, `repasse_vendedor`, `bonificacao_vendedor`, `total_a_receber`, `status_contrato`, `data_inicio_vigencia`, `data_pagamento`.
-- Ela **jamais** expõe `faturamento_bruto`, `comissao_prevista`, `comissao_recebida`, `impostos_descontos`, `comissao_liquida`, `resultado_kkj` ou snapshots de comissão da corretora.
+2. **Cronograma de Parcelas do Vendedor:**
+
+```sql
+SELECT contract_id, numero_contrato, numero_parcela, total_parcelas, data_vencimento, repasse_previsto_vendedor, repasse_pago_vendedor, data_repasse, status, bonificacao_vendedor
+FROM public.get_minhas_parcelas();
+```
+
+- Ambas as funções foram compiladas com `SECURITY DEFINER` e `SET search_path = ''`.
+- Filtram internamente por `c.responsavel_id = auth.uid()` (ou retornam todos caso quem a chame seja um administrador).
+- **NUNCA** expõem `faturamento_bruto`, `comissao_prevista`, `comissao_recebida`, `impostos_descontos`, `comissao_liquida`, `resultado_kkj` ou snapshots de comissão da corretora.
 - O privilégio de execução foi revogado de `PUBLIC` e concedido estritamente a usuários autenticados (`TO authenticated`).
 
 ### 4.3 Criação de Usuários e Proteção de Perfil (Role):
 
 - Todo novo signup no Supabase Auth dispara a trigger `on_auth_user_created`, criando a linha em `public.profiles` com papel padrão `'vendedor'`.
-- Não existe auto-promoção ao primeiro usuário cadastrado.
-- A trigger `trg_protect_profile_role` impede que qualquer usuário altere sua própria coluna `role`. Somente administradores ativos ou a chave de sistema `service_role` têm permissão de alterar o perfil de um usuário.
+- Não existe promoção automática do primeiro usuário nem auto-promoção por API.
+- A trigger `trg_protect_profile_role` e a policy de `UPDATE` em `public.profiles` impedem que qualquer usuário altere sua própria coluna `role`. Somente administradores ativos têm permissão de alterar o perfil de um usuário.
 
 ---
 
 ## 5. Procedimento de Bootstrap Inicial do Primeiro Administrador
 
-Como todo usuário nasce como vendedor, após realizar o primeiro cadastro via Supabase Auth ou pela tela de Signup, execute o comando abaixo no **SQL Editor** substituindo pelo seu e-mail:
+Como todo usuário nasce como vendedor e não existe backdoor nem auto-promoção, realize o cadastro do seu usuário no Supabase Auth (via Dashboard ou pela tela de Signup do sistema).
+
+Em seguida, execute no **SQL Editor** do Supabase o comando manual abaixo, substituindo pelo e-mail exato cadastrado:
 
 ```sql
 -- ==============================================================================
--- BOOTSTRAP: PROMOVER USUÁRIO ESPECÍFICO PARA ADMINISTRADOR
--- (Execute no SQL Editor após realizar o primeiro signup)
+-- BOOTSTRAP: PROMOVER O PRIMEIRO USUÁRIO PARA ADMINISTRADOR
+-- (Execute manualmente no SQL Editor do Supabase após o primeiro signup)
+-- Funciona mesmo quando NÃO existe nenhum administrador no banco ainda.
 -- ==============================================================================
 UPDATE public.profiles
 SET role = 'administrador',
     updated_at = timezone('utc'::text, now())
 WHERE id = (
-  SELECT id FROM auth.users
-  WHERE lower(email) = lower('admin@kkjekabson.com.br')
+  SELECT u.id
+  FROM auth.users u
+  WHERE lower(trim(u.email)) = lower(trim('admin@kkjekabson.com.br'))
   LIMIT 1
 );
 
--- Verificar a promoção:
+-- Verificar se a promoção foi aplicada com sucesso:
 SELECT id, nome, email, role, ativo
 FROM public.profiles
-WHERE lower(email) = lower('admin@kkjekabson.com.br');
+WHERE lower(trim(email)) = lower(trim('admin@kkjekabson.com.br'));
 ```
 
-Caso queira promover um usuário para `'gestor'`, execute:
+Caso deseje criar um Gestor Comercial diretamente:
 
 ```sql
--- Promover usuário para Gestor Comercial
 UPDATE public.profiles
 SET role = 'gestor',
     updated_at = timezone('utc'::text, now())
 WHERE id = (
-  SELECT id FROM auth.users
-  WHERE lower(email) = lower('gestor@kkjekabson.com.br')
+  SELECT u.id
+  FROM auth.users u
+  WHERE lower(trim(u.email)) = lower(trim('gestor@kkjekabson.com.br'))
   LIMIT 1
 );
 ```
 
 ---
 
-## 6. Como Validar e Testar o Row Level Security (RLS) para os 3 Perfis
+## 6. Integridade de Dados, Normalização e Decisões de Arquitetura
 
-No **SQL Editor** do Supabase, você pode simular a sessão de qualquer usuário usando as instruções de impersonação de sessão do PostgreSQL:
+### 6.1 Autenticação Baseada em E-mail (V1):
 
-### Teste 1: Administrador Lendo o Financeiro Global
+A versão 1 do CRM KKJ adota autenticação estritamente baseada em e-mail (`profiles.email NOT NULL`, vinculado a `auth.users(email)`). Qualquer suporte futuro a signup por telefone celular ou WhatsApp exigirá adaptações no fluxo de credenciais do Supabase Auth.
 
-```sql
-SET LOCAL ROLE authenticated;
-SET LOCAL "request.jwt.claims" = '{"sub": "UUID_DO_ADMINISTRADOR", "role": "authenticated"}';
+### 6.2 Normalização de CNPJ, CPF e Telefones:
 
--- Administrador consulta a tabela sensível diretamente:
-SELECT c.numero_contrato, c.valor_venda, f.faturamento_bruto, f.repasse_vendedor, f.resultado_kkj
-FROM public.contracts c
-JOIN public.contract_financials f ON f.contract_id = c.id;
--- Resultado esperado: Retorna todas as linhas com sucesso.
-```
+A coluna `companies.cnpj` possui constraint de unicidade (`UNIQUE`), enquanto `contacts.cpf` não possui unicidade absoluta para comportar interlocutores compartilhados ou dependentes.
+**Regra obrigatória de aplicação:** Os serviços de frontend e integrações devem sempre persistir CNPJs, CPFs e números de telefone no formato **normalizado (somente dígitos numéricos)**, evitando divergências causadas por máscaras de formatação como pontos, barras ou traços.
 
-### Teste 2: Vendedor Tentando Acessar o Financeiro Sensível Direto (DEVE FALHAR)
+### 6.3 Estratégia de Deleção e Preservação de Histórico (Append-Only):
+
+- A deleção física (`DELETE`) de oportunidades e contratos é estritamente restrita a administradores (`public.is_admin()`).
+- Tabelas de auditoria e linha do tempo (`audit_log`, `opportunity_timeline`, `opportunity_stage_history`, `opportunity_assignments`) são **append-only reais**: não possuem políticas de UPDATE ou DELETE para corretores ou gestores, assegurando a rastreabilidade integral da carteira.
+
+---
+
+## 7. Como Validar e Testar o Row Level Security (RLS)
+
+No **SQL Editor** do Supabase, teste a segurança simulando sessões reais:
+
+### Teste 1: Vendedor Tentando Acessar o Financeiro Sensível Direto (DEVE FALHAR)
 
 ```sql
 SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" = '{"sub": "UUID_DO_VENDEDOR", "role": "authenticated"}';
 
--- Vendedor tenta ler a tabela ultrassensível diretamente:
+-- Vendedor tenta ler a tabela ultrassensível de comissões da corretora:
 SELECT * FROM public.contract_financials;
--- Resultado esperado: Retorna 0 linhas (bloqueado pelo RLS, nenhum faturamento ou margem da KKJ vaza).
+-- Resultado esperado: 0 linhas.
+
+-- Vendedor tenta ler as parcelas financeiras diretamente:
+SELECT * FROM public.commission_installments;
+-- Resultado esperado: 0 linhas.
 
 -- Vendedor consulta seu próprio extrato via RPC autorizada:
-SELECT contract_id, numero_contrato, valor_venda, repasse_vendedor, bonificacao_vendedor, total_a_receber
-FROM public.get_meu_financeiro();
--- Resultado esperado: Retorna apenas os contratos onde o vendedor é o responsável,
--- trazendo exclusivamente seu repasse, bonificação e total a receber.
+SELECT * FROM public.get_meu_financeiro();
+-- Resultado esperado: Apenas contratos dos quais ele é responsável, sem margens KKJ.
 
--- Vendedor consulta oportunidades:
-SELECT id, titulo, owner_id FROM public.opportunities;
--- Resultado esperado: Retorna apenas suas oportunidades (ou oportunidades sem responsável aguardando distribuição).
+-- Vendedor consulta suas parcelas via RPC autorizada:
+SELECT * FROM public.get_minhas_parcelas();
+-- Resultado esperado: Apenas parcelas de seus próprios contratos.
 ```
 
-### Teste 3: Gestor Tentando Acessar o Financeiro Sensível Direto (DEVE FALHAR)
-
-```sql
-SET LOCAL ROLE authenticated;
-SET LOCAL "request.jwt.claims" = '{"sub": "UUID_DO_GESTOR", "role": "authenticated"}';
-
--- Gestor tenta ler a tabela ultrassensível diretamente:
-SELECT * FROM public.contract_financials;
--- Resultado esperado: Retorna 0 linhas (gestor não lê margens da corretora a menos que receba permissão especial expressa concedida pelo admin).
-
--- Gestor consulta oportunidades comerciais da equipe:
-SELECT id, titulo, owner_id FROM public.opportunities;
--- Resultado esperado: Visualiza todas as oportunidades da equipe comercial para coordenação.
-```
-
-### Teste 4: Tentativa de Adulterar a Timeline (DEVE FALHAR)
+### Teste 2: Vendedor Tentando Autotransferir Lead (DEVE FALHAR)
 
 ```sql
 SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" = '{"sub": "UUID_DO_VENDEDOR", "role": "authenticated"}';
 
-UPDATE public.opportunity_timeline
-SET conteudo = 'Tentativa de adulteração de histórico'
-WHERE id = 'UUID_QUALQUER';
--- Resultado esperado: Erro - "new row violates row-level security policy for table opportunity_timeline".
+-- Vendedor tenta transferir o lead para outro corretor:
+UPDATE public.opportunities
+SET owner_id = 'OUTRO_UUID'
+WHERE owner_id = 'UUID_DO_VENDEDOR';
+-- Resultado esperado: Erro - "Vendedor não possui permissão para transferir ou remover o responsável do lead."
 ```
-
----
-
-## 7. Formatos Estruturados de Dados (`health_data` e `attribution`)
-
-### 7.1 Formato de `health_data` (JSONB indexado com GIN)
-
-```json
-{
-  "possui_plano_atual": true,
-  "operadora_atual": "Bradesco Saúde",
-  "operadora_cotada": "Amil S750 / SulAmérica Especial 100",
-  "cnpj": "12.345.678/0001-90",
-  "razao_social": "Exemplo Serviços e Tecnologia Ltda",
-  "qtd_vidas": 14,
-  "idades": "0-18: 2, 19-23: 4, 24-28: 5, 29-33: 3",
-  "cidade": "São Paulo",
-  "estado": "SP",
-  "valor_plano_atual": 18450.0,
-  "tipo_contratacao": "PME Coparticipativo",
-  "acomodacao": "Apartamento",
-  "rede_desejada": "Hospital Sírio-Libanês, Albert Einstein e Laboratório Fleury",
-  "objetivo": "Reduzir custo mantendo hospitais de ponta",
-  "data_contratacao": "2021-04-10",
-  "data_renovacao": "2025-04-10"
-}
-```
-
-### 7.2 Formato de Atribuição de Marketing (`attribution` e colunas-chave)
-
-A tabela `opportunities` possui tanto colunas indexadas diretas quanto o objeto JSONB `attribution` para acomodar Meta Ads, Google Ads, formulários de website e indicações:
-
-```json
-{
-  "origem": "Meta Ads",
-  "midia": "cpc",
-  "campanha": "Campanha PME Saúde SP",
-  "campaign_id": "meta_cmp_123456",
-  "adset": "Decisores RH e Sócios 30-55",
-  "adset_id": "meta_adset_78910",
-  "anuncio": "Criativo Vídeo Dr. KKJ",
-  "ad_id": "meta_ad_45678",
-  "external_lead_id": "leadgen_999888777",
-  "data_aquisicao": "2025-02-23T14:30:00Z",
-  "utm_source": "facebook",
-  "utm_medium": "cpc",
-  "utm_campaign": "saude_pme_q1",
-  "utm_content": "video_depoimento",
-  "utm_term": "plano_saude_empresarial"
-}
-```
-
-Isso viabiliza relatórios completos de ponta a ponta:
-**Origem → Leads Recebidos → Qualificados → Cotações Apresentadas → Vendas Ganhas → Valor Vendido (Mensalidade) → Faturamento KKJ**.
-
----
-
-## 8. Seeds Idempotentes de Configuração
-
-A migration inclui apenas parâmetros de configuração operacional e administrativa:
-
-- **8 Operadoras parceiras:** Amil, Bradesco Saúde, SulAmérica, Porto Seguro, Alice, Seguros Unimed, MedSênior, UniHosp.
-- **8 Modalidades de produtos:** Saúde PME, Saúde PF, Adesão, Odontológico, Seguro de Vida, Seguro Auto, Consórcio, Outros.
-- **7 Etapas do Funil de Vendas:** Novo Lead, Contato realizado, Qualificado, Cotação, Follow-up, Negociação, Venda ganha.
-- **5 Etapas do Funil de Pós-Venda:** Documentação, Implantação, Aguardando pagamento, Implantado, Cliente ativo. _(Proibida a criação de etapa "Proposta na operadora")_.
-- **9 Motivos de Perda:** Preço, Sem retorno, Fechou com concorrente, Sem CNPJ elegível, Quantidade de vidas, Carência, Rede inadequada, Desistiu, Outro.
-- **9 Tipos de Tarefa:** Ligação, WhatsApp, Follow-up, Reunião, Cotação, Documentação, Implantação, Cobrança/Pagamento, Outro.
-- **6 Permissões Granulares:** `visualizar_todos_leads`, `redistribuir_leads`, `visualizar_relatorios`, `visualizar_financeiro_interno`, `editar_configuracoes`, `administrar_usuarios`.
-- **3 Templates de WhatsApp** com tags dinâmicas.
-- **1 Canal de Atendimento WhatsApp** padrão.
-
-Nenhum dado falso ou fictício de clientes ou negociações foi inserido. O banco estará limpo e pronto para a operação real.

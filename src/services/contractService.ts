@@ -24,7 +24,9 @@ export const contractService = {
     }
 
     if (options.search) {
-      filters.push(`(contract_number ~ "${options.search}" || operator ~ "${options.search}")`)
+      filters.push(
+        `(contract_number ~ "${options.search}" || carrier_id.nome ~ "${options.search}")`,
+      )
     }
 
     const filterString = filters.join(' && ')
@@ -32,14 +34,14 @@ export const contractService = {
     return await pb.collection('contracts').getList<Contract>(page, perPage, {
       filter: filterString || undefined,
       sort: '-start_date',
-      expand: 'company_id,contact_id,product_id,opportunity_id,assigned_to',
+      expand: 'company_id,contact_id,product_id,carrier_id,opportunity_id,assigned_to',
     })
   },
 
   async getAllContracts(): Promise<Contract[]> {
     return await pb.collection('contracts').getFullList<Contract>({
       sort: '-start_date',
-      expand: 'company_id,contact_id,product_id,opportunity_id,assigned_to',
+      expand: 'company_id,contact_id,product_id,carrier_id,opportunity_id,assigned_to',
     })
   },
 

@@ -55,9 +55,43 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setTheme = (newTheme: ThemeMode) => {
     setThemeState(newTheme)
     try {
+      // localStorage atua como cache anti-flash
       localStorage.setItem(THEME_STORAGE_KEY, newTheme)
     } catch (e) {
       console.warn('Failed to save theme in localStorage', e)
+    }
+    // Sincronização assíncrona com user_preferences no backend (quando autenticado)
+    try {
+      const globalWindow =
+        typeof window !== 'undefined' ? (window as unknown as Record<string, unknown>) : null
+      if (globalWindow && globalWindow.__supabaseClient) {
+        const client = globalWindow.__supabaseClient as {
+          from: (tbl: string) => {
+            upsert: (values: Record<string, unknown>) => Promise<unknown>
+          }
+          auth: { getUser: () => Promise<{ data: { user?: { id: string } } }> }
+        }
+        client.auth
+          .getUser()
+          .then(({ data }) => {
+            if (data.user?.id) {
+              client
+                .from('user_preferences')
+                .upsert({
+                  user_id: data.user.id,
+                  theme: newTheme,
+                })
+                .catch(() => {
+                  /* fallback silencioso se offline */
+                })
+            }
+          })
+          .catch(() => {
+            /* fallback silencioso */
+          })
+      }
+    } catch {
+      /* fallback se cliente Supabase ainda não inicializado */
     }
   }
 

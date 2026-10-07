@@ -194,7 +194,9 @@ export interface Opportunity {
   contact_id?: string
   company_id?: string
   product_id?: string
-  carrier_id?: string
+  carrier_id?: string // Operadora cotada/selecionada principal
+  current_carrier_id?: string // Operadora atual cadastrada (FK carriers)
+  current_carrier_name?: string // Nome da operadora atual quando não cadastrada
   assigned_to?: string // owner_id
   origin?: string
   tags?: string
@@ -210,6 +212,7 @@ export interface Opportunity {
     company_id?: Company
     product_id?: Product
     carrier_id?: Carrier
+    current_carrier_id?: Carrier
     assigned_to?: User
     created_by?: User
   }
@@ -310,11 +313,11 @@ export interface Contract {
   company_id?: string
   contact_id?: string
   product_id?: string
-  carrier_id?: string
+  carrier_id?: string // FK exclusiva para carriers (sem coluna operadora TEXT no banco)
   sale_value: number // Valor vendido / Mensalidade
   commission_value?: number // Faturamento da KKJ
   lives_count?: number
-  operator?: string
+  operator?: string // Alias frontend em visualização expandida
   plano?: string
   start_date?: string
   renewal_date?: string
@@ -419,6 +422,58 @@ export interface CommissionInstallment {
   data_recebimento?: string
   data_repasse?: string
   status: 'previsto' | 'recebido' | 'repassado' | 'cancelado'
+}
+
+export interface MinhasParcelasItem {
+  contract_id: string
+  numero_contrato: string
+  numero_parcela: number
+  total_parcelas: number
+  data_vencimento: string
+  repasse_previsto_vendedor: number
+  repasse_pago_vendedor: number
+  data_repasse?: string
+  status: string
+  bonificacao_vendedor: number
+}
+
+// ------------------------------------------------------------------------------
+// CAMPOS PERSONALIZADOS (Custom Fields com integridade referencial)
+// ------------------------------------------------------------------------------
+export type CustomFieldType =
+  | 'texto'
+  | 'numero'
+  | 'moeda'
+  | 'data'
+  | 'booleano'
+  | 'selecao'
+  | 'multipla_selecao'
+
+export type CustomFieldTarget = 'oportunidade' | 'contrato'
+
+export interface CustomFieldDefinition {
+  id: string
+  product_id?: string
+  alvo: CustomFieldTarget
+  nome: string
+  chave: string
+  tipo: CustomFieldType
+  opcoes?: unknown[]
+  obrigatorio: boolean
+  ordem: number
+  ativo: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CustomFieldValue {
+  id: string
+  definition_id: string
+  opportunity_id?: string | null
+  contract_id?: string | null
+  valor: unknown
+  created_at?: string
+  updated_at?: string
 }
 
 // ------------------------------------------------------------------------------
