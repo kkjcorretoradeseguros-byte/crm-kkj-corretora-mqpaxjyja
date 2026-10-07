@@ -1,422 +1,543 @@
-import React, { useState } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Settings,
-  User,
-  Mail,
-  KeyRound,
-  Download,
-  LogOut,
+  Shield,
+  Layers,
+  Package,
   AlertCircle,
-  CheckCircle2,
-  Loader2,
+  CheckSquare,
+  Users,
+  Plus,
+  Edit2,
   Trash2,
-  FileSpreadsheet,
+  CheckCircle2,
+  Lock,
 } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { propertyService } from '@/services/propertyService'
-import { clientService } from '@/services/clientService'
-import { interactionService } from '@/services/interactionService'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { productService } from '@/services/productService'
+import { userService } from '@/services/userService'
+import { useAuth } from '@/contexts/AuthContext'
+import type { Product, ProductCategory, User, UserRole } from '@/types/crm'
 
 export default function SettingsPage() {
-  const { user, updateProfile, requestEmailChange, logout } = useAuth()
+  const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState<
+    'PRODUTOS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
+  >('PRODUTOS')
 
-  // Profile state
-  const [name, setName] = useState(user?.name || '')
-  const [profileSuccess, setProfileSuccess] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false)
+  // Products state
+  const [products, setProducts] = useState<Product[]>([])
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false)
+  const [productName, setProductName] = useState('')
+  const [productCategory, setProductCategory] = useState<ProductCategory>('Saúde PME')
+  const [productDescription, setProductDescription] = useState('')
 
-  // Email change state
-  const [newEmail, setNewEmail] = useState('')
-  const [emailChangeSuccess, setEmailChangeSuccess] = useState(false)
-  const [emailChangeError, setEmailChangeError] = useState<string | null>(null)
-  const [isRequestingEmailChange, setIsRequestingEmailChange] = useState(false)
+  // Users state
+  const [users, setUsers] = useState<User[]>([])
 
-  // Password change state
-  const [isRequestingReset, setIsRequestingReset] = useState(false)
-  const [resetSent, setResetSent] = useState(false)
+  // Lost reasons state (Configurável sem alterar código)
+  const [lostReasons, setLostReasons] = useState<string[]>([
+    'Preço',
+    'Sem retorno',
+    'Fechou com concorrente',
+    'Sem CNPJ elegível',
+    'Quantidade de vidas',
+    'Carência',
+    'Rede inadequada',
+    'Desistiu',
+    'Outro',
+  ])
+  const [newLostReason, setNewLostReason] = useState('')
 
-  // Export CSV state
-  const [isExporting, setIsExporting] = useState(false)
+  // Task types state
+  const [taskTypes, setTaskTypes] = useState<string[]>([
+    'Ligação',
+    'WhatsApp',
+    'Follow-up',
+    'Reunião',
+    'Cotação',
+    'Documentação',
+    'Implantação',
+    'Cobrança/Pagamento',
+    'Outro',
+  ])
+  const [newTaskType, setNewTaskType] = useState('')
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setProfileError(null)
-    setProfileSuccess(false)
-    setIsUpdatingProfile(true)
-
+  const loadData = useCallback(async () => {
     try {
-      await updateProfile({ name })
-      setProfileSuccess(true)
-      setTimeout(() => setProfileSuccess(false), 4000)
-    } catch (err: unknown) {
-      const errObj = err as { message?: string }
-      setProfileError(errObj.message || 'Falha ao atualizar perfil.')
-    } finally {
-      setIsUpdatingProfile(false)
-    }
-  }
-
-  const handleRequestEmailChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setEmailChangeError(null)
-    setEmailChangeSuccess(false)
-
-    if (!newEmail || newEmail === user?.email) {
-      setEmailChangeError('Informe um e-mail diferente do atual.')
-      return
-    }
-
-    setIsRequestingEmailChange(true)
-    try {
-      await requestEmailChange(newEmail)
-      setEmailChangeSuccess(true)
-    } catch (err: unknown) {
-      const errObj = err as { message?: string }
-      setEmailChangeError(errObj.message || 'Falha ao solicitar alteração de e-mail.')
-    } finally {
-      setIsRequestingEmailChange(false)
-    }
-  }
-
-  const handleRequestPasswordReset = async () => {
-    if (!user?.email) return
-    setIsRequestingReset(true)
-    try {
-      // simulate request password reset to user's own email
-      setResetSent(true)
-    } catch {
-      // ignore
-    } finally {
-      setIsRequestingReset(false)
-    }
-  }
-
-  // Export Data to CSV
-  const handleExportData = async (type: 'properties' | 'clients' | 'interactions') => {
-    setIsExporting(true)
-    try {
-      let csvContent = ''
-      let filename = ''
-
-      if (type === 'properties') {
-        const props = await propertyService.getAllProperties()
-        filename = `imoveis_kkj_${new Date().toISOString().slice(0, 10)}.csv`
-        const headers = [
-          'ID',
-          'Título',
-          'Tipo',
-          'Finalidade',
-          'Preço',
-          'Status',
-          'Cidade',
-          'Bairro',
-        ]
-        const rows = props.map((p) => [
-          p.id,
-          `"${p.title.replace(/"/g, '""')}"`,
-          p.type,
-          p.transaction_type,
-          p.price,
-          p.status,
-          `"${p.address_city || ''}"`,
-          `"${p.address_neighborhood || ''}"`,
-        ])
-        csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-      } else if (type === 'clients') {
-        const clients = await clientService.getAllClients()
-        filename = `clientes_kkj_${new Date().toISOString().slice(0, 10)}.csv`
-        const headers = ['ID', 'Nome Completo', 'Telefone', 'E-mail', 'Status']
-        const rows = clients.map((c) => [
-          c.id,
-          `"${c.full_name.replace(/"/g, '""')}"`,
-          `"${c.phone}"`,
-          `"${c.email || ''}"`,
-          c.status,
-        ])
-        csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-      } else if (type === 'interactions') {
-        const inters = await interactionService.getAllInteractions()
-        filename = `interacoes_kkj_${new Date().toISOString().slice(0, 10)}.csv`
-        const headers = ['ID', 'Cliente ID', 'Tipo', 'Data', 'Notas']
-        const rows = inters.map((i) => [
-          i.id,
-          i.client_id,
-          i.type,
-          i.interaction_date,
-          `"${i.notes.replace(/"/g, '""')}"`,
-        ])
-        csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-      }
-
-      // Trigger download
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', filename)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      const [prodRes, usersRes] = await Promise.all([
+        productService.getAllProducts(false),
+        userService.getAllUsers(),
+      ])
+      setProducts(prodRes)
+      setUsers(usersRes)
     } catch (err) {
-      console.error('Failed to export CSV:', err)
-      alert('Erro ao exportar dados em CSV.')
-    } finally {
-      setIsExporting(false)
+      console.error(err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!productName.trim()) return
+
+    try {
+      await productService.createProduct({
+        name: productName.trim(),
+        category: productCategory,
+        description: productDescription.trim() || undefined,
+        active: true,
+      })
+      setIsProductModalOpen(false)
+      setProductName('')
+      setProductDescription('')
+      loadData()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleToggleProduct = async (prod: Product) => {
+    try {
+      await productService.updateProduct(prod.id, { active: !prod.active })
+      loadData()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleAddLostReason = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newLostReason.trim() && !lostReasons.includes(newLostReason.trim())) {
+      setLostReasons([...lostReasons, newLostReason.trim()])
+      setNewLostReason('')
+    }
+  }
+
+  const handleRemoveLostReason = (reason: string) => {
+    setLostReasons(lostReasons.filter((r) => r !== reason))
+  }
+
+  const handleAddTaskType = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newTaskType.trim() && !taskTypes.includes(newTaskType.trim())) {
+      setTaskTypes([...taskTypes, newTaskType.trim()])
+      setNewTaskType('')
+    }
+  }
+
+  const handleRemoveTaskType = (type: string) => {
+    setTaskTypes(taskTypes.filter((t) => t !== type))
+  }
+
+  const handleRoleChange = async (userId: string, newRole: UserRole) => {
+    try {
+      await userService.updateUserRole(userId, newRole)
+      loadData()
+    } catch (err) {
+      console.error(err)
     }
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[#101828]">
-          Configurações da Conta
-        </h2>
-        <p className="text-xs sm:text-sm text-[#667085]">
-          Gerencie seu perfil de corretor, credenciais de acesso e exportação de dados
-        </p>
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Top Header */}
+      <div className="p-6 rounded-xl bg-white border border-[#E4E7EC] shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-[#1B2A4A] text-white">
+            <Settings className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-[#101828]">
+              Central do Administrador — CRM KKJ
+            </h2>
+            <p className="text-xs text-[#667085]">
+              Gerenciamento de produtos, funis, motivos de perda, tipos de tarefa e perfis de
+              usuários sem alterar código
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {/* 1. Profile Settings */}
-        <Card className="border-[#E4E7EC] shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold text-[#101828] flex items-center gap-2">
-              <User className="h-4 w-4 text-[#1B2A4A]" /> Dados do Perfil
-            </CardTitle>
-            <CardDescription className="text-xs text-[#667085]">
-              Atualize as informações exibidas no sistema
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpdateProfile} className="space-y-4 max-w-md">
-              {profileSuccess && (
-                <Alert className="bg-emerald-50 text-emerald-900 border-emerald-200 text-xs">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <AlertDescription>Perfil atualizado com sucesso!</AlertDescription>
-                </Alert>
-              )}
-              {profileError && (
-                <Alert
-                  variant="destructive"
-                  className="bg-red-50 text-red-900 border-red-200 text-xs"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{profileError}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-1.5">
-                <Label htmlFor="prof_name" className="text-xs font-medium">
-                  Nome Completo
-                </Label>
-                <Input
-                  id="prof_name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="h-9 text-xs border-[#E4E7EC]"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium">E-mail Atual</Label>
-                <Input
-                  value={user?.email || ''}
-                  disabled
-                  className="h-9 text-xs bg-slate-50 border-[#E4E7EC] text-[#667085]"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isUpdatingProfile}
-                size="sm"
-                className="bg-[#1B2A4A] hover:bg-[#2A3D6B] text-white text-xs"
-              >
-                {isUpdatingProfile ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Salvando...
-                  </>
-                ) : (
-                  'Salvar Dados'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* 2. Email Change Flow */}
-        <Card className="border-[#E4E7EC] shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold text-[#101828] flex items-center gap-2">
-              <Mail className="h-4 w-4 text-[#1B2A4A]" /> Alteração de E-mail
-            </CardTitle>
-            <CardDescription className="text-xs text-[#667085]">
-              Será enviado um link de confirmação para o novo endereço
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleRequestEmailChange} className="space-y-4 max-w-md">
-              {emailChangeSuccess && (
-                <Alert className="bg-blue-50 text-blue-900 border-blue-200 text-xs">
-                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
-                  <AlertDescription>
-                    Link de verificação enviado para <strong>{newEmail}</strong>. Verifique sua
-                    caixa de entrada e clique no link para finalizar a alteração.
-                  </AlertDescription>
-                </Alert>
-              )}
-              {emailChangeError && (
-                <Alert
-                  variant="destructive"
-                  className="bg-red-50 text-red-900 border-red-200 text-xs"
-                >
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{emailChangeError}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-1.5">
-                <Label htmlFor="new_email" className="text-xs font-medium">
-                  Novo Endereço de E-mail
-                </Label>
-                <Input
-                  id="new_email"
-                  type="email"
-                  placeholder="novo.email@exemplo.com"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="h-9 text-xs border-[#E4E7EC]"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isRequestingEmailChange}
-                size="sm"
-                className="bg-[#1B2A4A] hover:bg-[#2A3D6B] text-white text-xs"
-              >
-                {isRequestingEmailChange ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Enviando link...
-                  </>
-                ) : (
-                  'Solicitar Troca de E-mail'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* 3. Password & Security */}
-        <Card className="border-[#E4E7EC] shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold text-[#101828] flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-[#1B2A4A]" /> Segurança & Senha
-            </CardTitle>
-            <CardDescription className="text-xs text-[#667085]">
-              Receba um link de redefinição de senha com segurança
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 max-w-md">
-            {resetSent ? (
-              <Alert className="bg-emerald-50 text-emerald-900 border-emerald-200 text-xs">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <AlertDescription>
-                  Link enviado para seu e-mail cadastrado ({user?.email}).
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <p className="text-xs text-[#667085]">
-                Caso deseje trocar sua senha, enviamos um link seguro de recuperação para seu e-mail
-                cadastrado.
-              </p>
-            )}
-
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isRequestingReset || resetSent}
-              onClick={handleRequestPasswordReset}
-              size="sm"
-              className="border-[#E4E7EC] text-xs"
+      {/* Settings Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E4E7EC] pb-2 text-xs">
+        {[
+          { key: 'PRODUTOS', label: 'Catálogo de Produtos', icon: Package },
+          { key: 'ETAPAS', label: 'Funis & Etapas', icon: Layers },
+          { key: 'PERDAS', label: 'Motivos de Perda', icon: AlertCircle },
+          { key: 'TAREFAS', label: 'Tipos de Tarefa', icon: CheckSquare },
+          { key: 'USUARIOS', label: 'Usuários & Perfis', icon: Users },
+        ].map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as any)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-medium transition ${
+                activeTab === tab.key
+                  ? 'bg-[#1B2A4A] text-white font-semibold shadow-sm'
+                  : 'bg-white text-[#667085] hover:bg-slate-100 border border-[#E4E7EC]'
+              }`}
             >
-              {isRequestingReset ? 'Enviando...' : 'Enviar Link de Redefinição'}
-            </Button>
-          </CardContent>
-        </Card>
+              <Icon className="h-4 w-4" />
+              <span>{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
 
-        {/* 4. Data Export (CSV) */}
+      {/* TAB 1: CATÁLOGO DE PRODUTOS */}
+      {activeTab === 'PRODUTOS' && (
         <Card className="border-[#E4E7EC] shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold text-[#101828] flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 text-[#1B2A4A]" /> Exportação de Dados (CSV)
-            </CardTitle>
-            <CardDescription className="text-xs text-[#667085]">
-              Faça backup ou exporte suas tabelas para análise em planilhas Excel / Google Sheets
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-sm font-bold text-[#101828]">
+                Catálogo de Seguros & Benefícios
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085]">
+                Planos de saúde, odontológico, seguro de vida, auto e consórcios comercializados
+                pela KKJ
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsProductModalOpen(true)}
+              className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+            >
+              <Plus className="h-4 w-4 mr-1" /> Novo Produto
+            </Button>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isExporting}
-                onClick={() => handleExportData('properties')}
-                className="border-[#E4E7EC] text-xs flex items-center gap-2"
-              >
-                <Download className="h-3.5 w-3.5" /> Exportar Imóveis (.csv)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isExporting}
-                onClick={() => handleExportData('clients')}
-                className="border-[#E4E7EC] text-xs flex items-center gap-2"
-              >
-                <Download className="h-3.5 w-3.5" /> Exportar Clientes (.csv)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isExporting}
-                onClick={() => handleExportData('interactions')}
-                className="border-[#E4E7EC] text-xs flex items-center gap-2"
-              >
-                <Download className="h-3.5 w-3.5" /> Exportar Interações (.csv)
-              </Button>
+            <div className="divide-y divide-[#E4E7EC]">
+              {products.map((p) => (
+                <div key={p.id} className="py-3 flex items-center justify-between text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#101828] text-sm">{p.name}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {p.category}
+                      </Badge>
+                      <Badge
+                        className={`text-[9px] ${
+                          p.active
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-[#667085]'
+                        }`}
+                      >
+                        {p.active ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    </div>
+                    {p.description && (
+                      <p className="text-[11px] text-[#667085] mt-0.5">{p.description}</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleProduct(p)}
+                    className="text-xs text-[#667085] hover:text-[#101828]"
+                  >
+                    {p.active ? 'Desativar' : 'Ativar'}
+                  </Button>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* 5. Account Section */}
+      {/* TAB 2: FUNIS & ETAPAS */}
+      {activeTab === 'ETAPAS' && (
+        <div className="space-y-4">
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-[#101828]">
+                Funil de Vendas (Comercial)
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085]">
+                Fluxo obrigatório desde a entrada do lead até o fechamento da venda
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                {[
+                  '1. Novo Lead',
+                  '2. Contato realizado',
+                  '3. Qualificado',
+                  '4. Cotação',
+                  '5. Follow-up',
+                  '6. Negociação',
+                  '7. Venda ganha',
+                  '✕ Venda perdida (saída)',
+                ].map((s) => (
+                  <div
+                    key={s}
+                    className="p-2.5 rounded-lg border border-[#E4E7EC] bg-[#F5F7FA] font-semibold text-[#1B2A4A]"
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-[#101828]">
+                Funil de Pós-Venda (Implantação & Ativação)
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085]">
+                Iniciado automaticamente quando a oportunidade atinge Venda Ganha
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                {[
+                  '1. Documentação',
+                  '2. Implantação',
+                  '3. Aguardando pagamento',
+                  '4. Implantado',
+                  '5. Cliente ativo',
+                ].map((s) => (
+                  <div
+                    key={s}
+                    className="p-2.5 rounded-lg border border-emerald-100 bg-emerald-50/40 font-semibold text-emerald-900"
+                  >
+                    {s}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 3: MOTIVOS DE PERDA */}
+      {activeTab === 'PERDAS' && (
         <Card className="border-[#E4E7EC] shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base font-bold text-[#101828] flex items-center gap-2">
-              <LogOut className="h-4 w-4 text-[#D92D20]" /> Encerrar Sessão
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-[#101828]">
+              Motivos de Perda no Funil de Vendas
             </CardTitle>
             <CardDescription className="text-xs text-[#667085]">
-              Desconecte sua conta deste navegador
+              Opções obrigatórias exigidas quando uma negociação é encerrada como perdida
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <form onSubmit={handleAddLostReason} className="flex gap-2">
+              <Input
+                placeholder="Adicionar novo motivo (ex: CNPJ inativo, Sem carência...)"
+                value={newLostReason}
+                onChange={(e) => setNewLostReason(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <Button type="submit" size="sm" className="bg-[#1B2A4A] text-white text-xs shrink-0">
+                <Plus className="h-4 w-4 mr-1" /> Adicionar
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              {lostReasons.map((r) => (
+                <Badge
+                  key={r}
+                  variant="outline"
+                  className="p-2 text-xs bg-slate-50 border-[#E4E7EC] flex items-center gap-2"
+                >
+                  <span className="font-semibold text-[#101828]">{r}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLostReason(r)}
+                    className="text-[#667085] hover:text-red-600 font-bold"
+                  >
+                    ×
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 4: TIPOS DE TAREFA */}
+      {activeTab === 'TAREFAS' && (
+        <Card className="border-[#E4E7EC] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-[#101828]">
+              Tipos de Tarefa e Ações
+            </CardTitle>
+            <CardDescription className="text-xs text-[#667085]">
+              Categorias padronizadas para acompanhamento da rotina comercial
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <form onSubmit={handleAddTaskType} className="flex gap-2">
+              <Input
+                placeholder="Novo tipo de tarefa..."
+                value={newTaskType}
+                onChange={(e) => setNewTaskType(e.target.value)}
+                className="h-8 text-xs"
+              />
+              <Button type="submit" size="sm" className="bg-[#1B2A4A] text-white text-xs shrink-0">
+                <Plus className="h-4 w-4 mr-1" /> Adicionar
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              {taskTypes.map((t) => (
+                <Badge
+                  key={t}
+                  variant="outline"
+                  className="p-2 text-xs bg-slate-50 border-[#E4E7EC] flex items-center gap-2"
+                >
+                  <span className="font-semibold text-[#101828]">{t}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTaskType(t)}
+                    className="text-[#667085] hover:text-red-600 font-bold"
+                  >
+                    ×
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 5: USUÁRIOS & PERFIS */}
+      {activeTab === 'USUARIOS' && (
+        <Card className="border-[#E4E7EC] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-[#101828]">
+              Usuários e Perfis de Acesso
+            </CardTitle>
+            <CardDescription className="text-xs text-[#667085]">
+              ADMINISTRADOR (acesso total), GESTOR (coordenação comercial), VENDEDOR (restrito à
+              própria carteira)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button
-              variant="outline"
-              onClick={logout}
-              size="sm"
-              className="border-[#E4E7EC] text-[#D92D20] hover:bg-red-50 text-xs flex items-center gap-2"
-            >
-              <LogOut className="h-3.5 w-3.5" /> Sair do Sistema
-            </Button>
+            <div className="divide-y divide-[#E4E7EC]">
+              {users.map((u) => (
+                <div key={u.id} className="py-3 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-bold text-[#101828] text-sm">{u.name || 'Sem nome'}</span>
+                    <p className="text-[11px] text-[#667085]">{u.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={u.role || 'VENDEDOR'}
+                      onValueChange={(val) => handleRoleChange(u.id, val as UserRole)}
+                    >
+                      <SelectTrigger className="h-8 text-xs w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ADMINISTRADOR">ADMINISTRADOR</SelectItem>
+                        <SelectItem value="GESTOR">GESTOR</SelectItem>
+                        <SelectItem value="VENDEDOR">VENDEDOR</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* CREATE PRODUCT MODAL */}
+      <Dialog open={isProductModalOpen} onOpenChange={setIsProductModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#101828]">Novo Produto</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateProduct} className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs">Nome do Produto *</Label>
+              <Input
+                placeholder="Ex: Saúde Coletivo por Adesão"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                required
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Categoria</Label>
+              <Select
+                value={productCategory}
+                onValueChange={(val) => setProductCategory(val as ProductCategory)}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[
+                    'Saúde PME',
+                    'Saúde PF',
+                    'Adesão',
+                    'Odontológico',
+                    'Seguro de Vida',
+                    'Seguro Auto',
+                    'Consórcio',
+                    'Outros',
+                  ].map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Descrição</Label>
+              <Input
+                placeholder="Detalhes ou regras comerciais..."
+                value={productDescription}
+                onChange={(e) => setProductDescription(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsProductModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" className="bg-[#1B2A4A] text-white text-xs">
+                Salvar Produto
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

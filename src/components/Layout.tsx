@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  Building2,
+  Shield,
   LayoutDashboard,
-  Users,
-  MessageSquare,
   KanbanSquare,
+  Users,
+  Building2,
+  CheckSquare,
+  MessageSquare,
+  DollarSign,
   Settings,
   Search,
   Bell,
@@ -15,9 +18,9 @@ import {
   X,
   ChevronRight,
   User as UserIcon,
-  Home,
   CheckCircle2,
-  Calendar,
+  Clock,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,17 +33,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { propertyService } from '@/services/propertyService'
-import { clientService } from '@/services/clientService'
-import type { Property, Client } from '@/types/crm'
+import { companyService } from '@/services/companyService'
+import { contactService } from '@/services/contactService'
+import { opportunityService } from '@/services/opportunityService'
+import type { Company, Contact, Opportunity } from '@/types/crm'
 
-const navigationItems = [
+const mainNavigationItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Imóveis', href: '/imoveis', icon: Building2 },
-  { name: 'Clientes', href: '/clientes', icon: Users },
-  { name: 'Interações', href: '/interacoes', icon: MessageSquare },
   { name: 'Pipeline', href: '/pipeline', icon: KanbanSquare },
-  { name: 'Configurações', href: '/configuracoes', icon: Settings },
+  { name: 'Contatos', href: '/contatos', icon: Users },
+  { name: 'Empresas / Clientes', href: '/empresas', icon: Building2 },
+  { name: 'Tarefas', href: '/tarefas', icon: CheckSquare },
+  { name: 'Conversas', href: '/conversas', icon: MessageSquare },
+  { name: 'Financeiro', href: '/financeiro', icon: DollarSign },
 ]
 
 export default function Layout() {
@@ -51,29 +56,32 @@ export default function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [globalSearch, setGlobalSearch] = useState('')
   const [searchResults, setSearchResults] = useState<{
-    properties: Property[]
-    clients: Client[]
-  }>({ properties: [], clients: [] })
+    opportunities: Opportunity[]
+    companies: Company[]
+    contacts: Contact[]
+  }>({ opportunities: [], companies: [], contacts: [] })
   const [isSearching, setIsSearching] = useState(false)
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
-  // Current page title
+  // Current page title and context info
   const currentTitle = (() => {
     const path = location.pathname
-    if (path === '/') return 'Dashboard'
-    if (path.startsWith('/imoveis')) return 'Imóveis'
-    if (path.startsWith('/clientes')) return 'Clientes'
-    if (path.startsWith('/interacoes')) return 'Interações'
-    if (path.startsWith('/pipeline')) return 'Pipeline de Vendas'
-    if (path.startsWith('/configuracoes')) return 'Configurações'
-    return 'KKJ Corretora'
+    if (path === '/') return 'Dashboard Comercial'
+    if (path.startsWith('/pipeline')) return 'Pipeline de Vendas & Pós-Venda'
+    if (path.startsWith('/contatos')) return 'Contatos'
+    if (path.startsWith('/empresas')) return 'Empresas & Clientes'
+    if (path.startsWith('/tarefas')) return 'Gestão de Tarefas'
+    if (path.startsWith('/conversas')) return 'Conversas & WhatsApp'
+    if (path.startsWith('/financeiro')) return 'Financeiro & Produção'
+    if (path.startsWith('/configuracoes')) return 'Configurações do Sistema'
+    return 'CRM KKJ Corretora'
   })()
 
-  // Global search effect
+  // Global search effect across opportunities, companies and contacts
   useEffect(() => {
     if (!globalSearch.trim() || globalSearch.length < 2) {
-      setSearchResults({ properties: [], clients: [] })
+      setSearchResults({ opportunities: [], companies: [], contacts: [] })
       setShowSearchDropdown(false)
       return
     }
@@ -81,13 +89,15 @@ export default function Layout() {
     const timer = setTimeout(async () => {
       setIsSearching(true)
       try {
-        const [propsRes, clientsRes] = await Promise.all([
-          propertyService.getProperties({ search: globalSearch, perPage: 4 }),
-          clientService.getClients({ search: globalSearch, perPage: 4 }),
+        const [oppsRes, compRes, contRes] = await Promise.all([
+          opportunityService.getOpportunities({ search: globalSearch, perPage: 3 }),
+          companyService.getCompanies({ search: globalSearch, perPage: 3 }),
+          contactService.getContacts({ search: globalSearch, perPage: 3 }),
         ])
         setSearchResults({
-          properties: propsRes.items,
-          clients: clientsRes.items,
+          opportunities: oppsRes.items,
+          companies: compRes.items,
+          contacts: contRes.items,
         })
         setShowSearchDropdown(true)
       } catch (err) {
@@ -123,22 +133,22 @@ export default function Layout() {
   const notifications = [
     {
       id: 1,
-      title: 'Visita Agendada',
-      desc: 'Rodrigo Mendonça na Casa na Granja Viana amanhã às 10h',
+      title: 'Cotação Pronta',
+      desc: 'Cotação Bradesco vs Amil pronta para envio para Lumina Tech',
       time: 'Há 25 minutos',
       unread: true,
     },
     {
       id: 2,
-      title: 'Proposta Enviada',
-      desc: 'Minuta de compra enviada para Maria Clara Oliveira',
-      time: 'Há 2 horas',
+      title: 'Pós-Venda em Andamento',
+      desc: 'Fichas cadastrais recebidas para implantação na Bella Vita',
+      time: 'Há 1 hora',
       unread: true,
     },
     {
       id: 3,
-      title: 'Novo Lead',
-      desc: 'Fernando Augusto cadastrado via portal',
+      title: 'Tarefa Pendente',
+      desc: 'Cobrar relação de vidas com Carlos Eduardo da Andrade Log',
       time: 'Ontem',
       unread: false,
     },
@@ -153,22 +163,22 @@ export default function Layout() {
         {/* Brand Header */}
         <div className="flex h-16 items-center gap-3 px-6 border-b border-[#E4E7EC]">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1B2A4A] text-white shadow-sm">
-            <Building2 className="h-5 w-5" />
+            <Shield className="h-5 w-5 text-emerald-400" />
           </div>
           <div className="flex flex-col">
             <span className="font-extrabold text-base tracking-tight text-[#1B2A4A]">
               KKJ Corretora
             </span>
-            <span className="text-[11px] font-medium text-[#667085]">Gestão Imobiliária</span>
+            <span className="text-[11px] font-medium text-[#667085]">Seguros & Benefícios</span>
           </div>
         </div>
 
         {/* Navigation Menu */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider text-[#667085] uppercase">
-            Menu Principal
+          <div className="px-3 pb-2 text-[10px] font-bold tracking-wider text-[#667085] uppercase">
+            Operação do Corretor
           </div>
-          {navigationItems.map((item) => {
+          {mainNavigationItems.map((item) => {
             const Icon = item.icon
             const isActive =
               item.href === '/'
@@ -183,16 +193,33 @@ export default function Layout() {
                   const active = item.href === '/' ? location.pathname === '/' : isLinkActive
                   return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     active
-                      ? 'bg-[#1B2A4A] text-white shadow-sm'
+                      ? 'bg-[#1B2A4A] text-white shadow-sm font-semibold'
                       : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
                   }`
                 }}
               >
-                <Icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-[#667085]'}`} />
+                <Icon className={`h-4.5 w-4.5 ${isActive ? 'text-white' : 'text-[#667085]'}`} />
                 <span>{item.name}</span>
               </NavLink>
             )
           })}
+        </div>
+
+        {/* Visual separator for admin / settings */}
+        <div className="px-3 py-2 border-t border-[#E4E7EC]">
+          <NavLink
+            to="/configuracoes"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[#1B2A4A] text-white font-semibold'
+                  : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+              }`
+            }
+          >
+            <Settings className="h-4.5 w-4.5 text-[#667085]" />
+            <span>Configurações</span>
+          </NavLink>
         </div>
 
         {/* User profile footer */}
@@ -200,14 +227,14 @@ export default function Layout() {
           <div className="flex items-center justify-between p-2 rounded-lg bg-[#F5F7FA] border border-[#E4E7EC]">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1B2A4A] text-white font-semibold text-xs">
-                {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KC'}
+                {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KJ'}
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-xs font-semibold text-[#101828] truncate">
-                  {user?.name || 'Corretor'}
+                  {user?.name || 'Corretor KKJ'}
                 </span>
-                <span className="text-[11px] text-[#667085] truncate">
-                  {user?.email || 'admin@kkj.com.br'}
+                <span className="text-[10px] text-[#667085] truncate">
+                  {user?.role || 'ADMINISTRADOR'} • {user?.email || 'admin@kkj.com.br'}
                 </span>
               </div>
             </div>
@@ -216,7 +243,7 @@ export default function Layout() {
               size="icon"
               onClick={logout}
               title="Sair"
-              className="h-8 w-8 text-[#667085] hover:text-[#D92D20] hover:bg-white"
+              className="h-8 w-8 text-[#667085] hover:text-[#D92D20] hover:bg-white shrink-0"
             >
               <LogOut className="h-4 w-4" />
             </Button>
@@ -235,9 +262,12 @@ export default function Layout() {
             <div className="flex h-16 items-center justify-between px-6 border-b border-[#E4E7EC]">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1B2A4A] text-white">
-                  <Building2 className="h-4 w-4" />
+                  <Shield className="h-4 w-4 text-emerald-400" />
                 </div>
-                <span className="font-bold text-base text-[#1B2A4A]">KKJ Corretora</span>
+                <div className="flex flex-col">
+                  <span className="font-bold text-base text-[#1B2A4A]">KKJ Corretora</span>
+                  <span className="text-[10px] text-[#667085]">Seguros & Benefícios</span>
+                </div>
               </div>
               <Button
                 variant="ghost"
@@ -250,7 +280,7 @@ export default function Layout() {
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-              {navigationItems.map((item) => {
+              {mainNavigationItems.map((item) => {
                 const Icon = item.icon
                 const isActive =
                   item.href === '/'
@@ -262,7 +292,7 @@ export default function Layout() {
                     key={item.name}
                     to={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-3.5 py-3 rounded-lg text-sm font-medium ${
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
                       isActive
                         ? 'bg-[#1B2A4A] text-white'
                         : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
@@ -273,6 +303,23 @@ export default function Layout() {
                   </NavLink>
                 )
               })}
+
+              <div className="pt-2 border-t border-[#E4E7EC]">
+                <NavLink
+                  to="/configuracoes"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
+                      isActive
+                        ? 'bg-[#1B2A4A] text-white'
+                        : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+                    }`
+                  }
+                >
+                  <Settings className="h-5 w-5" />
+                  <span>Configurações</span>
+                </NavLink>
+              </div>
             </div>
 
             <div className="border-t border-[#E4E7EC] p-4">
@@ -302,22 +349,28 @@ export default function Layout() {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#101828]">
-              {currentTitle}
-            </h1>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#101828]">
+                {currentTitle}
+              </h1>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Global Search */}
+            {/* Global Search across Oportunidades, Empresas, Contatos */}
             <div className="relative w-44 sm:w-64 md:w-80" ref={searchContainerRef}>
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085]" />
               <Input
                 type="text"
-                placeholder="Buscar imóveis ou clientes..."
+                placeholder="Buscar oportunidades, empresas, contatos..."
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 onFocus={() => {
-                  if (searchResults.properties.length || searchResults.clients.length) {
+                  if (
+                    searchResults.opportunities.length ||
+                    searchResults.companies.length ||
+                    searchResults.contacts.length
+                  ) {
                     setShowSearchDropdown(true)
                   }
                 }}
@@ -329,36 +382,38 @@ export default function Layout() {
                 <div className="absolute left-0 right-0 top-11 z-50 rounded-xl border border-[#E4E7EC] bg-white p-2 shadow-lg">
                   {isSearching ? (
                     <div className="p-3 text-center text-xs text-[#667085]">Buscando...</div>
-                  ) : searchResults.properties.length === 0 &&
-                    searchResults.clients.length === 0 ? (
+                  ) : searchResults.opportunities.length === 0 &&
+                    searchResults.companies.length === 0 &&
+                    searchResults.contacts.length === 0 ? (
                     <div className="p-3 text-center text-xs text-[#667085]">
                       Nenhum resultado encontrado para &ldquo;{globalSearch}&rdquo;
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-80 overflow-y-auto">
-                      {searchResults.properties.length > 0 && (
+                      {searchResults.opportunities.length > 0 && (
                         <div>
-                          <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                            Imóveis
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                            Oportunidades
                           </div>
-                          {searchResults.properties.map((p) => (
+                          {searchResults.opportunities.map((op) => (
                             <button
-                              key={p.id}
+                              key={op.id}
                               type="button"
                               onClick={() => {
                                 setShowSearchDropdown(false)
                                 setGlobalSearch('')
-                                navigate('/imoveis')
+                                navigate('/pipeline')
                               }}
                               className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
                             >
                               <div className="flex items-center gap-2">
-                                <Home className="h-4 w-4 text-[#1B2A4A]" />
+                                <KanbanSquare className="h-4 w-4 text-[#1B2A4A]" />
                                 <div className="text-xs">
-                                  <p className="font-semibold text-[#101828] truncate">{p.title}</p>
-                                  <p className="text-[11px] text-[#667085]">
-                                    {p.address_neighborhood || p.address_city} • R${' '}
-                                    {p.price.toLocaleString('pt-BR')}
+                                  <p className="font-semibold text-[#101828] truncate">
+                                    {op.title}
+                                  </p>
+                                  <p className="text-[10px] text-[#667085]">
+                                    {op.stage} • R$ {(op.sale_value || 0).toLocaleString('pt-BR')}
                                   </p>
                                 </div>
                               </div>
@@ -368,30 +423,61 @@ export default function Layout() {
                         </div>
                       )}
 
-                      {searchResults.clients.length > 0 && (
+                      {searchResults.companies.length > 0 && (
                         <div>
-                          <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-[#667085]">
-                            Clientes
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                            Empresas / Clientes
                           </div>
-                          {searchResults.clients.map((c) => (
+                          {searchResults.companies.map((c) => (
                             <button
                               key={c.id}
                               type="button"
                               onClick={() => {
                                 setShowSearchDropdown(false)
                                 setGlobalSearch('')
-                                navigate('/clientes')
+                                navigate('/empresas')
                               }}
                               className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
                             >
                               <div className="flex items-center gap-2">
-                                <UserIcon className="h-4 w-4 text-[#12B76A]" />
+                                <Building2 className="h-4 w-4 text-blue-600" />
                                 <div className="text-xs">
                                   <p className="font-semibold text-[#101828] truncate">
-                                    {c.full_name}
+                                    {c.trade_name}
                                   </p>
-                                  <p className="text-[11px] text-[#667085]">
-                                    {c.phone} {c.email ? `• ${c.email}` : ''}
+                                  <p className="text-[10px] text-[#667085]">
+                                    {c.city} - {c.state} {c.cnpj ? `• CNPJ ${c.cnpj}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <ChevronRight className="h-3 w-3 text-[#667085]" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchResults.contacts.length > 0 && (
+                        <div>
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                            Contatos
+                          </div>
+                          {searchResults.contacts.map((ct) => (
+                            <button
+                              key={ct.id}
+                              type="button"
+                              onClick={() => {
+                                setShowSearchDropdown(false)
+                                setGlobalSearch('')
+                                navigate('/contatos')
+                              }}
+                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
+                            >
+                              <div className="flex items-center gap-2">
+                                <UserIcon className="h-4 w-4 text-emerald-600" />
+                                <div className="text-xs">
+                                  <p className="font-semibold text-[#101828] truncate">{ct.name}</p>
+                                  <p className="text-[10px] text-[#667085]">
+                                    {ct.phone} {ct.position ? `• ${ct.position}` : ''}
                                   </p>
                                 </div>
                               </div>
@@ -440,11 +526,7 @@ export default function Layout() {
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-semibold text-[#101828] flex items-center gap-1.5">
-                          {n.title === 'Visita Agendada' ? (
-                            <Calendar className="h-3 w-3 text-amber-500" />
-                          ) : (
-                            <CheckCircle2 className="h-3 w-3 text-[#12B76A]" />
-                          )}
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                           {n.title}
                         </span>
                         <span className="text-[10px] text-[#667085]">{n.time}</span>
@@ -463,16 +545,19 @@ export default function Layout() {
                   type="button"
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1B2A4A] text-xs font-semibold text-white shadow-sm ring-2 ring-[#E4E7EC] hover:ring-[#1B2A4A] transition"
                 >
-                  {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KC'}
+                  {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KJ'}
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-xs font-semibold text-[#101828]">
-                      {user?.name || 'Corretor'}
+                      {user?.name || 'Corretor KKJ'}
                     </p>
                     <p className="text-[11px] text-[#667085] truncate">{user?.email}</p>
+                    <Badge variant="outline" className="w-fit text-[10px] mt-1 font-mono">
+                      {user?.role || 'ADMINISTRADOR'}
+                    </Badge>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -490,17 +575,23 @@ export default function Layout() {
         </header>
 
         {/* Content Outlet */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1400px] w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
           <Outlet />
         </main>
 
         {/* Footer */}
         <footer className="border-t border-[#E4E7EC] bg-white py-4 px-6 text-center text-xs text-[#667085]">
-          <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>
-              © {new Date().getFullYear()} KKJ Corretora — Sistema de Gestão Imobiliária & CRM.
+          <div className="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5">
+              <Shield className="h-4 w-4 text-emerald-600 inline" />
+              <span>
+                © {new Date().getFullYear()} KK JEKABSON Corretora de Seguros (KKJ) — CRM de Seguros
+                & Benefícios.
+              </span>
             </span>
-            <span className="font-mono text-[11px] text-muted-foreground">Versão 1.0 • FASE 1</span>
+            <span className="font-mono text-[11px] text-muted-foreground">
+              Ambiente Seguro • Seguros & Benefícios
+            </span>
           </div>
         </footer>
       </div>

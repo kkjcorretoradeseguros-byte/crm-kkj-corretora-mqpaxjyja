@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-07T19:46:41.590Z",
+  "generatedAt": "2026-10-07T20:06:25.449Z",
   "collections": [
     {
       "name": "users",
@@ -37,6 +37,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "role",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ADMINISTRADOR", "GESTOR", "VENDEDOR"]
         }
       ],
       "indexes": [
@@ -45,7 +52,7 @@
       ]
     },
     {
-      "name": "properties",
+      "name": "products",
       "type": "base",
       "apiRules": {
         "list": "@request.auth.id != ''",
@@ -56,10 +63,26 @@
       },
       "fields": [
         {
-          "name": "title",
+          "name": "name",
           "type": "text",
           "required": true,
           "system": false
+        },
+        {
+          "name": "category",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "Saúde PME",
+            "Saúde PF",
+            "Adesão",
+            "Odontológico",
+            "Seguro de Vida",
+            "Seguro Auto",
+            "Consórcio",
+            "Outros"
+          ]
         },
         {
           "name": "description",
@@ -68,107 +91,81 @@
           "system": false
         },
         {
-          "name": "type",
-          "type": "select",
-          "required": true,
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
           "system": false,
-          "selectValues": ["Apartamento", "Casa", "Terreno", "Comercial", "Cobertura"]
+          "autodateTriggers": ["onCreate"]
         },
         {
-          "name": "transaction_type",
-          "type": "select",
-          "required": true,
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
           "system": false,
-          "selectValues": ["Venda", "Aluguel"]
-        },
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_products_name ON products (name)",
+        "CREATE INDEX idx_products_category ON products (category)"
+      ]
+    },
+    {
+      "name": "companies",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
         {
-          "name": "price",
-          "type": "number",
+          "name": "trade_name",
+          "type": "text",
           "required": true,
           "system": false
         },
         {
-          "name": "condominium_fee",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "iptu",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "area_m2",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "bedrooms",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "bathrooms",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "parking_spots",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "address_street",
+          "name": "legal_name",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "address_number",
+          "name": "cnpj",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "address_neighborhood",
+          "name": "city",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "address_city",
+          "name": "state",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "address_state",
+          "name": "segment",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "address_cep",
+          "name": "notes",
           "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "status",
-          "type": "select",
-          "required": true,
-          "system": false,
-          "selectValues": ["Disponível", "Vendido", "Alugado", "Reservado"]
-        },
-        {
-          "name": "photos",
-          "type": "file",
           "required": false,
           "system": false
         },
@@ -195,13 +192,12 @@
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_props_status ON properties (status)",
-        "CREATE INDEX idx_props_type ON properties (type)",
-        "CREATE INDEX idx_props_created ON properties (created DESC)"
+        "CREATE INDEX idx_companies_trade_name ON companies (trade_name)",
+        "CREATE INDEX idx_companies_cnpj ON companies (cnpj)"
       ]
     },
     {
-      "name": "clients",
+      "name": "contacts",
       "type": "base",
       "apiRules": {
         "list": "@request.auth.id != ''",
@@ -212,7 +208,7 @@
       },
       "fields": [
         {
-          "name": "full_name",
+          "name": "name",
           "type": "text",
           "required": true,
           "system": false
@@ -230,24 +226,29 @@
           "system": false
         },
         {
-          "name": "status",
-          "type": "select",
-          "required": true,
+          "name": "position",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "company_id",
+          "type": "relation",
+          "required": false,
           "system": false,
-          "selectValues": ["Ativo", "Inativo", "Interessado"]
+          "collectionRef": "companies"
         },
         {
           "name": "notes",
           "type": "text",
           "required": false,
           "system": false
-        },
-        {
-          "name": "interested_properties",
-          "type": "relation",
-          "required": false,
-          "system": false,
-          "collectionRef": "properties"
         },
         {
           "name": "created_by",
@@ -272,12 +273,154 @@
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_clients_status ON clients (status)",
-        "CREATE INDEX idx_clients_created ON clients (created DESC)"
+        "CREATE INDEX idx_contacts_name ON contacts (name)",
+        "CREATE INDEX idx_contacts_phone ON contacts (phone)",
+        "CREATE INDEX idx_contacts_company ON contacts (company_id)"
       ]
     },
     {
-      "name": "interactions",
+      "name": "opportunities",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR' || assigned_to = @request.auth.id || created_by = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR' || assigned_to = @request.auth.id || created_by = @request.auth.id)",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR' || assigned_to = @request.auth.id || created_by = @request.auth.id)",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR')"
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "pipeline_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["VENDAS", "POS_VENDA"]
+        },
+        {
+          "name": "stage",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "temperature",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Frio", "Morno", "Quente"]
+        },
+        {
+          "name": "contact_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contacts"
+        },
+        {
+          "name": "company_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "companies"
+        },
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "assigned_to",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "origin",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tags",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sale_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "commission_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quotation_link",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qualification_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lost_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "health_data",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_opp_pipeline_stage ON opportunities (pipeline_type, stage)",
+        "CREATE INDEX idx_opp_assigned ON opportunities (assigned_to)",
+        "CREATE INDEX idx_opp_company ON opportunities (company_id)"
+      ]
+    },
+    {
+      "name": "tasks",
       "type": "base",
       "apiRules": {
         "list": "@request.auth.id != ''",
@@ -288,36 +431,66 @@
       },
       "fields": [
         {
-          "name": "client_id",
-          "type": "relation",
+          "name": "title",
+          "type": "text",
           "required": true,
-          "system": false,
-          "collectionRef": "clients"
+          "system": false
         },
         {
           "name": "type",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["E-mail", "Telefone", "Visita", "Reunião", "WhatsApp"]
+          "selectValues": [
+            "Ligação",
+            "WhatsApp",
+            "Follow-up",
+            "Reunião",
+            "Cotação",
+            "Documentação",
+            "Implantação",
+            "Cobrança/Pagamento",
+            "Outro"
+          ]
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "due_time",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Pendente", "Concluída", "Cancelada"]
         },
         {
           "name": "notes",
           "type": "text",
-          "required": true,
-          "system": false
-        },
-        {
-          "name": "interaction_date",
-          "type": "date",
-          "required": true,
-          "system": false
-        },
-        {
-          "name": "follow_up_date",
-          "type": "date",
           "required": false,
           "system": false
+        },
+        {
+          "name": "opportunity_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "opportunities"
+        },
+        {
+          "name": "assigned_to",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
         },
         {
           "name": "created_by",
@@ -342,12 +515,13 @@
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_interact_client ON interactions (client_id)",
-        "CREATE INDEX idx_interact_date ON interactions (interaction_date DESC)"
+        "CREATE INDEX idx_tasks_opp ON tasks (opportunity_id)",
+        "CREATE INDEX idx_tasks_due ON tasks (due_date ASC)",
+        "CREATE INDEX idx_tasks_status ON tasks (status)"
       ]
     },
     {
-      "name": "pipeline_stages",
+      "name": "opportunity_timeline",
       "type": "base",
       "apiRules": {
         "list": "@request.auth.id != ''",
@@ -358,88 +532,41 @@
       },
       "fields": [
         {
-          "name": "name",
+          "name": "opportunity_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "opportunities"
+        },
+        {
+          "name": "action_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "NOTA",
+            "MUDANCA_ETAPA",
+            "MUDANCA_RESPONSAVEL",
+            "TAREFA",
+            "VENDA_CONTRATO",
+            "SISTEMA"
+          ]
+        },
+        {
+          "name": "title",
           "type": "text",
           "required": true,
           "system": false
         },
         {
-          "name": "position",
-          "type": "number",
-          "required": true,
-          "system": false
-        },
-        {
-          "name": "color",
+          "name": "description",
           "type": "text",
           "required": false,
           "system": false
         },
         {
-          "name": "created_by",
-          "type": "relation",
-          "required": false,
-          "system": false,
-          "collectionRef": "users"
-        },
-        {
-          "name": "created",
-          "type": "autodate",
-          "required": false,
-          "system": false,
-          "autodateTriggers": ["onCreate"]
-        },
-        {
-          "name": "updated",
-          "type": "autodate",
-          "required": false,
-          "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
-        }
-      ],
-      "indexes": ["CREATE INDEX idx_stages_pos ON pipeline_stages (position ASC)"]
-    },
-    {
-      "name": "pipeline_entries",
-      "type": "base",
-      "apiRules": {
-        "list": "@request.auth.id != ''",
-        "view": "@request.auth.id != ''",
-        "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != ''",
-        "delete": "@request.auth.id != ''"
-      },
-      "fields": [
-        {
-          "name": "stage_id",
-          "type": "relation",
-          "required": true,
-          "system": false,
-          "collectionRef": "pipeline_stages"
-        },
-        {
-          "name": "client_id",
-          "type": "relation",
-          "required": true,
-          "system": false,
-          "collectionRef": "clients"
-        },
-        {
-          "name": "property_id",
-          "type": "relation",
-          "required": false,
-          "system": false,
-          "collectionRef": "properties"
-        },
-        {
-          "name": "value",
-          "type": "number",
-          "required": false,
-          "system": false
-        },
-        {
-          "name": "notes",
-          "type": "text",
+          "name": "metadata",
+          "type": "json",
           "required": false,
           "system": false
         },
@@ -466,8 +593,129 @@
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_entries_stage ON pipeline_entries (stage_id)",
-        "CREATE INDEX idx_entries_client ON pipeline_entries (client_id)"
+        "CREATE INDEX idx_timeline_opp ON opportunity_timeline (opportunity_id, created DESC)"
+      ]
+    },
+    {
+      "name": "contracts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR' || assigned_to = @request.auth.id)",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR' || assigned_to = @request.auth.id)",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'ADMINISTRADOR' || @request.auth.role = 'GESTOR')"
+      },
+      "fields": [
+        {
+          "name": "contract_number",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "opportunity_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "opportunities"
+        },
+        {
+          "name": "company_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "companies"
+        },
+        {
+          "name": "contact_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contacts"
+        },
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "sale_value",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "commission_value",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lives_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "operator",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "renewal_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["Ativo", "Cancelado", "Em Implantação", "Pendente Renovação"]
+        },
+        {
+          "name": "assigned_to",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_contracts_company ON contracts (company_id)",
+        "CREATE INDEX idx_contracts_renewal ON contracts (renewal_date ASC)"
       ]
     }
   ]

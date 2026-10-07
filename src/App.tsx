@@ -1,32 +1,31 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from '@/components/ui/toaster'
-import { Toaster as Sonner } from '@/components/ui/sonner'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { AuthProvider } from '@/contexts/AuthContext'
-import { ProtectedRoute } from '@/components/ProtectedRoute'
-import Layout from '@/components/Layout'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import { ProtectedRoute } from './components/ProtectedRoute'
+import Layout from './components/Layout'
 
 // Pages
-import Index from '@/pages/Index'
-import Properties from '@/pages/Properties'
-import Clients from '@/pages/Clients'
-import Interactions from '@/pages/Interactions'
-import Pipeline from '@/pages/Pipeline'
-import SettingsPage from '@/pages/Settings'
-import Login from '@/pages/Login'
-import Signup from '@/pages/Signup'
-import ForgotPassword from '@/pages/ForgotPassword'
-import ResetPassword from '@/pages/ResetPassword'
-import VerifyEmail from '@/pages/VerifyEmail'
-import ConfirmEmailChange from '@/pages/ConfirmEmailChange'
-import NotFound from '@/pages/NotFound'
+import Login from './pages/Login'
+import Signup from './pages/Signup'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
+import VerifyEmail from './pages/VerifyEmail'
+import ConfirmEmailChange from './pages/ConfirmEmailChange'
+import NotFound from './pages/NotFound'
 
-const App = () => (
-  <BrowserRouter>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
+// Domain Pages (Insurance & Benefits Domain)
+import Index from './pages/Index'
+import Pipeline from './pages/Pipeline'
+import Contacts from './pages/Contacts'
+import Companies from './pages/Companies'
+import Tasks from './pages/Tasks'
+import Conversations from './pages/Conversations'
+import Financial from './pages/Financial'
+import SettingsPage from './pages/Settings'
+
+export function App() {
+  return (
+    <Router>
+      <AuthProvider>
         <Routes>
           {/* Public Auth Routes */}
           <Route path="/login" element={<Login />} />
@@ -36,28 +35,36 @@ const App = () => (
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
 
-          {/* Protected Main Routes */}
+          {/* Protected CRM Routes */}
           <Route
+            path="/"
             element={
               <ProtectedRoute>
                 <Layout />
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<Index />} />
-            <Route path="/imoveis" element={<Properties />} />
-            <Route path="/clientes" element={<Clients />} />
-            <Route path="/interacoes" element={<Interactions />} />
-            <Route path="/pipeline" element={<Pipeline />} />
-            <Route path="/configuracoes" element={<SettingsPage />} />
+            <Route index element={<Index />} />
+            <Route path="pipeline" element={<Pipeline />} />
+            <Route path="contatos" element={<Contacts />} />
+            <Route path="empresas" element={<Companies />} />
+            <Route path="tarefas" element={<Tasks />} />
+            <Route path="conversas" element={<Conversations />} />
+            <Route path="financeiro" element={<Financial />} />
+            <Route path="configuracoes" element={<SettingsPage />} />
+
+            {/* Old route redirects */}
+            <Route path="properties" element={<Navigate to="/pipeline" replace />} />
+            <Route path="clients" element={<Navigate to="/contatos" replace />} />
+            <Route path="interactions" element={<Navigate to="/tarefas" replace />} />
           </Route>
 
-          {/* 404 Catch-all */}
+          {/* 404 */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </TooltipProvider>
-    </AuthProvider>
-  </BrowserRouter>
-)
+      </AuthProvider>
+    </Router>
+  )
+}
 
 export default App

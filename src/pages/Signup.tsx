@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Building2, User, KeyRound, Mail, AlertCircle, Loader2 } from 'lucide-react'
+import { Shield, User, KeyRound, Mail, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,10 +57,14 @@ export default function Signup() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#1B2A4A] text-white shadow-md">
-            <Building2 className="h-6 w-6" />
+            <Shield className="h-6 w-6 text-emerald-400" />
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#101828]">KKJ Corretora</h1>
-          <p className="text-sm text-[#667085]">Crie sua conta para gerenciar imóveis e clientes</p>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-[#101828]">
+            KK JEKABSON Corretora
+          </h1>
+          <p className="text-sm text-[#667085]">
+            Crie sua conta para gerenciar seguros, benefícios e clientes
+          </p>
         </div>
 
         <Card className="border-[#E4E7EC] shadow-sm">
