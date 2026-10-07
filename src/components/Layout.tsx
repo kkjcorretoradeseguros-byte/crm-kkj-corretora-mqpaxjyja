@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import {
   Shield,
   LayoutDashboard,
@@ -21,6 +22,9 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  Sun,
+  Moon,
+  Laptop,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,6 +54,7 @@ const mainNavigationItems = [
 
 export default function Layout() {
   const { user, logout } = useAuth()
+  const { theme, setTheme, resolvedTheme } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -157,9 +162,9 @@ export default function Layout() {
   const unreadCount = notifications.filter((n) => n.unread).length
 
   return (
-    <div className="flex min-h-screen bg-[#F5F7FA] text-[#101828] font-sans">
+    <div className="flex min-h-screen bg-[#F5F7FA] dark:bg-background text-[#101828] dark:text-foreground font-sans">
       {/* Desktop Sidebar (Fixed 260px) */}
-      <aside className="hidden lg:flex w-[260px] flex-col fixed inset-y-0 z-30 border-r border-[#E4E7EC] bg-white">
+      <aside className="hidden lg:flex w-[260px] flex-col fixed inset-y-0 z-30 border-r border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#0B1322]">
         {/* Brand Header */}
         <div className="flex h-16 items-center gap-3 px-6 border-b border-[#E4E7EC]">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1B2A4A] text-white shadow-sm">
@@ -339,24 +344,64 @@ export default function Layout() {
       {/* Main Container Area */}
       <div className="flex-1 flex flex-col min-h-screen lg:pl-[260px]">
         {/* Sticky Top Bar */}
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#E4E7EC] bg-white px-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#141F36] px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden text-[#667085]"
+              className="lg:hidden text-[#667085] dark:text-[#94A3B8]"
             >
               <Menu className="h-5 w-5" />
             </Button>
             <div>
-              <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#101828]">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#101828] dark:text-foreground">
                 {currentTitle}
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Theme Selector (Claro / Escuro / Sistema) */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 rounded-lg border border-[#E4E7EC] dark:border-[#24324D] text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#1E2D4A]"
+                  title={`Tema: ${theme}`}
+                >
+                  {resolvedTheme === 'dark' ? (
+                    <Moon className="h-4 w-4 text-blue-400" />
+                  ) : (
+                    <Sun className="h-4 w-4 text-amber-500" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="text-xs">
+                <DropdownMenuItem
+                  onClick={() => setTheme('light')}
+                  className={`flex items-center gap-2 cursor-pointer ${theme === 'light' ? 'font-bold text-primary' : ''}`}
+                >
+                  <Sun className="h-3.5 w-3.5 text-amber-500" />
+                  Claro
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setTheme('dark')}
+                  className={`flex items-center gap-2 cursor-pointer ${theme === 'dark' ? 'font-bold text-primary' : ''}`}
+                >
+                  <Moon className="h-3.5 w-3.5 text-blue-400" />
+                  Escuro (KKJ Grafite)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setTheme('system')}
+                  className={`flex items-center gap-2 cursor-pointer ${theme === 'system' ? 'font-bold text-primary' : ''}`}
+                >
+                  <Laptop className="h-3.5 w-3.5 text-slate-400" />
+                  Sistema
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Global Search across Oportunidades, Empresas, Contatos */}
             <div className="relative w-44 sm:w-64 md:w-80" ref={searchContainerRef}>
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#667085]" />
@@ -580,16 +625,16 @@ export default function Layout() {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-[#E4E7EC] bg-white py-4 px-6 text-center text-xs text-[#667085]">
+        <footer className="border-t border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#141F36] py-4 px-6 text-center text-xs text-[#667085] dark:text-[#94A3B8]">
           <div className="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
             <span className="flex items-center gap-1.5">
-              <Shield className="h-4 w-4 text-emerald-600 inline" />
+              <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400 inline" />
               <span>
                 © {new Date().getFullYear()} KK JEKABSON Corretora de Seguros (KKJ) — CRM de Seguros
                 & Benefícios.
               </span>
             </span>
-            <span className="font-mono text-[11px] text-muted-foreground">
+            <span className="font-mono text-[11px] text-muted-foreground dark:text-[#94A3B8]">
               Ambiente Seguro • Seguros & Benefícios
             </span>
           </div>

@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckSquare,
   Users,
+  Building,
   Plus,
   Edit2,
   Trash2,
@@ -35,14 +36,22 @@ import {
 } from '@/components/ui/dialog'
 import { productService } from '@/services/productService'
 import { userService } from '@/services/userService'
+import { carrierService } from '@/services/carrierService'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Product, ProductCategory, User, UserRole } from '@/types/crm'
+import type { Product, ProductCategory, User, UserRole, Carrier } from '@/types/crm'
 
 export default function SettingsPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<
-    'PRODUTOS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
-  >('PRODUTOS')
+    'OPERADORAS' | 'PRODUTOS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
+  >('OPERADORAS')
+
+  // Carriers state (Operadoras)
+  const [carriers, setCarriers] = useState<Carrier[]>([])
+  const [isCarrierModalOpen, setIsCarrierModalOpen] = useState(false)
+  const [carrierNome, setCarrierNome] = useState('')
+  const [carrierNomeCurto, setCarrierNomeCurto] = useState('')
+  const [carrierObservacoes, setCarrierObservacoes] = useState('')
 
   // Products state
   const [products, setProducts] = useState<Product[]>([])
@@ -84,12 +93,14 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [prodRes, usersRes] = await Promise.all([
+      const [prodRes, usersRes, carriersRes] = await Promise.all([
         productService.getAllProducts(false),
         userService.getAllUsers(),
+        carrierService.getAllCarriers(false),
       ])
       setProducts(prodRes)
       setUsers(usersRes)
+      setCarriers(carriersRes)
     } catch (err) {
       console.error(err)
     }
@@ -122,6 +133,36 @@ export default function SettingsPage() {
   const handleToggleProduct = async (prod: Product) => {
     try {
       await productService.updateProduct(prod.id, { active: !prod.active })
+      loadData()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleCreateCarrier = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!carrierNome.trim()) return
+
+    try {
+      await carrierService.createCarrier({
+        nome: carrierNome.trim(),
+        nome_curto: carrierNomeCurto.trim() || undefined,
+        observacoes: carrierObservacoes.trim() || undefined,
+        ativo: true,
+      })
+      setIsCarrierModalOpen(false)
+      setCarrierNome('')
+      setCarrierNomeCurto('')
+      setCarrierObservacoes('')
+      loadData()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleToggleCarrier = async (carrier: Carrier) => {
+    try {
+      await carrierService.toggleCarrier(carrier.id)
       loadData()
     } catch (err) {
       console.error(err)
@@ -182,8 +223,9 @@ export default function SettingsPage() {
       </div>
 
       {/* Settings Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#E4E7EC] pb-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#E4E7EC] dark:border-[#24324D] pb-2 text-xs">
         {[
+          { key: 'OPERADORAS', label: 'Operadoras (Carriers)', icon: Building },
           { key: 'PRODUTOS', label: 'Catálogo de Produtos', icon: Package },
           { key: 'ETAPAS', label: 'Funis & Etapas', icon: Layers },
           { key: 'PERDAS', label: 'Motivos de Perda', icon: AlertCircle },
@@ -207,6 +249,72 @@ export default function SettingsPage() {
           )
         })}
       </div>
+
+      {/* TAB 0: OPERADORAS (Carriers) */}
+      {activeTab === 'OPERADORAS' && (
+        <Card className="border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle className="text-sm font-bold text-[#101828] dark:text-foreground">
+                Operadoras de Saúde & Seguradoras Parceiras
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085] dark:text-muted-foreground">
+                Cadastro central de operadoras com soft delete (ativo/inativo) e integridade
+                relacional
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsCarrierModalOpen(true)}
+              className="bg-[#1B2A4A] dark:bg-primary text-white text-xs hover:bg-[#2A3D6B]"
+            >
+              <Plus className="h-4 w-4 mr-1" /> Nova Operadora
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-[#E4E7EC] dark:divide-[#24324D]">
+              {carriers.map((c) => (
+                <div key={c.id} className="py-3 flex items-center justify-between text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#101828] dark:text-foreground text-sm">
+                        {c.nome}
+                      </span>
+                      {c.nome_curto && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {c.nome_curto}
+                        </Badge>
+                      )}
+                      <Badge
+                        className={`text-[9px] ${
+                          c.ativo
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+                            : 'bg-slate-100 text-[#667085] dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                      >
+                        {c.ativo ? 'Ativa' : 'Inativa'}
+                      </Badge>
+                    </div>
+                    {c.observacoes && (
+                      <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-0.5">
+                        {c.observacoes}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleToggleCarrier(c)}
+                    className="text-xs text-[#667085] dark:text-muted-foreground hover:text-[#101828] dark:hover:text-foreground"
+                  >
+                    {c.ativo ? 'Desativar' : 'Ativar'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* TAB 1: CATÁLOGO DE PRODUTOS */}
       {activeTab === 'PRODUTOS' && (
@@ -467,6 +575,68 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* CREATE CARRIER MODAL */}
+      <Dialog open={isCarrierModalOpen} onOpenChange={setIsCarrierModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#101828] dark:text-foreground">
+              Nova Operadora / Seguradora
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#667085]">
+              Cadastre uma nova operadora parceira da KKJ
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCarrier} className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs">Nome da Operadora *</Label>
+              <Input
+                placeholder="Ex: Golden Cross, Notredame Intermédica"
+                value={carrierNome}
+                onChange={(e) => setCarrierNome(e.target.value)}
+                required
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nome Curto / Sigla</Label>
+              <Input
+                placeholder="Ex: GNDI"
+                value={carrierNomeCurto}
+                onChange={(e) => setCarrierNomeCurto(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Observações</Label>
+              <Input
+                placeholder="Ex: Planos corporativos e adesão"
+                value={carrierObservacoes}
+                onChange={(e) => setCarrierObservacoes(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCarrierModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-[#1B2A4A] dark:bg-primary text-white text-xs"
+              >
+                Salvar Operadora
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* CREATE PRODUCT MODAL */}
       <Dialog open={isProductModalOpen} onOpenChange={setIsProductModalOpen}>
