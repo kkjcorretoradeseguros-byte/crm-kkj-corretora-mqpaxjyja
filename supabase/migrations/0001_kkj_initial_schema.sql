@@ -9,9 +9,14 @@
 -- 2. Chaves UUID primárias e estrangeiras com integridade referencial.
 -- 3. Row Level Security (RLS) habilitado e aplicado em TODAS as tabelas.
 -- 4. Separação física de dados financeiros sensíveis (contract_financials)
---    impedindo leitura de comissões globais e margens por vendedores via API.
--- 5. Triggers de auditoria contínua e timeline imutável de eventos.
--- 6. Seeds idempotentes para produtos, etapas de funil, motivos de perda e tipos de tarefa.
+--    impedindo leitura de faturamento bruto, comissões de operadora, impostos e margens.
+-- 5. Função RPC SECURITY DEFINER minimalista (public.get_meu_financeiro) para o
+--    vendedor consultar exclusivamente seus próprios valores, repasse e bonificação.
+-- 6. Triggers de auditoria contínua e timeline imutável de eventos.
+-- 7. Seeds idempotentes para produtos, etapas de funil, motivos de perda e tipos de tarefa.
+-- 8. Ordem estrita de dependências: Extensões -> Enums -> Helpers de Acesso ->
+--    Tabelas -> Triggers de Atualização/Negócio -> RLS & Policies ->
+--    Função RPC Financeira -> Triggers de Auditoria -> Seeds.
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
@@ -100,10 +105,88 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------------------------
--- 2. TABELAS DO DOMÍNIO KKJ
+-- 2. FUNÇÕES HELPER SECURITY DEFINER (CONTROLE DE ACESSO E PERFIS)
+-- Criadas antes de qualquer tabela, trigger, policy ou RPC para garantir instalação
+-- limpa do zero sem nenhuma dependência circular ou não resolvida.
 -- ------------------------------------------------------------------------------
 
--- 2.1 PROFILES (1:1 com auth.users do Supabase)
+-- 2.1 Retorna o role do usuário logado de forma otimizada
+CREATE OR REPLACE FUNCTION public.current_role()
+RETURNS public.user_role
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT p.role FROM public.profiles p WHERE p.id = auth.uid();
+$$;
+COMMENT ON FUNCTION public.current_role() IS 'Retorna o papel (user_role) do usuário autenticado no auth.uid().';
+
+-- 2.2 Helper booleano: É Administrador?
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND p.role = 'administrador'::public.user_role AND p.ativo = true
+  );
+$$;
+COMMENT ON FUNCTION public.is_admin() IS 'Verifica se o usuário autenticado é um administrador ativo.';
+
+-- 2.3 Helper booleano: É Gestor?
+CREATE OR REPLACE FUNCTION public.is_gestor()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND p.role = 'gestor'::public.user_role AND p.ativo = true
+  );
+$$;
+COMMENT ON FUNCTION public.is_gestor() IS 'Verifica se o usuário autenticado é um gestor ativo.';
+
+-- 2.4 Helper booleano: É Vendedor?
+CREATE OR REPLACE FUNCTION public.is_vendedor()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND p.role = 'vendedor'::public.user_role AND p.ativo = true
+  );
+$$;
+COMMENT ON FUNCTION public.is_vendedor() IS 'Verifica se o usuário autenticado é um vendedor ativo.';
+
+-- 2.5 Helper booleano: Tem acesso gerencial (Admin ou Gestor)?
+CREATE OR REPLACE FUNCTION public.is_manager_or_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND p.role IN ('administrador'::public.user_role, 'gestor'::public.user_role) AND p.ativo = true
+  );
+$$;
+COMMENT ON FUNCTION public.is_manager_or_admin() IS 'Verifica se o usuário autenticado é administrador ou gestor ativo.';
+
+-- ------------------------------------------------------------------------------
+-- 3. TABELAS DO DOMÍNIO KKJ
+-- ------------------------------------------------------------------------------
+
+-- 3.1 PROFILES (1:1 com auth.users do Supabase)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   nome TEXT NOT NULL,
@@ -120,7 +203,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 COMMENT ON TABLE public.profiles IS 'Perfil estendido dos usuários do CRM KKJ vinculado ao auth.users.';
 COMMENT ON COLUMN public.profiles.role IS 'Perfil de permissões: administrador, gestor ou vendedor.';
 
--- 2.2 CATÁLOGO DE PRODUTOS (Seguros & Benefícios)
+-- 3.2 CATÁLOGO DE PRODUTOS (Seguros & Benefícios)
 CREATE TABLE IF NOT EXISTS public.products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL UNIQUE,
@@ -132,7 +215,7 @@ CREATE TABLE IF NOT EXISTS public.products (
 );
 COMMENT ON TABLE public.products IS 'Catálogo de modalidades de seguros e planos de benefícios da KKJ.';
 
--- 2.3 EMPRESAS / CLIENTES PJ
+-- 3.3 EMPRESAS / CLIENTES PJ
 CREATE TABLE IF NOT EXISTS public.companies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   razao_social TEXT,
@@ -148,7 +231,7 @@ CREATE TABLE IF NOT EXISTS public.companies (
 );
 COMMENT ON TABLE public.companies IS 'Empresas clientes e estipulantes de apólices e planos PJ (PME/Corporativo).';
 
--- 2.4 CONTATOS (Pessoas Físicas, Titulares ou Representantes de PJ)
+-- 3.4 CONTATOS (Pessoas Físicas, Titulares ou Representantes de PJ)
 CREATE TABLE IF NOT EXISTS public.contacts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL,
@@ -164,7 +247,7 @@ CREATE TABLE IF NOT EXISTS public.contacts (
 );
 COMMENT ON TABLE public.contacts IS 'Contatos individuais, segurados titulares ou interlocutores corporativos.';
 
--- 2.5 ETAPAS DO PIPELINE (Funis de Vendas e Pós-Venda)
+-- 3.5 ETAPAS DO PIPELINE (Funis de Vendas e Pós-Venda)
 CREATE TABLE IF NOT EXISTS public.pipeline_stages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   funnel_type public.funnel_type NOT NULL,
@@ -179,7 +262,7 @@ CREATE TABLE IF NOT EXISTS public.pipeline_stages (
 );
 COMMENT ON TABLE public.pipeline_stages IS 'Etapas operacionais dos funis Comercial e de Pós-Venda.';
 
--- 2.6 MOTIVOS DE PERDA (Configuráveis pelo Administrador)
+-- 3.6 MOTIVOS DE PERDA (Configuráveis pelo Administrador)
 CREATE TABLE IF NOT EXISTS public.loss_reasons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL UNIQUE,
@@ -190,7 +273,7 @@ CREATE TABLE IF NOT EXISTS public.loss_reasons (
 );
 COMMENT ON TABLE public.loss_reasons IS 'Motivos padronizados de encerramento de negócios sem fechamento.';
 
--- 2.7 TIPOS DE TAREFA (Configuráveis pelo Administrador)
+-- 3.7 TIPOS DE TAREFA (Configuráveis pelo Administrador)
 CREATE TABLE IF NOT EXISTS public.task_types (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tipo_slug public.task_type NOT NULL UNIQUE,
@@ -203,7 +286,7 @@ CREATE TABLE IF NOT EXISTS public.task_types (
 );
 COMMENT ON TABLE public.task_types IS 'Tipos de tarefas operacionais parametrizáveis pelo administrador.';
 
--- 2.8 OPORTUNIDADES (Registro Central dos Funis)
+-- 3.8 OPORTUNIDADES (Registro Central dos Funis)
 CREATE TABLE IF NOT EXISTS public.opportunities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   titulo TEXT NOT NULL,
@@ -234,7 +317,7 @@ CREATE TABLE IF NOT EXISTS public.opportunities (
 COMMENT ON TABLE public.opportunities IS 'Entidade central do CRM de seguros com histórico de saúde em health_data JSONB.';
 COMMENT ON COLUMN public.opportunities.health_data IS 'Dados de saúde e cotação: possui_plano_atual, operadora_atual, operadora_cotada, cnpj, razao_social, qtd_vidas, idades, cidade, estado, valor_plano_atual, tipo_contratacao, acomodacao, rede_desejada, objetivo, data_contratacao, data_renovacao.';
 
--- 2.9 TAREFAS OPERACIONAIS
+-- 3.9 TAREFAS OPERACIONAIS
 CREATE TABLE IF NOT EXISTS public.tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   opportunity_id UUID REFERENCES public.opportunities(id) ON DELETE CASCADE,
@@ -264,7 +347,7 @@ BEGIN
   END IF;
 END $$;
 
--- 2.10 TIMELINE IMUTÁVEL DA OPORTUNIDADE (Auditoria de Eventos Comerciais)
+-- 3.10 TIMELINE IMUTÁVEL DA OPORTUNIDADE (Auditoria de Eventos Comerciais)
 CREATE TABLE IF NOT EXISTS public.opportunity_timeline (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
@@ -276,7 +359,7 @@ CREATE TABLE IF NOT EXISTS public.opportunity_timeline (
 );
 COMMENT ON TABLE public.opportunity_timeline IS 'Timeline append-only (imutável) de todos os passos e notas da oportunidade.';
 
--- 2.11 CONTRATOS (Snapshot Comercial e Cadastral)
+-- 3.11 CONTRATOS (Snapshot Comercial e Cadastral)
 CREATE TABLE IF NOT EXISTS public.contracts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   numero_contrato TEXT,
@@ -303,7 +386,7 @@ CREATE TABLE IF NOT EXISTS public.contracts (
 );
 COMMENT ON TABLE public.contracts IS 'Contratos consolidados e apólices ativas. Dados financeiros sensíveis em contract_financials.';
 
--- 2.12 DADOS FINANCEIROS SENSÍVEIS DO CONTRATO (Proteção Real no PostgreSQL)
+-- 3.12 DADOS FINANCEIROS SENSÍVEIS DO CONTRATO (Proteção Real no PostgreSQL)
 -- Separado fisicamente para garantir que corretores e gestores não leiam faturamento bruto,
 -- comissões da operadora, impostos, margens ou resultado da KKJ via PostgREST/API.
 CREATE TABLE IF NOT EXISTS public.contract_financials (
@@ -323,39 +406,7 @@ CREATE TABLE IF NOT EXISTS public.contract_financials (
 );
 COMMENT ON TABLE public.contract_financials IS 'Dados financeiros ultrassensíveis da KKJ protegidos por RLS estrita (exclusivo Administrador).';
 
--- 2.12.1 VISÃO SEGURA DE REPASSE DO VENDEDOR (SECURITY BARRIER / SECURITY DEFINER)
--- Expõe ao vendedor estritamente os campos autorizados pelo cliente:
--- valor das próprias vendas, próprio repasse/comissão, própria bonificação e total a receber.
--- NENHUM dado de faturamento KKJ, comissão de operadora, impostos ou resultado é exposto.
-CREATE OR REPLACE VIEW public.v_vendedor_financeiro
-WITH (security_barrier = true)
-AS
-  SELECT
-    c.id AS contract_id,
-    c.numero_contrato,
-    c.responsavel_id AS vendedor_id,
-    c.operadora,
-    c.plano,
-    c.valor_venda,
-    f.repasse_vendedor,
-    f.bonificacao_vendedor,
-    (f.repasse_vendedor + f.bonificacao_vendedor) AS total_a_receber,
-    c.status AS status_contrato,
-    c.data_inicio_vigencia,
-    c.data_pagamento
-  FROM public.contracts c
-  INNER JOIN public.contract_financials f ON f.contract_id = c.id
-  WHERE (
-    -- Administrador pode consultar todos
-    public.is_admin()
-    -- Vendedor consulta estritamente os contratos sob sua responsabilidade direta
-    OR (c.responsavel_id = auth.uid() AND public.is_vendedor())
-    -- Gestor consulta caso tenha permissão no sistema granular (ou responsável direto)
-    OR (c.responsavel_id = auth.uid() AND public.is_gestor())
-  );
-COMMENT ON VIEW public.v_vendedor_financeiro IS 'Visão de segurança (security barrier) para vendedores consultarem exclusivamente suas próprias comissões e bonificações sem acesso aos dados internos da KKJ.';
-
--- 2.13 AUDIT LOG (Auditoria Geral do Sistema — Append-Only)
+-- 3.13 AUDIT LOG (Auditoria Geral do Sistema — Append-Only)
 CREATE TABLE IF NOT EXISTS public.audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -368,7 +419,7 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
 );
 COMMENT ON TABLE public.audit_log IS 'Log append-only de alterações críticas no CRM KKJ.';
 
--- 2.14 MENSAGERIA / WHATSAPP (Estrutura Preparada sem Mock)
+-- 3.14 MENSAGERIA / WHATSAPP (Estrutura Preparada sem Mock)
 CREATE TABLE IF NOT EXISTS public.message_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL UNIQUE,
@@ -406,7 +457,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
 COMMENT ON TABLE public.messages IS 'Mensagens individuais enviadas e recebidas pelo canal WhatsApp.';
 
 -- ------------------------------------------------------------------------------
--- 3. ÍNDICES DE PERFORMANCE E INTEGRIDADE
+-- 4. ÍNDICES DE PERFORMANCE E INTEGRIDADE
 -- ------------------------------------------------------------------------------
 
 -- Perfis
@@ -459,78 +510,6 @@ CREATE INDEX IF NOT EXISTS idx_conversations_resp ON public.conversations(respon
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON public.messages(conversation_id, created_at ASC);
 
 -- ------------------------------------------------------------------------------
--- 4. FUNÇÕES HELPER SECURITY DEFINER (CONTROLE DE ACESSO)
--- ------------------------------------------------------------------------------
-
--- 4.1 Retorna o role do usuário logado de forma otimizada
-CREATE OR REPLACE FUNCTION public.current_role()
-RETURNS public.user_role
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid();
-$$;
-COMMENT ON FUNCTION public.current_role() IS 'Retorna o papel (user_role) do usuário autenticado no auth.uid().';
-
--- 4.2 Helper booleano: É Administrador?
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'administrador' AND ativo = true
-  );
-$$;
-
--- 4.3 Helper booleano: É Gestor?
-CREATE OR REPLACE FUNCTION public.is_gestor()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'gestor' AND ativo = true
-  );
-$$;
-
--- 4.4 Helper booleano: É Vendedor?
-CREATE OR REPLACE FUNCTION public.is_vendedor()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'vendedor' AND ativo = true
-  );
-$$;
-
--- 4.5 Helper booleano: Tem acesso gerencial (Admin ou Gestor)?
-CREATE OR REPLACE FUNCTION public.is_manager_or_admin()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role IN ('administrador', 'gestor') AND ativo = true
-  );
-$$;
-
--- ------------------------------------------------------------------------------
 -- 5. TRIGGERS OPERACIONAIS E AUTOMATISMOS
 -- ------------------------------------------------------------------------------
 
@@ -579,7 +558,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   INSERT INTO public.profiles (
@@ -635,7 +614,7 @@ CREATE OR REPLACE FUNCTION public.check_profile_role_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 BEGIN
   -- Se o campo role foi alterado, apenas um administrador ativo ou a service_role pode fazer isso
@@ -662,7 +641,7 @@ CREATE OR REPLACE FUNCTION public.handle_opportunity_changes()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $$
 DECLARE
   old_stage_name TEXT;
@@ -755,54 +734,6 @@ DROP TRIGGER IF EXISTS trg_opportunity_changes ON public.opportunities;
 CREATE TRIGGER trg_opportunity_changes
   AFTER UPDATE ON public.opportunities
   FOR EACH ROW EXECUTE FUNCTION public.handle_opportunity_changes();
-
--- 5.4 Triggers de Auditoria Geral (Audit Log)
-CREATE OR REPLACE FUNCTION public.handle_audit_trigger()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_novos)
-    VALUES (auth.uid(), 'INSERT', TG_TABLE_NAME, NEW.id, to_jsonb(NEW));
-    RETURN NEW;
-  ELSIF TG_OP = 'UPDATE' THEN
-    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_anteriores, valores_novos)
-    VALUES (auth.uid(), 'UPDATE', TG_TABLE_NAME, NEW.id, to_jsonb(OLD), to_jsonb(NEW));
-    RETURN NEW;
-  ELSIF TG_OP = 'DELETE' THEN
-    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_anteriores)
-    VALUES (auth.uid(), 'DELETE', TG_TABLE_NAME, OLD.id, to_jsonb(OLD));
-    RETURN OLD;
-  END IF;
-  RETURN NULL;
-END;
-$$;
-
--- Aplica auditoria em todas as entidades críticas solicitadas:
--- opportunities, contracts, contract_financials, profiles, produtos, etapas do pipeline, motivos de perda
-DO $$
-DECLARE
-  tbl TEXT;
-BEGIN
-  FOR tbl IN
-    SELECT unnest(ARRAY[
-      'opportunities',
-      'contracts',
-      'contract_financials',
-      'profiles',
-      'products',
-      'pipeline_stages',
-      'loss_reasons',
-      'task_types'
-    ])
-  LOOP
-    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_%I ON public.%I;', tbl, tbl);
-    EXECUTE format('CREATE TRIGGER trg_audit_%I AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();', tbl, tbl);
-  END LOOP;
-END $$;
 
 -- ------------------------------------------------------------------------------
 -- 6. POLÍTICAS DE ROW LEVEL SECURITY (RLS REAL)
@@ -1054,7 +985,8 @@ CREATE POLICY "contracts_delete_policy" ON public.contracts FOR DELETE TO authen
 -- 6.9 FINANCEIRO SENSÍVEL (Contract Financials — Proteção Real de Comissões e Margens)
 -- Informações ultrassensíveis da KKJ: faturamento bruto, comissão de operadora, impostos e margem.
 -- Regra estrita: POR PADRÃO, SOMENTE ADMINISTRADOR TEM ACESSO (SELECT/INSERT/UPDATE/DELETE).
--- GESTOR NÃO RECEBE ACESSO DEFAULT. Vendedores não têm acesso direto à tabela.
+-- Vendedores e Gestores NÃO possuem permissão de SELECT direto em contract_financials via PostgREST/API.
+-- O acesso do vendedor aos seus próprios repasses é feito exclusivamente via RPC SECURITY DEFINER (get_meu_financeiro).
 DROP POLICY IF EXISTS "financials_admin_gestor_select" ON public.contract_financials;
 DROP POLICY IF EXISTS "financials_admin_select" ON public.contract_financials;
 CREATE POLICY "financials_admin_select" ON public.contract_financials FOR SELECT TO authenticated
@@ -1150,10 +1082,129 @@ CREATE POLICY "messages_insert_policy" ON public.messages FOR INSERT TO authenti
   );
 
 -- ------------------------------------------------------------------------------
--- 7. SEEDS DE CONFIGURAÇÃO ADMINISTRATIVA (IDEMPOTENTES VIA ON CONFLICT)
+-- 7. FUNÇÃO RPC FINANCEIRA SEGURA (SECURITY DEFINER)
+-- Substitui qualquer view security_invoker/barrier que exigiria SELECT direto
+-- em contract_financials (bloqueado pelo RLS estrito a administradores).
+-- Executa com privilégios de owner (SECURITY DEFINER) e search_path limpo ('').
+-- Retorna SOMENTE os campos permitidos ao vendedor/responsável pelo contrato:
+-- - contract_id, numero_contrato, vendedor_id, operadora, plano, status_contrato
+-- - data_inicio_vigencia, data_pagamento
+-- - valor_venda, repasse_vendedor, bonificacao_vendedor, total_a_receber
+-- E NUNCA expõe: faturamento_bruto, comissao_prevista, comissao_recebida,
+-- impostos_descontos, comissao_liquida, resultado_kkj ou snapshots de comissão.
+-- Administradores consultam todos os registros; Vendedores e Gestores consultam
+-- exclusivamente os contratos onde responsavel_id = auth.uid().
 -- ------------------------------------------------------------------------------
 
--- 7.1 Catálogo Inicial de Produtos de Seguros & Benefícios
+-- Garantir remoção de view legada caso tenha sido criada em testes prévios
+DROP VIEW IF EXISTS public.v_vendedor_financeiro CASCADE;
+
+CREATE OR REPLACE FUNCTION public.get_meu_financeiro()
+RETURNS TABLE (
+  contract_id UUID,
+  numero_contrato TEXT,
+  vendedor_id UUID,
+  operadora TEXT,
+  plano TEXT,
+  valor_venda NUMERIC(14, 2),
+  repasse_vendedor NUMERIC(14, 2),
+  bonificacao_vendedor NUMERIC(14, 2),
+  total_a_receber NUMERIC(14, 2),
+  status_contrato public.contract_status,
+  data_inicio_vigencia DATE,
+  data_pagamento DATE
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT
+    c.id AS contract_id,
+    c.numero_contrato,
+    c.responsavel_id AS vendedor_id,
+    c.operadora,
+    c.plano,
+    c.valor_venda,
+    COALESCE(f.repasse_vendedor, 0.00) AS repasse_vendedor,
+    COALESCE(f.bonificacao_vendedor, 0.00) AS bonificacao_vendedor,
+    (COALESCE(f.repasse_vendedor, 0.00) + COALESCE(f.bonificacao_vendedor, 0.00)) AS total_a_receber,
+    c.status AS status_contrato,
+    c.data_inicio_vigencia,
+    c.data_pagamento
+  FROM public.contracts c
+  INNER JOIN public.contract_financials f ON f.contract_id = c.id
+  WHERE (
+    -- Administrador pode consultar todos os contratos
+    public.is_admin()
+    -- Vendedor e gestor consultam estritamente seus próprios contratos
+    OR c.responsavel_id = auth.uid()
+  );
+$$;
+
+COMMENT ON FUNCTION public.get_meu_financeiro() IS 'Função RPC SECURITY DEFINER para consulta segura do extrato financeiro próprio do corretor (repasse e bonificação) sem conceder acesso direto a contract_financials.';
+
+-- Restringir execução: revoga de PUBLIC e concede estritamente a autenticados
+REVOKE ALL ON FUNCTION public.get_meu_financeiro() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_meu_financeiro() TO authenticated;
+
+-- ------------------------------------------------------------------------------
+-- 8. TRIGGERS DE AUDITORIA GERAL (AUDIT LOG)
+-- Criadas após a definição de todas as tabelas do CRM.
+-- ------------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.handle_audit_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_novos)
+    VALUES (auth.uid(), 'INSERT', TG_TABLE_NAME, NEW.id, to_jsonb(NEW));
+    RETURN NEW;
+  ELSIF TG_OP = 'UPDATE' THEN
+    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_anteriores, valores_novos)
+    VALUES (auth.uid(), 'UPDATE', TG_TABLE_NAME, NEW.id, to_jsonb(OLD), to_jsonb(NEW));
+    RETURN NEW;
+  ELSIF TG_OP = 'DELETE' THEN
+    INSERT INTO public.audit_log (user_id, acao, tabela, registro_id, valores_anteriores)
+    VALUES (auth.uid(), 'DELETE', TG_TABLE_NAME, OLD.id, to_jsonb(OLD));
+    RETURN OLD;
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+-- Aplica auditoria em todas as entidades críticas solicitadas:
+-- opportunities, contracts, contract_financials, profiles, produtos, etapas do pipeline, motivos de perda
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN
+    SELECT unnest(ARRAY[
+      'opportunities',
+      'contracts',
+      'contract_financials',
+      'profiles',
+      'products',
+      'pipeline_stages',
+      'loss_reasons',
+      'task_types'
+    ])
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS trg_audit_%I ON public.%I;', tbl, tbl);
+    EXECUTE format('CREATE TRIGGER trg_audit_%I AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.handle_audit_trigger();', tbl, tbl);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 9. SEEDS DE CONFIGURAÇÃO ADMINISTRATIVA (IDEMPOTENTES VIA ON CONFLICT)
+-- ------------------------------------------------------------------------------
+
+-- 9.1 Catálogo Inicial de Produtos de Seguros & Benefícios
 INSERT INTO public.products (nome, categoria, descricao, ativo)
 VALUES
   ('Saúde PME', 'Saúde PME', 'Planos de saúde empresariais para empresas.', true),
@@ -1169,7 +1220,7 @@ SET categoria = EXCLUDED.categoria,
     descricao = EXCLUDED.descricao,
     ativo = EXCLUDED.ativo;
 
--- 7.2 Etapas Exatas do Funil de Vendas (Comercial)
+-- 9.2 Etapas Exatas do Funil de Vendas (Comercial)
 -- 1. Novo Lead -> 2. Contato realizado -> 3. Qualificado -> 4. Cotação -> 5. Follow-up -> 6. Negociação -> 7. Venda ganha
 INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, ativo)
 VALUES
@@ -1185,7 +1236,7 @@ SET ordem = EXCLUDED.ordem,
     e_saida = EXCLUDED.e_saida,
     ativo = EXCLUDED.ativo;
 
--- 7.3 Etapas Exatas do Funil de Pós-Venda (Implantação & Ativação)
+-- 9.3 Etapas Exatas do Funil de Pós-Venda (Implantação & Ativação)
 -- 1. Documentação -> 2. Implantação -> 3. Aguardando pagamento -> 4. Implantado -> 5. Cliente ativo
 -- (Regra estrita: NÃO criar etapa "Proposta na operadora")
 INSERT INTO public.pipeline_stages (funnel_type, nome, ordem, e_saida, ativo)
@@ -1200,7 +1251,7 @@ SET ordem = EXCLUDED.ordem,
     e_saida = EXCLUDED.e_saida,
     ativo = EXCLUDED.ativo;
 
--- 7.4 Motivos de Perda Padronizados (Configuráveis)
+-- 9.4 Motivos de Perda Padronizados (Configuráveis)
 INSERT INTO public.loss_reasons (nome, ordem, ativo)
 VALUES
   ('Preço', 1, true),
@@ -1216,7 +1267,7 @@ ON CONFLICT (nome) DO UPDATE
 SET ordem = EXCLUDED.ordem,
     ativo = EXCLUDED.ativo;
 
--- 7.5 Tipos de Tarefas Padronizados
+-- 9.5 Tipos de Tarefas Padronizados
 INSERT INTO public.task_types (tipo_slug, rotulo, descricao, ordem, ativo)
 VALUES
   ('ligacao', 'Ligação Telefônica', 'Contato telefônico de prospecção ou alinhamento', 1, true),

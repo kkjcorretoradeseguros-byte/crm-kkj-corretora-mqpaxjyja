@@ -12,7 +12,7 @@ O schema foi projetado especificamente para as operações da **KKJ Corretora de
 
 - **Tabelas do Domínio:** `profiles`, `products`, `companies`, `contacts`, `pipeline_stages`, `loss_reasons`, `task_types`, `opportunities`, `tasks`, `opportunity_timeline`, `contracts`, `contract_financials`, `audit_log`, `message_templates`, `conversations`, `messages`.
 - **Enums PostgreSQL:** `user_role`, `funnel_type`, `temperature`, `task_status`, `task_type`, `opp_status`, `doc_status`, `contract_status`, `timeline_action_type`, `message_direction`, `message_delivery_status`.
-- **Proteção Financeira Real:** A tabela `contract_financials` é **fisicamente separada** de `contracts`. Por padrão, **somente administradores (`public.is_admin()`)** têm acesso a ela (SELECT, INSERT, UPDATE, DELETE). Gestores NÃO recebem acesso default a faturamento bruto, impostos e margem global. Vendedores consultam suas próprias vendas e repasses através da visão segura `public.v_vendedor_financeiro` (SECURITY BARRIER).
+- **Proteção Financeira Real:** A tabela `contract_financials` é **fisicamente separada** de `contracts`. Por padrão, **somente administradores (`public.is_admin()`)** têm acesso direto a ela (SELECT, INSERT, UPDATE, DELETE). Nem corretores nem gestores têm permissão de SELECT direto em `contract_financials` via PostgREST/API. Vendedores e gestores consultam exclusivamente suas próprias vendas, comissões/repasses e bonificações através da função RPC `SECURITY DEFINER` minimalista `public.get_meu_financeiro()`, que filtra internamente por `responsavel_id = auth.uid()` e jamais expõe faturamento bruto KKJ, comissão de operadora, impostos ou margens internas.
 - **Timeline Imutável:** A tabela `opportunity_timeline` é _append-only_. Nenhuma política concede `UPDATE` ou `DELETE`, garantindo histórico inalterável de notas e movimentações de etapa.
 - **Auditoria Contínua e Abrangente:** Triggers de auditoria cobrem `opportunities`, `contracts`, `contract_financials`, `profiles`, `products`, `pipeline_stages`, `loss_reasons` e `task_types`. A tabela `audit_log` é append-only e restrita exclusivamente ao Administrador.
 
@@ -157,9 +157,15 @@ JOIN public.contract_financials f ON f.contract_id = c.id;
 SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" = '{"sub": "UUID_DO_VENDEDOR", "role": "authenticated"}';
 
--- O Vendedor tenta ler a tabela de finanças
+-- O Vendedor tenta ler a tabela de finanças sensíveis diretamente (DEVE RETORNAR VAZIO / SEM ACESSO)
 SELECT * FROM public.contract_financials;
--- Resultado esperado: Retorna 0 linhas (ou erro de permissão conforme o client). Nenhum dado vaza.
+-- Resultado esperado: Retorna 0 linhas. Nenhum dado financeiro interno da KKJ vaza.
+
+-- O Vendedor consulta seu próprio extrato via função RPC autorizada (get_meu_financeiro)
+SELECT contract_id, numero_contrato, valor_venda, repasse_vendedor, bonificacao_vendedor, total_a_receber
+FROM public.get_meu_financeiro();
+-- Resultado esperado: Retorna apenas os contratos de responsabilidade do vendedor autenticado,
+-- expondo somente valor de venda, repasse, bonificação e total a receber (sem comissões de operadora ou margens da KKJ).
 
 -- O Vendedor consulta oportunidades
 SELECT id, titulo, owner_id FROM public.opportunities;
