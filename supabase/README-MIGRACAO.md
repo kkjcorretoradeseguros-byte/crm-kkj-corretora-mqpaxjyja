@@ -138,45 +138,35 @@ FROM public.get_minhas_parcelas();
 
 ## 5. Procedimento de Bootstrap Inicial do Primeiro Administrador
 
-Como todo usuário nasce como vendedor e não existe backdoor nem auto-promoção, realize o cadastro do seu usuário no Supabase Auth (via Dashboard ou pela tela de Signup do sistema).
+Como todo usuário nasce como vendedor e qualquer auto-promoção via frontend/API é expressamente proibida e bloqueada no banco, realize o cadastro do primeiro usuário no Supabase Auth (pelo Dashboard do Supabase ou pela tela de Signup do CRM KKJ).
 
-Em seguida, execute no **SQL Editor** do Supabase o comando manual abaixo, substituindo pelo e-mail exato cadastrado:
+Em seguida, execute no **SQL Editor** do Supabase o comando oficial de bootstrap abaixo, substituindo pelo e-mail exato do usuário cadastrado:
 
 ```sql
 -- ==============================================================================
--- BOOTSTRAP: PROMOVER O PRIMEIRO USUÁRIO PARA ADMINISTRADOR
--- (Execute manualmente no SQL Editor do Supabase após o primeiro signup)
--- Funciona mesmo quando NÃO existe nenhum administrador no banco ainda.
+-- BOOTSTRAP: ELEGER O PRIMEIRO ADMINISTRADOR DO CRM KKJ
+-- (Execute exclusivamente no SQL Editor do Supabase após o primeiro signup)
+-- Funciona sem nenhum admin preexistente; bloqueado se já houver admin ativo.
 -- ==============================================================================
-UPDATE public.profiles
-SET role = 'administrador',
-    updated_at = timezone('utc'::text, now())
-WHERE id = (
-  SELECT u.id
-  FROM auth.users u
-  WHERE lower(trim(u.email)) = lower(trim('admin@kkjekabson.com.br'))
-  LIMIT 1
-);
-
--- Verificar se a promoção foi aplicada com sucesso:
-SELECT id, nome, email, role, ativo
-FROM public.profiles
-WHERE lower(trim(email)) = lower(trim('admin@kkjekabson.com.br'));
+SELECT * FROM public.bootstrap_admin('admin@kkjekabson.com.br');
 ```
 
-Caso deseje criar um Gestor Comercial diretamente:
+O comando retornará os dados confirmando a promoção:
 
-```sql
-UPDATE public.profiles
-SET role = 'gestor',
-    updated_at = timezone('utc'::text, now())
-WHERE id = (
-  SELECT u.id
-  FROM auth.users u
-  WHERE lower(trim(u.email)) = lower(trim('gestor@kkjekabson.com.br'))
-  LIMIT 1
-);
-```
+- `promoted_id`: UUID do perfil promovido;
+- `promoted_nome`: Nome do usuário;
+- `promoted_email`: E-mail normalizado;
+- `promoted_role`: `'administrador'`;
+- `status_mensagem`: `'Primeiro administrador promovido com sucesso no CRM KKJ.'`.
+
+### Procedimento de Contingência e Detalhes de Segurança:
+
+- **Como funciona:** A função `public.bootstrap_admin` opera em modo `SECURITY DEFINER` com `SET search_path = ''`. Ela ativa o parâmetro local de sessão `kkj.bootstrap_active = 'on'` dentro da transação (`set_config(..., true)`), permitindo que o trigger de integridade `trg_protect_profile_role` autorize a mudança para `'administrador'`.
+- **Por que é seguro contra backdoors de API:**
+  - A permissão de execução de `public.bootstrap_admin` é **completamente revogada de `PUBLIC`, `anon` e `authenticated`**, tornando impossível sua chamada por endpoints PostgREST ou pelo frontend.
+  - O PostgREST não permite aos clientes REST ou GraphQL definir GUCs arbitrários como `kkj.bootstrap_active`.
+  - Tentativas diretas de `UPDATE public.profiles SET role = 'administrador'` disparadas por um usuário autenticado comum via API falham imediatamente com a exceção: _"Apenas administradores ativos podem alterar papel (role), status (ativo) ou flag de leads."_, mesmo num banco recém-instalado com zero administradores.
+- **Caso deseje promover outros colaboradores pós-bootstrap:** Uma vez que o primeiro administrador exista, qualquer promoção subsequente para `'gestor'` ou outro `'administrador'` pode ser realizada diretamente pelo sistema ou pelo SQL Editor por um administrador autenticado.
 
 ---
 

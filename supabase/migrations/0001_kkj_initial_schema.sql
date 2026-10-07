@@ -1150,7 +1150,14 @@ CREATE TRIGGER on_auth_user_created
 
 -- 8.3 Trigger de Proteção dos Campos Administrativos de public.profiles
 -- Protege role, ativo e recebe_leads_automaticos: vendedor/usuário comum NÃO altera.
--- Permite bootstrap administrativo seguro caso ainda não exista administrador no sistema.
+-- Condição estrita: permite mudança de role SOMENTE se:
+--   (a) public.is_admin() = true (operação normal pós-bootstrap por administrador ativo), OU
+--   (b) current_setting('kkj.bootstrap_active', true) = 'on' E nenhum admin ativo existe E NEW.role = 'administrador'.
+-- Sem o GUC 'kkj.bootstrap_active' = 'on', NUNCA permite — nem na ausência de admins.
+-- Mitigação de segurança de canal:
+-- PostgREST não expõe set_config/SET para usuários via REST/GraphQL, e bootstrap_admin()
+-- tem privilégios revogados de PUBLIC, anon e authenticated. Portanto, nenhum cliente authenticated
+-- consegue definir o GUC ou invocar o procedimento de bootstrap.
 CREATE OR REPLACE FUNCTION public.check_profile_role_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1159,27 +1166,34 @@ SET search_path = ''
 AS $$
 DECLARE
   v_admin_exists BOOLEAN;
+  v_bootstrap_active TEXT;
 BEGIN
   -- Verificar se houve alteração em campos administrativos
   IF (OLD.role IS DISTINCT FROM NEW.role)
      OR (OLD.ativo IS DISTINCT FROM NEW.ativo)
      OR (OLD.recebe_leads_automaticos IS DISTINCT FROM NEW.recebe_leads_automaticos) THEN
 
-    -- Se já é administrador ativo, a alteração é permitida normalmente
+    -- (a) Se já é administrador ativo, a alteração é permitida normalmente
     IF public.is_admin() THEN
       RETURN NEW;
     END IF;
 
-    -- Caso de bootstrap seguro: se NÃO existir nenhum administrador ativo no sistema,
-    -- e a role estiver sendo promovida para 'administrador', permite a operação exclusiva do SQL Editor/DBA.
-    SELECT EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.role = 'administrador'::public.user_role AND p.ativo = true
-    ) INTO v_admin_exists;
+    -- (b) Canal administrativo seguro de bootstrap:
+    -- Exige estritamente o GUC 'kkj.bootstrap_active' = 'on' setado em tempo de transação (SET LOCAL)
+    -- pela função administrativa public.bootstrap_admin() no SQL Editor, ausência total de administradores
+    -- ativos e que o novo papel seja 'administrador'.
+    v_bootstrap_active := current_setting('kkj.bootstrap_active', true);
 
-    IF NOT v_admin_exists AND NEW.role = 'administrador'::public.user_role THEN
-      -- Permite bootstrap inicial pelo SQL Editor
-      RETURN NEW;
+    IF v_bootstrap_active = 'on' AND NEW.role = 'administrador'::public.user_role THEN
+      SELECT EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.role = 'administrador'::public.user_role AND p.ativo = true
+      ) INTO v_admin_exists;
+
+      IF NOT v_admin_exists THEN
+        -- Permite bootstrap inicial exclusivamente pelo canal administrativo
+        RETURN NEW;
+      END IF;
     END IF;
 
     RAISE EXCEPTION 'Apenas administradores ativos podem alterar papel (role), status (ativo) ou flag de leads.';
@@ -1198,19 +1212,26 @@ CREATE TRIGGER trg_protect_profile_role
 REVOKE ALL ON FUNCTION public.check_profile_role_update() FROM PUBLIC;
 
 -- 8.3.1 Procedimento Administrativo Explícito de Bootstrap do Primeiro Administrador
--- Destinado exclusivamente ao SQL Editor do Supabase (DBA / Administrador do Banco).
+-- Destinado exclusivamente ao SQL Editor do Supabase (DBA / Administrador do Banco via postgres/service_role).
 -- Revogado expressamente de PUBLIC, anon e authenticated para não criar qualquer backdoor de API/frontend.
+-- Ativa o GUC 'kkj.bootstrap_active' = 'on' com is_local = true no escopo da transação antes de promover o profile.
 CREATE OR REPLACE FUNCTION public.bootstrap_admin(p_email TEXT)
-RETURNS VOID
+RETURNS TABLE (
+  promoted_id UUID,
+  promoted_nome TEXT,
+  promoted_email TEXT,
+  promoted_role public.user_role,
+  status_mensagem TEXT
+)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
   v_admin_exists BOOLEAN;
-  v_profile_id UUID;
+  v_profile RECORD;
 BEGIN
-  -- Validar se já existe algum administrador ativo no sistema
+  -- 1. Validar se já existe algum administrador ativo no sistema
   SELECT EXISTS (
     SELECT 1 FROM public.profiles p
     WHERE p.role = 'administrador'::public.user_role AND p.ativo = true
@@ -1220,24 +1241,37 @@ BEGIN
     RAISE EXCEPTION 'Operação bloqueada: o CRM KKJ já possui administrador ativo configurado.';
   END IF;
 
-  -- Localizar o profile do usuário pelo e-mail
-  SELECT id INTO v_profile_id
-  FROM public.profiles
-  WHERE lower(trim(email)) = lower(trim(p_email));
+  -- 2. Localizar o profile do usuário pelo e-mail (lower(trim(email)))
+  SELECT p.id, p.nome, p.email, p.role
+  INTO v_profile
+  FROM public.profiles p
+  WHERE lower(trim(p.email)) = lower(trim(p_email));
 
-  IF v_profile_id IS NULL THEN
+  IF v_profile.id IS NULL THEN
     RAISE EXCEPTION 'Usuário com o e-mail "%" não foi encontrado em public.profiles. Realize o cadastro prévio antes de promover.', p_email;
   END IF;
 
-  -- Promover explicitamente para administrador
+  -- 3. Ativar o GUC de sessão/transação com escopo local exclusivo para o UPDATE
+  PERFORM set_config('kkj.bootstrap_active', 'on', true);
+
+  -- 4. Promover explicitamente para administrador
   UPDATE public.profiles
   SET role = 'administrador'::public.user_role,
       ativo = true,
       updated_at = timezone('utc'::text, now())
-  WHERE id = v_profile_id;
+  WHERE id = v_profile.id;
+
+  -- 5. Retornar informações úteis do usuário promovido
+  RETURN QUERY
+  SELECT
+    v_profile.id AS promoted_id,
+    v_profile.nome AS promoted_nome,
+    v_profile.email AS promoted_email,
+    'administrador'::public.user_role AS promoted_role,
+    'Primeiro administrador promovido com sucesso no CRM KKJ.'::TEXT AS status_mensagem;
 END;
 $$;
-COMMENT ON FUNCTION public.bootstrap_admin(TEXT) IS 'Procedimento de uso exclusivo no SQL Editor para eleger o primeiro administrador da KKJ quando nenhum existe. Revogado de anon e authenticated.';
+COMMENT ON FUNCTION public.bootstrap_admin(TEXT) IS 'Procedimento de uso exclusivo no SQL Editor para eleger o primeiro administrador da KKJ quando nenhum existe. Ativa kkj.bootstrap_active localmente e é revogado de anon e authenticated.';
 
 REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM anon;
