@@ -216,6 +216,8 @@ export interface Opportunity {
     assigned_to?: User
     created_by?: User
   }
+  archived_at?: string
+  archived_by?: string
   created_by?: string
   created?: string
   updated?: string

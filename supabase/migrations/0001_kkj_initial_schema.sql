@@ -531,6 +531,8 @@ CREATE TABLE IF NOT EXISTS public.opportunities (
   utm_term TEXT,
   attribution JSONB NOT NULL DEFAULT '{}'::jsonb,
   data_entrada TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  archived_at TIMESTAMPTZ,
+  archived_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -576,9 +578,10 @@ BEGIN
 END $$;
 
 -- 6.11 TABELA 14: TIMELINE VISUAL DA OPORTUNIDADE (Append-Only)
+-- Preservação histórica: ON DELETE RESTRICT para proteger histórico de exclusões acidentais.
 CREATE TABLE IF NOT EXISTS public.opportunity_timeline (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
+  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE RESTRICT,
   tipo_evento public.timeline_action_type NOT NULL DEFAULT 'sistema',
   conteudo TEXT NOT NULL,
   dados_adicionais JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -588,9 +591,10 @@ CREATE TABLE IF NOT EXISTS public.opportunity_timeline (
 COMMENT ON TABLE public.opportunity_timeline IS 'Timeline append-only (imutável) para visualização cronológica das ações e notas da oportunidade.';
 
 -- 6.12 TABELA 15: HISTÓRICO ESTRUTURADO DE MUDANÇA DE RESPONSÁVEL (Assignments)
+-- Preservação histórica: ON DELETE RESTRICT para manter rastreabilidade imutável de atribuições.
 CREATE TABLE IF NOT EXISTS public.opportunity_assignments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
+  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE RESTRICT,
   responsavel_anterior_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   novo_responsavel_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   alterado_por UUID REFERENCES public.profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
@@ -601,9 +605,10 @@ CREATE TABLE IF NOT EXISTS public.opportunity_assignments (
 COMMENT ON TABLE public.opportunity_assignments IS 'Histórico estruturado de distribuição de leads para auditoria e relatórios de round-robin.';
 
 -- 6.13 TABELA 16: HISTÓRICO ESTRUTURADO DE ETAPAS (Analytics de Gargalos)
+-- Preservação histórica: ON DELETE RESTRICT para auditoria estrita de transições de funil.
 CREATE TABLE IF NOT EXISTS public.opportunity_stage_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
+  opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE RESTRICT,
   etapa_anterior_id UUID REFERENCES public.pipeline_stages(id) ON DELETE SET NULL,
   nova_etapa_id UUID NOT NULL REFERENCES public.pipeline_stages(id) ON DELETE RESTRICT,
   usuario_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL DEFAULT auth.uid(),
@@ -988,6 +993,7 @@ CREATE INDEX IF NOT EXISTS idx_opp_attribution_gin ON public.opportunities USING
 CREATE INDEX IF NOT EXISTS idx_opp_origem ON public.opportunities(origem);
 CREATE INDEX IF NOT EXISTS idx_opp_campanha ON public.opportunities(campanha);
 CREATE INDEX IF NOT EXISTS idx_opp_data_entrada ON public.opportunities(data_entrada DESC);
+CREATE INDEX IF NOT EXISTS idx_opp_archived_at ON public.opportunities(archived_at) WHERE archived_at IS NOT NULL;
 
 -- Tarefas
 CREATE INDEX IF NOT EXISTS idx_tasks_opp_id ON public.tasks(opportunity_id);
@@ -1055,6 +1061,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.handle_updated_at() FROM PUBLIC;
 
 DO $$
 DECLARE
@@ -1133,35 +1141,111 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
+
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 8.3 Trigger de Proteção da Coluna role em public.profiles
+-- 8.3 Trigger de Proteção dos Campos Administrativos de public.profiles
+-- Protege role, ativo e recebe_leads_automaticos: vendedor/usuário comum NÃO altera.
+-- Permite bootstrap administrativo seguro caso ainda não exista administrador no sistema.
 CREATE OR REPLACE FUNCTION public.check_profile_role_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_admin_exists BOOLEAN;
 BEGIN
-  IF OLD.role IS DISTINCT FROM NEW.role THEN
-    IF NOT public.is_admin() THEN
-      RAISE EXCEPTION 'Apenas usuários administradores podem alterar o perfil (role) de um usuário.';
+  -- Verificar se houve alteração em campos administrativos
+  IF (OLD.role IS DISTINCT FROM NEW.role)
+     OR (OLD.ativo IS DISTINCT FROM NEW.ativo)
+     OR (OLD.recebe_leads_automaticos IS DISTINCT FROM NEW.recebe_leads_automaticos) THEN
+
+    -- Se já é administrador ativo, a alteração é permitida normalmente
+    IF public.is_admin() THEN
+      RETURN NEW;
     END IF;
+
+    -- Caso de bootstrap seguro: se NÃO existir nenhum administrador ativo no sistema,
+    -- e a role estiver sendo promovida para 'administrador', permite a operação exclusiva do SQL Editor/DBA.
+    SELECT EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.role = 'administrador'::public.user_role AND p.ativo = true
+    ) INTO v_admin_exists;
+
+    IF NOT v_admin_exists AND NEW.role = 'administrador'::public.user_role THEN
+      -- Permite bootstrap inicial pelo SQL Editor
+      RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'Apenas administradores ativos podem alterar papel (role), status (ativo) ou flag de leads.';
   END IF;
+
   RETURN NEW;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_protect_profile_role ON public.profiles;
 CREATE TRIGGER trg_protect_profile_role
-  BEFORE UPDATE OF role ON public.profiles
+  BEFORE UPDATE OF role, ativo, recebe_leads_automaticos ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.check_profile_role_update();
 
+REVOKE ALL ON FUNCTION public.check_profile_role_update() FROM PUBLIC;
+
+-- 8.3.1 Procedimento Administrativo Explícito de Bootstrap do Primeiro Administrador
+-- Destinado exclusivamente ao SQL Editor do Supabase (DBA / Administrador do Banco).
+-- Revogado expressamente de PUBLIC, anon e authenticated para não criar qualquer backdoor de API/frontend.
+CREATE OR REPLACE FUNCTION public.bootstrap_admin(p_email TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_admin_exists BOOLEAN;
+  v_profile_id UUID;
+BEGIN
+  -- Validar se já existe algum administrador ativo no sistema
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.role = 'administrador'::public.user_role AND p.ativo = true
+  ) INTO v_admin_exists;
+
+  IF v_admin_exists THEN
+    RAISE EXCEPTION 'Operação bloqueada: o CRM KKJ já possui administrador ativo configurado.';
+  END IF;
+
+  -- Localizar o profile do usuário pelo e-mail
+  SELECT id INTO v_profile_id
+  FROM public.profiles
+  WHERE lower(trim(email)) = lower(trim(p_email));
+
+  IF v_profile_id IS NULL THEN
+    RAISE EXCEPTION 'Usuário com o e-mail "%" não foi encontrado em public.profiles. Realize o cadastro prévio antes de promover.', p_email;
+  END IF;
+
+  -- Promover explicitamente para administrador
+  UPDATE public.profiles
+  SET role = 'administrador'::public.user_role,
+      ativo = true,
+      updated_at = timezone('utc'::text, now())
+  WHERE id = v_profile_id;
+END;
+$$;
+COMMENT ON FUNCTION public.bootstrap_admin(TEXT) IS 'Procedimento de uso exclusivo no SQL Editor para eleger o primeiro administrador da KKJ quando nenhum existe. Revogado de anon e authenticated.';
+
+REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM anon;
+REVOKE ALL ON FUNCTION public.bootstrap_admin(TEXT) FROM authenticated;
+
 -- 8.4 Trigger de Validação de Etapa, Funil, Perda e Proteção de Autotransferência de Leads
+-- Totalmente segregado por TG_OP: não acessa OLD no caminho de INSERT.
+-- Venda ganha tratada com robustez: fallback por ordem máxima caso renomeada.
 CREATE OR REPLACE FUNCTION public.validate_opportunity_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1171,53 +1255,101 @@ AS $$
 DECLARE
   v_stage_funnel public.funnel_type;
   v_stage_name TEXT;
+  v_won_stage_id UUID;
 BEGIN
-  -- Validar coerência entre etapa (stage_id) e o funnel_type da oportunidade
-  SELECT ps.funnel_type, ps.nome INTO v_stage_funnel, v_stage_name
-  FROM public.pipeline_stages ps
-  WHERE ps.id = NEW.stage_id;
+  IF TG_OP = 'INSERT' THEN
+    -- 1. Validar coerência entre etapa (stage_id) e o funnel_type da oportunidade no INSERT
+    SELECT ps.funnel_type, ps.nome INTO v_stage_funnel, v_stage_name
+    FROM public.pipeline_stages ps
+    WHERE ps.id = NEW.stage_id;
 
-  IF v_stage_funnel IS NULL THEN
-    RAISE EXCEPTION 'Etapa de pipeline inválida ou inexistente.';
-  END IF;
-
-  IF v_stage_funnel <> NEW.funnel_type THEN
-    RAISE EXCEPTION 'A etapa informada pertence ao funil %, mas a oportunidade está no funil %.',
-      v_stage_funnel, NEW.funnel_type;
-  END IF;
-
-  -- Se status = 'perdida', exige motivo de perda
-  IF NEW.status = 'perdida' THEN
-    IF NEW.loss_reason_id IS NULL THEN
-      RAISE EXCEPTION 'Oportunidades com status "perdida" exigem a seleção de um motivo de perda (loss_reason_id).';
+    IF v_stage_funnel IS NULL THEN
+      RAISE EXCEPTION 'Etapa de pipeline inválida ou inexistente.';
     END IF;
-  ELSE
-    -- Ao sair de perdida (ou em qualquer outro status), limpa campos de perda
-    NEW.loss_reason_id := NULL;
-    NEW.loss_notes := NULL;
-  END IF;
 
-  -- Coerência de status ganha com etapa "Venda ganha"
-  IF NEW.funnel_type = 'vendas' THEN
-    IF v_stage_name = 'Venda ganha' AND NEW.status <> 'ganha' THEN
-      NEW.status := 'ganha';
-    ELSIF NEW.status = 'ganha' AND v_stage_name <> 'Venda ganha' AND NEW.stage_id = OLD.stage_id THEN
-      -- Se marcado como ganho sem mudar de etapa, ajusta para a etapa Venda ganha
-      SELECT ps.id INTO NEW.stage_id
+    IF v_stage_funnel <> NEW.funnel_type THEN
+      RAISE EXCEPTION 'A etapa informada pertence ao funil %, mas a oportunidade está no funil %.',
+        v_stage_funnel, NEW.funnel_type;
+    END IF;
+
+    -- Validar perda no INSERT
+    IF NEW.status = 'perdida' THEN
+      IF NEW.loss_reason_id IS NULL THEN
+        RAISE EXCEPTION 'Oportunidades com status "perdida" exigem a seleção de um motivo de perda (loss_reason_id).';
+      END IF;
+    ELSE
+      NEW.loss_reason_id := NULL;
+      NEW.loss_notes := NULL;
+    END IF;
+
+    -- Identificar etapa "Venda ganha" com fallback robusto (nome = 'Venda ganha' ou maior ordem do funil de vendas)
+    IF NEW.funnel_type = 'vendas' THEN
+      SELECT ps.id INTO v_won_stage_id
       FROM public.pipeline_stages ps
-      WHERE ps.funnel_type = 'vendas' AND ps.nome = 'Venda ganha'
+      WHERE ps.funnel_type = 'vendas'
+      ORDER BY (ps.nome = 'Venda ganha') DESC, ps.ordem DESC
       LIMIT 1;
-    END IF;
-  END IF;
 
-  -- IMPEDIR AUTOTRANSFERÊNCIA DE LEADS NO UPDATE:
-  -- Se o owner_id estiver sendo alterado ou removido, exige privilégio de gestor/admin ou redistribuir_leads
-  IF TG_OP = 'UPDATE' THEN
+      IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+        NEW.status := 'ganha';
+      ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id THEN
+        NEW.stage_id := v_won_stage_id;
+      END IF;
+    END IF;
+
+    RETURN NEW;
+
+  ELSIF TG_OP = 'UPDATE' THEN
+    -- 1. Validar coerência entre etapa (stage_id) e o funnel_type no UPDATE
+    SELECT ps.funnel_type, ps.nome INTO v_stage_funnel, v_stage_name
+    FROM public.pipeline_stages ps
+    WHERE ps.id = NEW.stage_id;
+
+    IF v_stage_funnel IS NULL THEN
+      RAISE EXCEPTION 'Etapa de pipeline inválida ou inexistente.';
+    END IF;
+
+    IF v_stage_funnel <> NEW.funnel_type THEN
+      RAISE EXCEPTION 'A etapa informada pertence ao funil %, mas a oportunidade está no funil %.',
+        v_stage_funnel, NEW.funnel_type;
+    END IF;
+
+    -- Validar perda no UPDATE
+    IF NEW.status = 'perdida' THEN
+      IF NEW.loss_reason_id IS NULL THEN
+        RAISE EXCEPTION 'Oportunidades com status "perdida" exigem a seleção de um motivo de perda (loss_reason_id).';
+      END IF;
+    ELSE
+      -- Ao sair de perdida (ou em qualquer outro status), limpa campos de perda
+      NEW.loss_reason_id := NULL;
+      NEW.loss_notes := NULL;
+    END IF;
+
+    -- Identificar etapa "Venda ganha" com fallback robusto
+    IF NEW.funnel_type = 'vendas' THEN
+      SELECT ps.id INTO v_won_stage_id
+      FROM public.pipeline_stages ps
+      WHERE ps.funnel_type = 'vendas'
+      ORDER BY (ps.nome = 'Venda ganha') DESC, ps.ordem DESC
+      LIMIT 1;
+
+      IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+        NEW.status := 'ganha';
+      ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id AND NEW.stage_id = OLD.stage_id THEN
+        -- Se marcado como ganho sem mudar de etapa manualmente, ajusta para a etapa ganha
+        NEW.stage_id := v_won_stage_id;
+      END IF;
+    END IF;
+
+    -- 2. IMPEDIR AUTOTRANSFERÊNCIA DE LEADS NO UPDATE:
+    -- Se o owner_id estiver sendo alterado ou removido, exige privilégio de gestor/admin ou redistribuir_leads
     IF OLD.owner_id IS DISTINCT FROM NEW.owner_id THEN
       IF NOT (public.is_manager_or_admin() OR public.has_permission('redistribuir_leads')) THEN
         RAISE EXCEPTION 'Vendedor não possui permissão para transferir ou remover o responsável do lead. Exige permissão de redistribuição.';
       END IF;
     END IF;
+
+    RETURN NEW;
   END IF;
 
   RETURN NEW;
@@ -1230,7 +1362,10 @@ CREATE TRIGGER trg_validate_opportunity_rules
   FOR EACH ROW
   EXECUTE FUNCTION public.validate_opportunity_rules();
 
--- 8.5 Trigger de Validação de Alvo em Campos Personalizados (custom_field_values)
+REVOKE ALL ON FUNCTION public.validate_opportunity_rules() FROM PUBLIC;
+
+-- 8.5 Trigger de Validação de Alvo e Produto em Campos Personalizados (custom_field_values)
+-- Valida alvo (oportunidade vs contrato) e coerência do product_id (caso a definição seja vinculada a produto específico).
 CREATE OR REPLACE FUNCTION public.validate_custom_field_target()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -1239,8 +1374,10 @@ SET search_path = ''
 AS $$
 DECLARE
   v_expected_target public.custom_field_target;
+  v_def_product_id UUID;
+  v_record_product_id UUID;
 BEGIN
-  SELECT alvo INTO v_expected_target
+  SELECT alvo, product_id INTO v_expected_target, v_def_product_id
   FROM public.custom_field_definitions
   WHERE id = NEW.definition_id;
 
@@ -1248,12 +1385,36 @@ BEGIN
     RAISE EXCEPTION 'Definição de campo personalizado não encontrada.';
   END IF;
 
-  IF v_expected_target = 'oportunidade' AND NEW.opportunity_id IS NULL THEN
-    RAISE EXCEPTION 'Este campo personalizado é restrito ao alvo "oportunidade", mas opportunity_id não foi informado.';
+  IF v_expected_target = 'oportunidade' THEN
+    IF NEW.opportunity_id IS NULL THEN
+      RAISE EXCEPTION 'Este campo personalizado é restrito ao alvo "oportunidade", mas opportunity_id não foi informado.';
+    END IF;
+    -- Validar compatibilidade de produto da oportunidade quando o campo não for global
+    IF v_def_product_id IS NOT NULL THEN
+      SELECT product_id INTO v_record_product_id
+      FROM public.opportunities
+      WHERE id = NEW.opportunity_id;
+
+      IF v_record_product_id IS DISTINCT FROM v_def_product_id THEN
+        RAISE EXCEPTION 'O campo personalizado pertence a um produto específico diferente do produto da oportunidade.';
+      END IF;
+    END IF;
   END IF;
 
-  IF v_expected_target = 'contrato' AND NEW.contract_id IS NULL THEN
-    RAISE EXCEPTION 'Este campo personalizado é restrito ao alvo "contrato", mas contract_id não foi informado.';
+  IF v_expected_target = 'contrato' THEN
+    IF NEW.contract_id IS NULL THEN
+      RAISE EXCEPTION 'Este campo personalizado é restrito ao alvo "contrato", mas contract_id não foi informado.';
+    END IF;
+    -- Validar compatibilidade de produto do contrato quando o campo não for global
+    IF v_def_product_id IS NOT NULL THEN
+      SELECT product_id INTO v_record_product_id
+      FROM public.contracts
+      WHERE id = NEW.contract_id;
+
+      IF v_record_product_id IS DISTINCT FROM v_def_product_id THEN
+        RAISE EXCEPTION 'O campo personalizado pertence a um produto específico diferente do produto do contrato.';
+      END IF;
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -1265,6 +1426,8 @@ CREATE TRIGGER trg_validate_custom_field_target
   BEFORE INSERT OR UPDATE ON public.custom_field_values
   FOR EACH ROW
   EXECUTE FUNCTION public.validate_custom_field_target();
+
+REVOKE ALL ON FUNCTION public.validate_custom_field_target() FROM PUBLIC;
 
 -- 8.6 Timeline Visual e Histórico Estruturado ao Alterar Oportunidade
 CREATE OR REPLACE FUNCTION public.handle_opportunity_changes()
@@ -1335,42 +1498,58 @@ BEGIN
   END IF;
 
   -- 2. Mudança de Responsável (Owner)
+  -- Determinação estruturada da origem (assignment_origin):
+  -- Permite que processos automáticos informem a origem real via context config ('kkj.assignment_origin'),
+  -- mantendo 'manual' como padrão para ações de tela do usuário sem confiar em campos livres do cliente.
   IF OLD.owner_id IS DISTINCT FROM NEW.owner_id THEN
-    SELECT nome INTO old_owner_name FROM public.profiles WHERE id = OLD.owner_id;
-    SELECT nome INTO new_owner_name FROM public.profiles WHERE id = NEW.owner_id;
+    DECLARE
+      v_origin public.assignment_origin;
+      v_ctx_origin TEXT;
+    BEGIN
+      v_ctx_origin := current_setting('kkj.assignment_origin', true);
+      IF v_ctx_origin IN ('round_robin', 'redistribuicao', 'manual') THEN
+        v_origin := v_ctx_origin::public.assignment_origin;
+      ELSE
+        v_origin := 'manual'::public.assignment_origin;
+      END IF;
 
-    INSERT INTO public.opportunity_timeline (
-      opportunity_id,
-      tipo_evento,
-      conteudo,
-      dados_adicionais,
-      user_id
-    ) VALUES (
-      NEW.id,
-      'mudanca_responsavel',
-      format('Responsável alterado de "%s" para "%s"', COALESCE(old_owner_name, 'Sem responsável'), COALESCE(new_owner_name, 'Desconhecido')),
-      jsonb_build_object(
-        'responsavel_anterior_id', OLD.owner_id,
-        'responsavel_anterior_nome', old_owner_name,
-        'responsavel_novo_id', NEW.owner_id,
-        'responsavel_novo_nome', new_owner_name
-      ),
-      auth.uid()
-    );
+      SELECT nome INTO old_owner_name FROM public.profiles WHERE id = OLD.owner_id;
+      SELECT nome INTO new_owner_name FROM public.profiles WHERE id = NEW.owner_id;
 
-    INSERT INTO public.opportunity_assignments (
-      opportunity_id,
-      responsavel_anterior_id,
-      novo_responsavel_id,
-      alterado_por,
-      motivo
-    ) VALUES (
-      NEW.id,
-      OLD.owner_id,
-      NEW.owner_id,
-      auth.uid(),
-      'manual'::public.assignment_origin
-    );
+      INSERT INTO public.opportunity_timeline (
+        opportunity_id,
+        tipo_evento,
+        conteudo,
+        dados_adicionais,
+        user_id
+      ) VALUES (
+        NEW.id,
+        'mudanca_responsavel',
+        format('Responsável alterado de "%s" para "%s"', COALESCE(old_owner_name, 'Sem responsável'), COALESCE(new_owner_name, 'Desconhecido')),
+        jsonb_build_object(
+          'responsavel_anterior_id', OLD.owner_id,
+          'responsavel_anterior_nome', old_owner_name,
+          'responsavel_novo_id', NEW.owner_id,
+          'responsavel_novo_nome', new_owner_name,
+          'origem', v_origin
+        ),
+        auth.uid()
+      );
+
+      INSERT INTO public.opportunity_assignments (
+        opportunity_id,
+        responsavel_anterior_id,
+        novo_responsavel_id,
+        alterado_por,
+        motivo
+      ) VALUES (
+        NEW.id,
+        OLD.owner_id,
+        NEW.owner_id,
+        auth.uid(),
+        v_origin
+      );
+    END;
   END IF;
 
   -- 3. Mudança significativa de Valor da Venda
@@ -1402,6 +1581,8 @@ CREATE TRIGGER trg_opportunity_changes
   AFTER UPDATE ON public.opportunities
   FOR EACH ROW EXECUTE FUNCTION public.handle_opportunity_changes();
 
+REVOKE ALL ON FUNCTION public.handle_opportunity_changes() FROM PUBLIC;
+
 -- 8.7 Inserção inicial no histórico de etapas ao criar oportunidade
 CREATE OR REPLACE FUNCTION public.handle_opportunity_creation()
 RETURNS TRIGGER
@@ -1409,6 +1590,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_origin public.assignment_origin;
+  v_ctx_origin TEXT;
 BEGIN
   INSERT INTO public.opportunity_stage_history (
     opportunity_id,
@@ -1425,6 +1609,13 @@ BEGIN
   );
 
   IF NEW.owner_id IS NOT NULL THEN
+    v_ctx_origin := current_setting('kkj.assignment_origin', true);
+    IF v_ctx_origin IN ('round_robin', 'redistribuicao', 'manual') THEN
+      v_origin := v_ctx_origin::public.assignment_origin;
+    ELSE
+      v_origin := 'manual'::public.assignment_origin;
+    END IF;
+
     INSERT INTO public.opportunity_assignments (
       opportunity_id,
       responsavel_anterior_id,
@@ -1436,7 +1627,7 @@ BEGIN
       NULL,
       NEW.owner_id,
       COALESCE(auth.uid(), NEW.created_by),
-      'manual'::public.assignment_origin
+      v_origin
     );
   END IF;
 
@@ -1448,6 +1639,8 @@ DROP TRIGGER IF EXISTS trg_opportunity_created ON public.opportunities;
 CREATE TRIGGER trg_opportunity_created
   AFTER INSERT ON public.opportunities
   FOR EACH ROW EXECUTE FUNCTION public.handle_opportunity_creation();
+
+REVOKE ALL ON FUNCTION public.handle_opportunity_creation() FROM PUBLIC;
 
 -- ------------------------------------------------------------------------------
 -- 9. POLÍTICAS DE ROW LEVEL SECURITY (RLS REAL EM TODAS AS 32 TABELAS)
@@ -1487,8 +1680,13 @@ ALTER TABLE public.message_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
--- 9.1 PROFILES (SEM RECURSÃO INFINITA)
--- Helper is_admin() e current_role() são SECURITY DEFINER com search_path = ''.
+-- 9.1 PROFILES (SEM RECURSÃO INFINITA E COM PROTEÇÃO TOTAL)
+-- Nota de Minimização de Dados: SELECT mantido para authenticated porque o CRM KKJ exige
+-- a listagem de corretores e gestores em dropdowns operacionais (atribuição de leads,
+-- filtros de equipe, responsáveis por tarefas e pós-venda).
+-- UPDATE: usuário comum edita apenas seus dados pessoais (id = auth.uid()).
+-- Os campos administrativos (role, ativo, recebe_leads_automaticos) são protegidos de forma
+-- hermética pelo trigger BEFORE UPDATE check_profile_role_update(), ELIMINANDO QUALQUER SUBQUERY RECURSIVA na policy.
 DROP POLICY IF EXISTS "profiles_select_all_authenticated" ON public.profiles;
 CREATE POLICY "profiles_select_all_authenticated"
   ON public.profiles FOR SELECT
@@ -1500,15 +1698,7 @@ CREATE POLICY "profiles_update_own_or_admin"
   ON public.profiles FOR UPDATE
   TO authenticated
   USING (id = auth.uid() OR public.is_admin())
-  WITH CHECK (
-    public.is_admin()
-    OR (
-      id = auth.uid()
-      AND role = public.current_role()
-      AND ativo = true
-      AND recebe_leads_automaticos = (SELECT p.recebe_leads_automaticos FROM public.profiles p WHERE p.id = auth.uid())
-    )
-  );
+  WITH CHECK (id = auth.uid() OR public.is_admin());
 
 -- 9.2 PERMISSÕES GRANULARES
 DROP POLICY IF EXISTS "permissions_select_auth" ON public.permissions;
@@ -1663,8 +1853,10 @@ CREATE POLICY "opportunities_update_policy" ON public.opportunities FOR UPDATE T
   );
 
 DROP POLICY IF EXISTS "opportunities_delete_policy" ON public.opportunities;
-CREATE POLICY "opportunities_delete_policy" ON public.opportunities FOR DELETE TO authenticated
-  USING (public.is_admin());
+-- ESTRATÉGIA DE PRESERVAÇÃO HISTÓRICA / V1:
+-- NENHUMA policy de DELETE físico para authenticated. Oportunidades são arquivadas
+-- preenchendo archived_at e archived_by via UPDATE pelo administrador, preservando
+-- timeline, atribuições, contratos e histórico de etapas intactos.
 
 -- 9.8 TAREFAS (Tasks)
 DROP POLICY IF EXISTS "tasks_select_policy" ON public.tasks;
@@ -1677,11 +1869,25 @@ CREATE POLICY "tasks_select_policy" ON public.tasks FOR SELECT TO authenticated
   );
 
 DROP POLICY IF EXISTS "tasks_insert_policy" ON public.tasks;
+-- Vendedor comum pode criar tarefa para si mesmo (assignee_id = auth.uid())
+-- ou para oportunidade da qual é owner (assignee_id = auth.uid() AND owner_id = auth.uid()).
+-- Não pode atribuir arbitrariamente tarefas a outros corretores.
+-- Gestores e Administradores possuem permissão irrestrita de atribuição a terceiros.
 CREATE POLICY "tasks_insert_policy" ON public.tasks FOR INSERT TO authenticated
   WITH CHECK (
     public.is_manager_or_admin()
-    OR assignee_id = auth.uid()
-    OR created_by = auth.uid()
+    OR (
+      created_by = auth.uid()
+      AND (
+        assignee_id = auth.uid()
+        OR (
+          opportunity_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM public.opportunities o
+            WHERE o.id = tasks.opportunity_id AND o.owner_id = auth.uid()
+          )
+        )
+      )
+    )
   );
 
 DROP POLICY IF EXISTS "tasks_update_policy" ON public.tasks;
@@ -1713,13 +1919,20 @@ CREATE POLICY "timeline_select_policy" ON public.opportunity_timeline FOR SELECT
   );
 
 DROP POLICY IF EXISTS "timeline_insert_policy" ON public.opportunity_timeline;
+-- Usuário comum somente pode inserir notas manuais: tipo_evento = 'nota' AND user_id = auth.uid()
+-- AND ter acesso à oportunidade. Eventos automáticos (mudanca_etapa, mudanca_responsavel,
+-- venda_contrato, sistema) são gravados exclusivamente pelas funções/triggers internas SECURITY DEFINER.
 CREATE POLICY "timeline_insert_policy" ON public.opportunity_timeline FOR INSERT TO authenticated
   WITH CHECK (
     public.is_manager_or_admin()
-    OR EXISTS (
-      SELECT 1 FROM public.opportunities o
-      WHERE o.id = opportunity_timeline.opportunity_id
-        AND o.owner_id = auth.uid()
+    OR (
+      tipo_evento = 'nota'::public.timeline_action_type
+      AND user_id = auth.uid()
+      AND EXISTS (
+        SELECT 1 FROM public.opportunities o
+        WHERE o.id = opportunity_timeline.opportunity_id
+          AND (o.owner_id = auth.uid() OR (o.owner_id IS NULL AND public.has_permission('visualizar_todos_leads')))
+      )
     )
   );
 
@@ -1734,8 +1947,8 @@ CREATE POLICY "opp_assignments_select" ON public.opportunity_assignments FOR SEL
   );
 
 DROP POLICY IF EXISTS "opp_assignments_insert" ON public.opportunity_assignments;
-CREATE POLICY "opp_assignments_insert" ON public.opportunity_assignments FOR INSERT TO authenticated
-  WITH CHECK (public.is_manager_or_admin() OR alterado_por = auth.uid());
+-- Inserção direta de assignments BLOQUEADA para frontend/authenticated:
+-- A tabela é alimentada exclusivamente pelos triggers/funções internas SECURITY DEFINER de mudança de responsável.
 
 DROP POLICY IF EXISTS "stage_history_select" ON public.opportunity_stage_history;
 CREATE POLICY "stage_history_select" ON public.opportunity_stage_history FOR SELECT TO authenticated
@@ -1745,8 +1958,8 @@ CREATE POLICY "stage_history_select" ON public.opportunity_stage_history FOR SEL
   );
 
 DROP POLICY IF EXISTS "stage_history_insert" ON public.opportunity_stage_history;
-CREATE POLICY "stage_history_insert" ON public.opportunity_stage_history FOR INSERT TO authenticated
-  WITH CHECK (public.is_manager_or_admin() OR usuario_id = auth.uid());
+-- Inserção direta de stage_history BLOQUEADA para frontend/authenticated:
+-- A tabela é alimentada exclusivamente pelos triggers/funções internas SECURITY DEFINER de transição de etapa.
 
 -- 9.11 CONTRATOS (Contracts)
 DROP POLICY IF EXISTS "contracts_select_policy" ON public.contracts;
@@ -1779,7 +1992,9 @@ DROP POLICY IF EXISTS "commission_rules_admin_write" ON public.commission_rules;
 CREATE POLICY "commission_rules_admin_write" ON public.commission_rules FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "bonus_campaigns_select_auth" ON public.bonus_campaigns;
-CREATE POLICY "bonus_campaigns_select_auth" ON public.bonus_campaigns FOR SELECT TO authenticated USING (true);
+-- bonus_campaigns expõe parâmetros financeiros sensíveis (percentual_bonus, faixas_metas, valor_fixo).
+-- SELECT direto restrito exclusivamente a administradores ativos.
+CREATE POLICY "bonus_campaigns_select_auth" ON public.bonus_campaigns FOR SELECT TO authenticated USING (public.is_admin());
 DROP POLICY IF EXISTS "bonus_campaigns_admin_write" ON public.bonus_campaigns;
 CREATE POLICY "bonus_campaigns_admin_write" ON public.bonus_campaigns FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
 
@@ -2009,13 +2224,19 @@ CREATE POLICY "messages_select_policy" ON public.messages FOR SELECT TO authenti
   );
 
 DROP POLICY IF EXISTS "messages_insert_policy" ON public.messages;
+-- Usuário authenticated autorizado pode inserir somente mensagens OUTGOING enviadas por ele mesmo (user_id = auth.uid()).
+-- Mensagens INCOMING (recebidas do cliente) são inseridas exclusivamente por webhooks/serviços integrados server-side.
 CREATE POLICY "messages_insert_policy" ON public.messages FOR INSERT TO authenticated
   WITH CHECK (
-    public.is_manager_or_admin()
-    OR EXISTS (
-      SELECT 1 FROM public.conversations c
-      WHERE c.id = messages.conversation_id
-      AND (c.responsible_user_id = auth.uid() OR (c.responsible_user_id IS NULL AND public.is_manager_or_admin()))
+    direction = 'outgoing'::public.message_direction
+    AND user_id = auth.uid()
+    AND (
+      public.is_manager_or_admin()
+      OR EXISTS (
+        SELECT 1 FROM public.conversations c
+        WHERE c.id = messages.conversation_id
+          AND (c.responsible_user_id = auth.uid() OR (c.responsible_user_id IS NULL AND public.has_permission('visualizar_todos_leads')))
+      )
     )
   );
 
