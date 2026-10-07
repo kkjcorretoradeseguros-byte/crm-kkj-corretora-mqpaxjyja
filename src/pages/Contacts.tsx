@@ -224,17 +224,19 @@ export default function Contacts() {
       </div>
 
       {/* Contacts Table */}
-      <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-border rounded-xl overflow-x-auto shadow-sm">
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-12 w-full bg-slate-100" />
+              <Skeleton key={i} className="h-12 w-full bg-slate-100 dark:bg-muted" />
             ))}
           </div>
         ) : contacts.length === 0 ? (
-          <div className="p-8 text-center text-xs text-[#667085]">Nenhum contato encontrado.</div>
+          <div className="p-8 text-center text-xs text-[#667085] dark:text-muted-foreground">
+            Nenhum contato encontrado.
+          </div>
         ) : (
-          <Table>
+          <Table className="min-w-[650px]">
             <TableHeader className="bg-[#F5F7FA]">
               <TableRow>
                 <TableHead className="text-xs font-bold text-[#101828]">Nome</TableHead>

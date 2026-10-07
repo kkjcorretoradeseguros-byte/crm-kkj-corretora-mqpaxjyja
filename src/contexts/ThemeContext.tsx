@@ -37,8 +37,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setResolvedTheme(active)
       if (active === 'dark') {
         root.classList.add('dark')
+        root.style.colorScheme = 'dark'
       } else {
         root.classList.remove('dark')
+        root.style.colorScheme = 'light'
       }
     }
 

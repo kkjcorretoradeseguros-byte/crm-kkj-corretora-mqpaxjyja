@@ -166,21 +166,23 @@ export default function Layout() {
       {/* Desktop Sidebar (Fixed 260px) */}
       <aside className="hidden lg:flex w-[260px] flex-col fixed inset-y-0 z-30 border-r border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#0B1322]">
         {/* Brand Header */}
-        <div className="flex h-16 items-center gap-3 px-6 border-b border-[#E4E7EC]">
+        <div className="flex h-16 items-center gap-3 px-6 border-b border-[#E4E7EC] dark:border-[#24324D]">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1B2A4A] text-white shadow-sm">
             <Shield className="h-5 w-5 text-emerald-400" />
           </div>
           <div className="flex flex-col">
-            <span className="font-extrabold text-base tracking-tight text-[#1B2A4A]">
+            <span className="font-extrabold text-base tracking-tight text-[#1B2A4A] dark:text-foreground">
               KKJ Corretora
             </span>
-            <span className="text-[11px] font-medium text-[#667085]">Seguros & Benefícios</span>
+            <span className="text-[11px] font-medium text-[#667085] dark:text-[#94A3B8]">
+              Seguros & Benefícios
+            </span>
           </div>
         </div>
 
         {/* Navigation Menu */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          <div className="px-3 pb-2 text-[10px] font-bold tracking-wider text-[#667085] uppercase">
+          <div className="px-3 pb-2 text-[10px] font-bold tracking-wider text-[#667085] dark:text-[#94A3B8] uppercase">
             Operação do Corretor
           </div>
           {mainNavigationItems.map((item) => {
@@ -199,11 +201,13 @@ export default function Layout() {
                   return `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     active
                       ? 'bg-[#1B2A4A] text-white shadow-sm font-semibold'
-                      : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+                      : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
                   }`
                 }}
               >
-                <Icon className={`h-4.5 w-4.5 ${isActive ? 'text-white' : 'text-[#667085]'}`} />
+                <Icon
+                  className={`h-4.5 w-4.5 ${isActive ? 'text-white' : 'text-[#667085] dark:text-[#94A3B8]'}`}
+                />
                 <span>{item.name}</span>
               </NavLink>
             )
@@ -211,34 +215,34 @@ export default function Layout() {
         </div>
 
         {/* Visual separator for admin / settings */}
-        <div className="px-3 py-2 border-t border-[#E4E7EC]">
+        <div className="px-3 py-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
           <NavLink
             to="/configuracoes"
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
                   ? 'bg-[#1B2A4A] text-white font-semibold'
-                  : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+                  : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
               }`
             }
           >
-            <Settings className="h-4.5 w-4.5 text-[#667085]" />
+            <Settings className="h-4.5 w-4.5 text-[#667085] dark:text-[#94A3B8]" />
             <span>Configurações</span>
           </NavLink>
         </div>
 
         {/* User profile footer */}
-        <div className="border-t border-[#E4E7EC] p-3">
-          <div className="flex items-center justify-between p-2 rounded-lg bg-[#F5F7FA] border border-[#E4E7EC]">
+        <div className="border-t border-[#E4E7EC] dark:border-[#24324D] p-3">
+          <div className="flex items-center justify-between p-2 rounded-lg bg-[#F5F7FA] dark:bg-[#141F36] border border-[#E4E7EC] dark:border-[#24324D]">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1B2A4A] text-white font-semibold text-xs">
                 {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KJ'}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-xs font-semibold text-[#101828] truncate">
+                <span className="text-xs font-semibold text-[#101828] dark:text-foreground truncate">
                   {user?.name || 'Corretor KKJ'}
                 </span>
-                <span className="text-[10px] text-[#667085] truncate">
+                <span className="text-[10px] text-[#667085] dark:text-[#94A3B8] truncate">
                   {user?.role || 'ADMINISTRADOR'} • {user?.email || 'admin@kkj.com.br'}
                 </span>
               </div>
@@ -248,7 +252,7 @@ export default function Layout() {
               size="icon"
               onClick={logout}
               title="Sair"
-              className="h-8 w-8 text-[#667085] hover:text-[#D92D20] hover:bg-white shrink-0"
+              className="h-8 w-8 text-[#667085] dark:text-[#94A3B8] hover:text-[#D92D20] hover:bg-white dark:hover:bg-[#1E2D4A] shrink-0"
             >
               <LogOut className="h-4 w-4" />
             </Button>
@@ -263,22 +267,26 @@ export default function Layout() {
             className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="relative flex w-full max-w-xs flex-1 flex-col bg-white border-r border-[#E4E7EC]">
-            <div className="flex h-16 items-center justify-between px-6 border-b border-[#E4E7EC]">
+          <div className="relative flex w-full max-w-xs flex-1 flex-col bg-white dark:bg-[#0B1322] border-r border-[#E4E7EC] dark:border-[#24324D]">
+            <div className="flex h-16 items-center justify-between px-6 border-b border-[#E4E7EC] dark:border-[#24324D]">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1B2A4A] text-white">
                   <Shield className="h-4 w-4 text-emerald-400" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-bold text-base text-[#1B2A4A]">KKJ Corretora</span>
-                  <span className="text-[10px] text-[#667085]">Seguros & Benefícios</span>
+                  <span className="font-bold text-base text-[#1B2A4A] dark:text-foreground">
+                    KKJ Corretora
+                  </span>
+                  <span className="text-[10px] text-[#667085] dark:text-[#94A3B8]">
+                    Seguros & Benefícios
+                  </span>
                 </div>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="h-8 w-8 text-[#667085]"
+                className="h-8 w-8 text-[#667085] dark:text-[#94A3B8]"
               >
                 <X className="h-5 w-5" />
               </Button>
@@ -300,7 +308,7 @@ export default function Layout() {
                     className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
                       isActive
                         ? 'bg-[#1B2A4A] text-white'
-                        : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+                        : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
                     }`}
                   >
                     <Icon className="h-5 w-5" />
@@ -309,7 +317,7 @@ export default function Layout() {
                 )
               })}
 
-              <div className="pt-2 border-t border-[#E4E7EC]">
+              <div className="pt-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
                 <NavLink
                   to="/configuracoes"
                   onClick={() => setIsMobileMenuOpen(false)}
@@ -317,7 +325,7 @@ export default function Layout() {
                     `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
                       isActive
                         ? 'bg-[#1B2A4A] text-white'
-                        : 'text-[#667085] hover:bg-[#F5F7FA] hover:text-[#101828]'
+                        : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
                     }`
                   }
                 >
@@ -327,11 +335,11 @@ export default function Layout() {
               </div>
             </div>
 
-            <div className="border-t border-[#E4E7EC] p-4">
+            <div className="border-t border-[#E4E7EC] dark:border-[#24324D] p-4">
               <Button
                 variant="outline"
                 onClick={logout}
-                className="w-full justify-center gap-2 border-[#E4E7EC] text-[#D92D20] hover:bg-red-50"
+                className="w-full justify-center gap-2 border-[#E4E7EC] dark:border-[#24324D] text-[#D92D20] hover:bg-red-50 dark:hover:bg-red-950/20"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sair da conta</span>
@@ -424,20 +432,22 @@ export default function Layout() {
 
               {/* Global search result dropdown */}
               {showSearchDropdown && (
-                <div className="absolute left-0 right-0 top-11 z-50 rounded-xl border border-[#E4E7EC] bg-white p-2 shadow-lg">
+                <div className="absolute left-0 right-0 top-11 z-50 rounded-xl border border-[#E4E7EC] dark:border-border bg-white dark:bg-card p-2 shadow-lg">
                   {isSearching ? (
-                    <div className="p-3 text-center text-xs text-[#667085]">Buscando...</div>
+                    <div className="p-3 text-center text-xs text-[#667085] dark:text-muted-foreground">
+                      Buscando...
+                    </div>
                   ) : searchResults.opportunities.length === 0 &&
                     searchResults.companies.length === 0 &&
                     searchResults.contacts.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-[#667085]">
+                    <div className="p-3 text-center text-xs text-[#667085] dark:text-muted-foreground">
                       Nenhum resultado encontrado para &ldquo;{globalSearch}&rdquo;
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-80 overflow-y-auto">
                       {searchResults.opportunities.length > 0 && (
                         <div>
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
                             Oportunidades
                           </div>
                           {searchResults.opportunities.map((op) => (
@@ -449,20 +459,20 @@ export default function Layout() {
                                 setGlobalSearch('')
                                 navigate('/pipeline')
                               }}
-                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
+                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA] dark:hover:bg-muted"
                             >
                               <div className="flex items-center gap-2">
-                                <KanbanSquare className="h-4 w-4 text-[#1B2A4A]" />
+                                <KanbanSquare className="h-4 w-4 text-[#1B2A4A] dark:text-primary" />
                                 <div className="text-xs">
-                                  <p className="font-semibold text-[#101828] truncate">
+                                  <p className="font-semibold text-[#101828] dark:text-foreground truncate">
                                     {op.title}
                                   </p>
-                                  <p className="text-[10px] text-[#667085]">
+                                  <p className="text-[10px] text-[#667085] dark:text-muted-foreground">
                                     {op.stage} • R$ {(op.sale_value || 0).toLocaleString('pt-BR')}
                                   </p>
                                 </div>
                               </div>
-                              <ChevronRight className="h-3 w-3 text-[#667085]" />
+                              <ChevronRight className="h-3 w-3 text-[#667085] dark:text-muted-foreground" />
                             </button>
                           ))}
                         </div>
@@ -470,7 +480,7 @@ export default function Layout() {
 
                       {searchResults.companies.length > 0 && (
                         <div>
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
                             Empresas / Clientes
                           </div>
                           {searchResults.companies.map((c) => (
@@ -482,20 +492,20 @@ export default function Layout() {
                                 setGlobalSearch('')
                                 navigate('/empresas')
                               }}
-                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
+                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA] dark:hover:bg-muted"
                             >
                               <div className="flex items-center gap-2">
-                                <Building2 className="h-4 w-4 text-blue-600" />
+                                <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                 <div className="text-xs">
-                                  <p className="font-semibold text-[#101828] truncate">
+                                  <p className="font-semibold text-[#101828] dark:text-foreground truncate">
                                     {c.trade_name}
                                   </p>
-                                  <p className="text-[10px] text-[#667085]">
+                                  <p className="text-[10px] text-[#667085] dark:text-muted-foreground">
                                     {c.city} - {c.state} {c.cnpj ? `• CNPJ ${c.cnpj}` : ''}
                                   </p>
                                 </div>
                               </div>
-                              <ChevronRight className="h-3 w-3 text-[#667085]" />
+                              <ChevronRight className="h-3 w-3 text-[#667085] dark:text-muted-foreground" />
                             </button>
                           ))}
                         </div>
@@ -503,7 +513,7 @@ export default function Layout() {
 
                       {searchResults.contacts.length > 0 && (
                         <div>
-                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085]">
+                          <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
                             Contatos
                           </div>
                           {searchResults.contacts.map((ct) => (
@@ -515,18 +525,20 @@ export default function Layout() {
                                 setGlobalSearch('')
                                 navigate('/contatos')
                               }}
-                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA]"
+                              className="flex w-full items-center justify-between rounded-md p-2 text-left hover:bg-[#F5F7FA] dark:hover:bg-muted"
                             >
                               <div className="flex items-center gap-2">
-                                <UserIcon className="h-4 w-4 text-emerald-600" />
+                                <UserIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                                 <div className="text-xs">
-                                  <p className="font-semibold text-[#101828] truncate">{ct.name}</p>
-                                  <p className="text-[10px] text-[#667085]">
+                                  <p className="font-semibold text-[#101828] dark:text-foreground truncate">
+                                    {ct.name}
+                                  </p>
+                                  <p className="text-[10px] text-[#667085] dark:text-muted-foreground">
                                     {ct.phone} {ct.position ? `• ${ct.position}` : ''}
                                   </p>
                                 </div>
                               </div>
-                              <ChevronRight className="h-3 w-3 text-[#667085]" />
+                              <ChevronRight className="h-3 w-3 text-[#667085] dark:text-muted-foreground" />
                             </button>
                           ))}
                         </div>
@@ -543,7 +555,7 @@ export default function Layout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-9 w-9 rounded-lg border border-[#E4E7EC] text-[#667085] hover:bg-[#F5F7FA]"
+                  className="relative h-9 w-9 rounded-lg border border-[#E4E7EC] dark:border-[#24324D] text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#1E2D4A]"
                 >
                   <Bell className="h-4 w-4" />
                   {unreadCount > 0 && (
@@ -553,30 +565,41 @@ export default function Layout() {
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80 p-2">
+              <DropdownMenuContent align="end" className="w-80 p-2 dark:bg-card dark:border-border">
                 <DropdownMenuLabel className="flex items-center justify-between py-1.5">
-                  <span className="font-bold text-xs text-[#101828]">Notificações</span>
-                  <Badge variant="secondary" className="text-[10px] bg-blue-50 text-blue-700">
+                  <span className="font-bold text-xs text-[#101828] dark:text-foreground">
+                    Notificações
+                  </span>
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300"
+                  >
                     {unreadCount} novas
                   </Badge>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="dark:bg-border" />
                 <div className="space-y-1.5 py-1">
                   {notifications.map((n) => (
                     <div
                       key={n.id}
                       className={`p-2.5 rounded-lg text-xs transition-colors ${
-                        n.unread ? 'bg-[#F5F7FA]' : 'hover:bg-[#F5F7FA]'
+                        n.unread
+                          ? 'bg-[#F5F7FA] dark:bg-muted'
+                          : 'hover:bg-[#F5F7FA] dark:hover:bg-muted/60'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-semibold text-[#101828] flex items-center gap-1.5">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        <span className="font-semibold text-[#101828] dark:text-foreground flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                           {n.title}
                         </span>
-                        <span className="text-[10px] text-[#667085]">{n.time}</span>
+                        <span className="text-[10px] text-[#667085] dark:text-muted-foreground">
+                          {n.time}
+                        </span>
                       </div>
-                      <p className="text-[11px] text-[#667085] leading-relaxed">{n.desc}</p>
+                      <p className="text-[11px] text-[#667085] dark:text-muted-foreground leading-relaxed">
+                        {n.desc}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -593,21 +616,23 @@ export default function Layout() {
                   {user?.name ? user.name.slice(0, 2).toUpperCase() : 'KJ'}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-56 dark:bg-card dark:border-border">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-xs font-semibold text-[#101828]">
+                    <p className="text-xs font-semibold text-[#101828] dark:text-foreground">
                       {user?.name || 'Corretor KKJ'}
                     </p>
-                    <p className="text-[11px] text-[#667085] truncate">{user?.email}</p>
+                    <p className="text-[11px] text-[#667085] dark:text-muted-foreground truncate">
+                      {user?.email}
+                    </p>
                     <Badge variant="outline" className="w-fit text-[10px] mt-1 font-mono">
                       {user?.role || 'ADMINISTRADOR'}
                     </Badge>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="dark:bg-border" />
                 <DropdownMenuItem onClick={() => navigate('/configuracoes')}>
-                  <Settings className="mr-2 h-4 w-4 text-[#667085]" />
+                  <Settings className="mr-2 h-4 w-4 text-[#667085] dark:text-muted-foreground" />
                   <span>Configurações</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={logout} className="text-[#D92D20] focus:text-[#D92D20]">

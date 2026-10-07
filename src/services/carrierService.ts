@@ -3,63 +3,62 @@ import type { Carrier } from '@/types/crm'
 // Default seed carriers matching Supabase initial schema
 const INITIAL_CARRIERS: Carrier[] = [
   {
-    id: '1',
+    id: 'c1111111-1111-1111-1111-111111111111',
     nome: 'Amil',
     nome_curto: 'Amil',
     ativo: true,
     observacoes: 'Amil Assistência Médica Internacional',
   },
   {
-    id: '2',
+    id: 'c2222222-2222-2222-2222-222222222222',
     nome: 'Bradesco Saúde',
     nome_curto: 'Bradesco',
     ativo: true,
     observacoes: 'Bradesco Saúde e Odontoprev',
   },
   {
-    id: '3',
+    id: 'c3333333-3333-3333-3333-333333333333',
     nome: 'SulAmérica',
     nome_curto: 'SulAmérica',
     ativo: true,
     observacoes: 'SulAmérica Saúde e Odonto',
   },
   {
-    id: '4',
+    id: 'c4444444-4444-4444-4444-444444444444',
     nome: 'Porto Seguro',
     nome_curto: 'Porto',
     ativo: true,
     observacoes: 'Porto Seguro Saúde e Odontológico',
   },
   {
-    id: '5',
+    id: 'c5555555-5555-5555-5555-555555555555',
     nome: 'Alice',
     nome_curto: 'Alice',
     ativo: true,
     observacoes: 'Alice Saúde Individual e Empresarial',
   },
   {
-    id: '6',
+    id: 'c6666666-6666-6666-6666-666666666666',
     nome: 'Seguros Unimed',
     nome_curto: 'Unimed',
     ativo: true,
     observacoes: 'Seguros Unimed Saúde e Odonto',
   },
   {
-    id: '7',
+    id: 'c7777777-7777-7777-7777-777777777777',
     nome: 'MedSênior',
     nome_curto: 'MedSênior',
     ativo: true,
     observacoes: 'MedSênior Medicina Preventiva e Sênior',
   },
   {
-    id: '8',
+    id: 'c8888888-8888-8888-8888-888888888888',
     nome: 'UniHosp',
     nome_curto: 'UniHosp',
     ativo: true,
     observacoes: 'UniHosp Saúde Regional',
   },
 ]
-
 const LOCAL_STORAGE_KEY = 'kkj_carriers_cache'
 
 export const carrierService = {
