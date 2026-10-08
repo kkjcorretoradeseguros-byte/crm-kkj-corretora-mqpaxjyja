@@ -1,124 +1,356 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
-import pb from '@/lib/pocketbase/client'
-import type { User } from '@/types/crm'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client'
+import type { User, UserRole } from '@/types/crm'
 
 interface AuthContextType {
   user: User | null
   token: string | null
   isLoading: boolean
   isAuthenticated: boolean
+  isSupabaseConfigured: boolean
   login: (email: string, password: string) => Promise<void>
   signup: (email: string, password: string, name: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   requestPasswordReset: (email: string) => Promise<void>
-  confirmPasswordReset: (token: string, password: string, passwordConfirm: string) => Promise<void>
+  confirmPasswordReset: (token: string, password: string, passwordConfirm?: string) => Promise<void>
   confirmVerification: (token: string) => Promise<void>
   requestEmailChange: (newEmail: string) => Promise<void>
-  confirmEmailChange: (token: string, password: string) => Promise<void>
-  updateProfile: (data: { name?: string; avatar?: File | null }) => Promise<void>
+  confirmEmailChange: (token: string, password?: string) => Promise<void>
+  updateProfile: (data: { name?: string; phone?: string; avatar?: File | null }) => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const PROFILE_STORAGE_KEY = 'kkj_auth_profile'
+
+function mapDbRoleToAppRole(dbRole?: string | null): UserRole {
+  const norm = (dbRole || '').toLowerCase().trim()
+  if (norm === 'administrador') return 'ADMINISTRADOR'
+  if (norm === 'gestor') return 'GESTOR'
+  return 'VENDEDOR'
+}
+
+function getStoredProfile(): User | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function persistProfile(profile: User | null) {
+  try {
+    if (profile) {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
+    } else {
+      localStorage.removeItem(PROFILE_STORAGE_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    return (pb.authStore.record as unknown as User) || null
-  })
-  const [token, setToken] = useState<string | null>(pb.authStore.token)
+  const [user, setUser] = useState<User | null>(() => getStoredProfile())
+  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const fetchProfileForAuthUser = useCallback(
+    async (authUserId: string, authEmail: string, metaName?: string): Promise<User> => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUserId)
+          .maybeSingle()
+
+        if (error && error.code !== 'PGRST116') {
+          console.warn('Erro ao consultar profile:', error.message)
+        }
+
+        const role = mapDbRoleToAppRole(data?.role)
+        const appUser: User = {
+          id: authUserId,
+          email: data?.email || authEmail,
+          name: data?.nome || metaName || authEmail.split('@')[0],
+          role,
+          phone: data?.celular || undefined,
+          position: data?.cargo || undefined,
+          team: data?.equipe || undefined,
+          active: data?.ativo ?? true,
+          receives_automatic_leads: data?.recebe_leads_automaticos ?? true,
+          created: data?.created_at,
+          updated: data?.updated_at,
+        }
+        return appUser
+      } catch {
+        return {
+          id: authUserId,
+          email: authEmail,
+          name: metaName || authEmail.split('@')[0],
+          role: 'VENDEDOR',
+        }
+      }
+    },
+    [],
+  )
+
+  const refreshProfile = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (session?.user) {
+      const profile = await fetchProfileForAuthUser(
+        session.user.id,
+        session.user.email || '',
+        (session.user.user_metadata?.nome as string) ||
+          (session.user.user_metadata?.name as string),
+      )
+      setUser(profile)
+      persistProfile(profile)
+    }
+  }, [fetchProfileForAuthUser])
+
   useEffect(() => {
-    const unsub = pb.authStore.onChange((newToken, model) => {
-      setToken(newToken)
-      setUser((model as unknown as User) || null)
+    // 1. Carrega sessão inicial do Supabase Auth
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session } }) => {
+        if (session?.user) {
+          setToken(session.access_token)
+          const profile = await fetchProfileForAuthUser(
+            session.user.id,
+            session.user.email || '',
+            (session.user.user_metadata?.nome as string) ||
+              (session.user.user_metadata?.name as string),
+          )
+          setUser(profile)
+          persistProfile(profile)
+        } else {
+          setToken(null)
+          setUser(null)
+          persistProfile(null)
+        }
+        setIsLoading(false)
+      })
+      .catch(() => {
+        setIsLoading(false)
+      })
+
+    // 2. Ouvinte de mudanças de estado de autenticação (onAuthStateChange)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setToken(session.access_token)
+        const profile = await fetchProfileForAuthUser(
+          session.user.id,
+          session.user.email || '',
+          (session.user.user_metadata?.nome as string) ||
+            (session.user.user_metadata?.name as string),
+        )
+        setUser(profile)
+        persistProfile(profile)
+      } else {
+        setToken(null)
+        setUser(null)
+        persistProfile(null)
+      }
+      setIsLoading(false)
     })
 
-    // Validate token on mount
-    if (pb.authStore.isValid) {
-      pb.collection('users')
-        .authRefresh()
-        .then((res) => {
-          setUser(res.record as unknown as User)
-        })
-        .catch(() => {
-          // Keep current store or clear if expired
-          if (!pb.authStore.isValid) {
-            setUser(null)
-          }
-        })
-        .finally(() => {
-          setIsLoading(false)
-        })
-    } else {
-      setIsLoading(false)
-    }
-
     return () => {
-      unsub()
+      subscription.unsubscribe()
     }
-  }, [])
+  }, [fetchProfileForAuthUser])
 
   const login = async (email: string, password: string) => {
-    const res = await pb.collection('users').authWithPassword(email, password)
-    setUser(res.record as unknown as User)
-    setToken(res.token)
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        'Supabase não configurado no ambiente. Defina as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para autenticar.',
+      )
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
+
+    if (error) {
+      throw new Error(
+        error.message || 'Falha ao autenticar no Supabase. Verifique suas credenciais.',
+      )
+    }
+
+    if (data.user) {
+      setToken(data.session?.access_token || null)
+      const profile = await fetchProfileForAuthUser(
+        data.user.id,
+        data.user.email || email,
+        (data.user.user_metadata?.nome as string) || (data.user.user_metadata?.name as string),
+      )
+      setUser(profile)
+      persistProfile(profile)
+    }
   }
 
   const signup = async (email: string, password: string, name: string) => {
-    await pb.collection('users').create({
-      email,
-      password,
-      passwordConfirm: password,
-      name,
-    })
-    // Also trigger email verification
-    try {
-      await pb.collection('users').requestVerification(email)
-    } catch {
-      // ignore in local or without mailer configured
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        'Supabase não configurado no ambiente. Defina as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para cadastrar.',
+      )
     }
-    // Auto-login after signup
-    await login(email, password)
+
+    const normalizedEmail = email.trim().toLowerCase()
+
+    // O signup cria o usuário no Supabase Auth.
+    // A trigger do banco `handle_new_user` cria automaticamente o registro correspondente em `public.profiles`
+    // com papel padrão 'vendedor' e em `public.user_preferences` com tema 'system'.
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password,
+      options: {
+        data: {
+          nome: name.trim(),
+          name: name.trim(),
+        },
+      },
+    })
+
+    if (error) {
+      throw new Error(error.message || 'Falha ao criar conta no Supabase.')
+    }
+
+    // Se a confirmação de e-mail estiver desabilitada no Supabase, a sessão já vem ativa
+    if (data.session && data.user) {
+      setToken(data.session.access_token)
+      const profile = await fetchProfileForAuthUser(data.user.id, normalizedEmail, name)
+      setUser(profile)
+      persistProfile(profile)
+    } else {
+      // Tenta login direto (caso email não exija confirmação)
+      try {
+        await login(normalizedEmail, password)
+      } catch {
+        // Se exigir confirmação de e-mail, encerra sem erro fatal
+      }
+    }
   }
 
-  const logout = () => {
-    pb.authStore.clear()
-    setUser(null)
-    setToken(null)
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      /* ignore */
+    } finally {
+      setUser(null)
+      setToken(null)
+      persistProfile(null)
+    }
   }
 
   const requestPasswordReset = async (email: string) => {
-    await pb.collection('users').requestPasswordReset(email)
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado no ambiente.')
+    }
+    const redirectTo =
+      typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : undefined
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo,
+    })
+    if (error) {
+      throw new Error(error.message || 'Falha ao solicitar recuperação de senha.')
+    }
   }
 
-  const confirmPasswordReset = async (token: string, password: string, passwordConfirm: string) => {
-    await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm)
+  const confirmPasswordReset = async (
+    _token: string,
+    password: string,
+    _passwordConfirm?: string,
+  ) => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado no ambiente.')
+    }
+    // No Supabase, ao acessar via link de recuperação, a sessão de recovery é iniciada automaticamente pelo client.
+    // O updateUser atualiza a senha do usuário autenticado no fluxo de recovery.
+    const { error } = await supabase.auth.updateUser({
+      password,
+    })
+    if (error) {
+      throw new Error(error.message || 'Falha ao redefinir a senha.')
+    }
   }
 
-  const confirmVerification = async (token: string) => {
-    await pb.collection('users').confirmVerification(token)
+  const confirmVerification = async (tokenParam: string) => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado no ambiente.')
+    }
+    // Supabase suporta verifyOtp com tipo signup/email
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenParam,
+      type: 'email',
+    })
+    if (error) {
+      // Fallback para token direto
+      const { error: fallbackError } = await supabase.auth.verifyOtp({
+        token_hash: tokenParam,
+        type: 'signup',
+      })
+      if (fallbackError) {
+        throw new Error(fallbackError.message || error.message || 'Falha ao verificar e-mail.')
+      }
+    }
   }
 
   const requestEmailChange = async (newEmail: string) => {
-    await pb.collection('users').requestEmailChange(newEmail)
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado no ambiente.')
+    }
+    const { error } = await supabase.auth.updateUser({
+      email: newEmail.trim().toLowerCase(),
+    })
+    if (error) {
+      throw new Error(error.message || 'Falha ao solicitar alteração de e-mail.')
+    }
   }
 
-  const confirmEmailChange = async (token: string, password: string) => {
-    await pb.collection('users').confirmEmailChange(token, password)
-    logout()
+  const confirmEmailChange = async (tokenParam: string, _password?: string) => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado no ambiente.')
+    }
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenParam,
+      type: 'email_change',
+    })
+    if (error) {
+      throw new Error(error.message || 'Falha ao confirmar novo e-mail.')
+    }
+    await logout()
   }
 
-  const updateProfile = async (data: { name?: string; avatar?: File | null }) => {
-    if (!pb.authStore.record?.id) return
-    const formData = new FormData()
-    if (data.name !== undefined) {
-      formData.append('name', data.name)
+  const updateProfile = async (data: { name?: string; phone?: string; avatar?: File | null }) => {
+    if (!user?.id) return
+    const updates: Record<string, unknown> = {}
+    if (data.name !== undefined) updates.nome = data.name.trim()
+    if (data.phone !== undefined) updates.celular = data.phone.trim()
+
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabase.from('profiles').update(updates).eq('id', user.id)
+
+      if (error) {
+        throw new Error(error.message || 'Falha ao atualizar perfil.')
+      }
     }
-    if (data.avatar instanceof File) {
-      formData.append('avatar', data.avatar)
+
+    if (data.name) {
+      await supabase.auth.updateUser({
+        data: { nome: data.name.trim(), name: data.name.trim() },
+      })
     }
-    const updated = await pb.collection('users').update(pb.authStore.record.id, formData)
-    setUser(updated as unknown as User)
+
+    await refreshProfile()
   }
 
   return (
@@ -127,7 +359,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         isLoading,
-        isAuthenticated: !!user && pb.authStore.isValid,
+        isAuthenticated: !!user,
+        isSupabaseConfigured,
         login,
         signup,
         logout,
@@ -137,6 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requestEmailChange,
         confirmEmailChange,
         updateProfile,
+        refreshProfile,
       }}
     >
       {children}
@@ -151,3 +385,5 @@ export const useAuth = () => {
   }
   return context
 }
+
+export default AuthContext

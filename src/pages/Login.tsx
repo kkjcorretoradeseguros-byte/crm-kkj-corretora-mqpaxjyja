@@ -67,9 +67,16 @@ export default function Login() {
               {error && (
                 <Alert variant="destructive" className="bg-red-50 text-red-900 border-red-200">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertDescription className="text-xs">{error}</AlertDescription>
+                  <AlertDescription className="text-xs leading-relaxed">{error}</AlertDescription>
                 </Alert>
               )}
+
+              <div className="rounded-lg bg-emerald-50/70 border border-emerald-200 p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span>
+                  Autenticação conectada ao <strong>Supabase Auth</strong> da KKJ Corretora.
+                </span>
+              </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-xs font-medium text-[#101828]">
