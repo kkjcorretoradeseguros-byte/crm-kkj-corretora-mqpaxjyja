@@ -17,8 +17,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import kkjLogoUrl from '@/assets/logo-versao-escura-637a4.png'
 
 export default function Login() {
-  const [email, setEmail] = useState('kevinkjekabson@gmail.com')
-  const [password, setPassword] = useState('Skip@Pass')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { login, isSupabaseConfigured } = useAuth()
@@ -185,18 +185,6 @@ export default function Login() {
                       required
                       className="pl-9 h-10 bg-[#070D18]/80 border-[#1C2C4C] text-slate-100 placeholder:text-slate-500 focus-visible:ring-sky-500 focus-visible:border-sky-500"
                     />
-                  </div>
-                </div>
-
-                <div className="rounded-md bg-blue-950/30 p-3 border border-blue-800/40 text-xs text-blue-200">
-                  <span className="font-semibold text-blue-100">
-                    Credenciais de teste pré-configuradas:
-                  </span>
-                  <div className="mt-1 text-slate-300">
-                    E-mail: <code className="text-sky-300">kevinkjekabson@gmail.com</code>
-                  </div>
-                  <div className="text-slate-300">
-                    Senha: <code className="text-sky-300">Skip@Pass</code>
                   </div>
                 </div>
               </CardContent>
