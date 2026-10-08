@@ -205,9 +205,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const normalizedEmail = email.trim().toLowerCase()
 
-    // O signup cria o usuário no Supabase Auth.
+    // O signup cria o usuário no Supabase Auth com data.nome (e alias name para compatibilidade).
     // A trigger do banco `handle_new_user` cria automaticamente o registro correspondente em `public.profiles`
-    // com papel padrão 'vendedor' e em `public.user_preferences` com tema 'system'.
+    // com papel padrão estrito 'vendedor' e em `public.user_preferences` com tema 'system'.
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,

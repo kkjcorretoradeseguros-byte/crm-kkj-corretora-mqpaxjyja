@@ -20,7 +20,7 @@ export default function Login() {
   const [password, setPassword] = useState('Skip@Pass')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, isSupabaseConfigured } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -71,12 +71,26 @@ export default function Login() {
                 </Alert>
               )}
 
-              <div className="rounded-lg bg-emerald-50/70 border border-emerald-200 p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
-                <Shield className="h-4 w-4 text-emerald-700 shrink-0" />
-                <span>
-                  Autenticação conectada ao <strong>Supabase Auth</strong> da KKJ Corretora.
-                </span>
-              </div>
+              {!isSupabaseConfigured ? (
+                <div className="rounded-lg bg-amber-50 border border-amber-300 p-3 text-xs text-amber-950 flex items-start gap-2.5">
+                  <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-semibold">Supabase não configurado</strong>
+                    <span className="text-[11px] leading-relaxed text-amber-900">
+                      As variáveis <code>VITE_SUPABASE_URL</code> e{' '}
+                      <code>VITE_SUPABASE_ANON_KEY</code> ainda não foram injetadas no ambiente.
+                      Configure-as para conectar ao banco de dados e autenticar.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-emerald-50/70 border border-emerald-200 p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-emerald-700 shrink-0" />
+                  <span>
+                    Autenticação conectada ao <strong>Supabase Auth</strong> da KKJ Corretora.
+                  </span>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-xs font-medium text-[#101828]">

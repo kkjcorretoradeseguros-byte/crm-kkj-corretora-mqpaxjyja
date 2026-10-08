@@ -59,56 +59,107 @@ const INITIAL_CARRIERS: Carrier[] = [
     observacoes: 'UniHosp Saúde Regional',
   },
 ]
-const LOCAL_STORAGE_KEY = 'kkj_carriers_cache'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase/client'
 
 export const carrierService = {
-  async getAllCarriers(onlyActive = true): Promise<Carrier[]> {
+  async getAllCarriers(onlyActive: boolean = true): Promise<Carrier[]> {
+    if (!isSupabaseConfigured) {
+      return onlyActive ? INITIAL_CARRIERS.filter((c) => c.ativo) : INITIAL_CARRIERS
+    }
+
     try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY)
-      let list: Carrier[] = stored ? JSON.parse(stored) : INITIAL_CARRIERS
-      if (!stored) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_CARRIERS))
-      }
+      let query = supabase.from('carriers').select('*').order('nome', { ascending: true })
+
       if (onlyActive) {
-        list = list.filter((c) => c.ativo)
+        query = query.eq('ativo', true)
       }
-      return list
+
+      const { data, error } = await query
+      if (error) {
+        console.warn('Erro ao carregar operadoras do Supabase:', error.message)
+        return onlyActive ? INITIAL_CARRIERS.filter((c) => c.ativo) : INITIAL_CARRIERS
+      }
+
+      if (!data || data.length === 0) {
+        return onlyActive ? INITIAL_CARRIERS.filter((c) => c.ativo) : INITIAL_CARRIERS
+      }
+
+      return data as Carrier[]
     } catch {
       return onlyActive ? INITIAL_CARRIERS.filter((c) => c.ativo) : INITIAL_CARRIERS
     }
   },
 
   async createCarrier(data: Omit<Carrier, 'id' | 'created_at' | 'updated_at'>): Promise<Carrier> {
-    const list = await this.getAllCarriers(false)
-    const newCarrier: Carrier = {
-      ...data,
-      id: `carrier-${Date.now()}`,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado')
     }
-    const updated = [...list, newCarrier]
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated))
-    return newCarrier
+
+    const { data: created, error } = await supabase
+      .from('carriers')
+      .insert({
+        nome: data.nome,
+        cnpj: data.cnpj || null,
+        ans_registro: data.ans_registro || null,
+        segmento_principal: data.segmento_principal,
+        segmentos_atendidos: data.segmentos_atendidos || [],
+        ativo: data.ativo ?? true,
+        logo_url: data.logo_url || null,
+        site: data.site || null,
+        telefone_suporte: data.telefone_suporte || null,
+        email_operacional: data.email_operacional || null,
+        portal_corretor_url: data.portal_corretor_url || null,
+      })
+      .select('*')
+      .single()
+
+    if (error || !created) {
+      throw new Error(error?.message || 'Falha ao cadastrar operadora')
+    }
+
+    return created as Carrier
   },
 
-  async updateCarrier(id: string, data: Partial<Carrier>): Promise<Carrier> {
-    const list = await this.getAllCarriers(false)
-    const index = list.findIndex((c) => c.id === id)
-    if (index === -1) throw new Error('Operadora não encontrada')
-    const updatedCarrier = {
-      ...list[index],
-      ...data,
-      updated_at: new Date().toISOString(),
+  async updateCarrier(
+    id: string,
+    data: Partial<Omit<Carrier, 'id' | 'created_at' | 'updated_at'>>,
+  ): Promise<Carrier> {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado')
     }
-    list[index] = updatedCarrier
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list))
-    return updatedCarrier
+
+    const { data: updated, error } = await supabase
+      .from('carriers')
+      .update({
+        ...data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('*')
+      .single()
+
+    if (error || !updated) {
+      throw new Error(error?.message || 'Falha ao atualizar operadora')
+    }
+
+    return updated as Carrier
   },
 
-  async toggleCarrier(id: string): Promise<Carrier> {
-    const list = await this.getAllCarriers(false)
-    const item = list.find((c) => c.id === id)
-    if (!item) throw new Error('Operadora não encontrada')
-    return this.updateCarrier(id, { ativo: !item.ativo })
+  async toggleCarrierStatus(id: string): Promise<Carrier> {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado')
+    }
+
+    const { data: current, error: getErr } = await supabase
+      .from('carriers')
+      .select('ativo')
+      .eq('id', id)
+      .single()
+
+    if (getErr || !current) {
+      throw new Error(getErr?.message || 'Operadora não encontrada')
+    }
+
+    return this.updateCarrier(id, { ativo: !current.ativo })
   },
 }

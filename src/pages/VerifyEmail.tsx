@@ -10,7 +10,7 @@ export default function VerifyEmail() {
   const token = searchParams.get('token') || ''
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying')
   const [errorMessage, setErrorMessage] = useState('')
-  const { confirmVerification } = useAuth()
+  const { confirmVerification, isSupabaseConfigured } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -56,6 +56,19 @@ export default function VerifyEmail() {
           </CardHeader>
 
           <CardContent className="space-y-4 py-6">
+            {!isSupabaseConfigured && (
+              <div className="rounded-lg bg-amber-50 border border-amber-300 p-3 text-xs text-amber-950 flex items-start gap-2.5 text-left mb-3">
+                <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-semibold">Supabase não configurado</strong>
+                  <span className="text-[11px] leading-relaxed text-amber-900">
+                    Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> para
+                    validar e-mails.
+                  </span>
+                </div>
+              </div>
+            )}
+
             {status === 'verifying' && (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-10 w-10 animate-spin text-[#1B2A4A]" />

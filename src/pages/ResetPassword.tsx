@@ -23,7 +23,7 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const { confirmPasswordReset } = useAuth()
+  const { confirmPasswordReset, isSupabaseConfigured } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,6 +93,19 @@ export default function ResetPassword() {
           ) : (
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
+                {!isSupabaseConfigured && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-300 p-3 text-xs text-amber-950 flex items-start gap-2.5">
+                    <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-semibold">Supabase não configurado</strong>
+                      <span className="text-[11px] leading-relaxed text-amber-900">
+                        Defina <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code>{' '}
+                        para redefinir a senha.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {error && (
                   <Alert variant="destructive" className="bg-red-50 text-red-900 border-red-200">
                     <AlertCircle className="h-4 w-4" />
