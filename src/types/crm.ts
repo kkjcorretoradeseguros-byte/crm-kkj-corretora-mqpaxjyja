@@ -4,7 +4,7 @@
 // Compatível com Supabase e abstraído para portabilidade completa
 // ==============================================================================
 
-export type UserRole = 'ADMINISTRADOR' | 'GESTOR' | 'VENDEDOR'
+export type UserRole = 'ADMINISTRADOR' | 'GESTOR' | 'VENDEDOR' | 'admin' | 'gestor' | 'vendedor'
 
 export interface User {
   id: string
@@ -30,6 +30,15 @@ export interface Carrier {
   nome_curto?: string
   ativo: boolean
   observacoes?: string
+  cnpj?: string | null
+  ans_registro?: string | null
+  segmento_principal?: string | null
+  segmentos_atendidos?: string[]
+  logo_url?: string | null
+  site?: string | null
+  telefone_suporte?: string | null
+  email_operacional?: string | null
+  portal_corretor_url?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -43,6 +52,10 @@ export type ProductCategory =
   | 'Seguro Auto'
   | 'Consórcio'
   | 'Outros'
+  | 'SAUDE'
+  | 'ODONTO'
+  | 'VIDA'
+  | 'AUTO'
 
 export interface Product {
   id: string
@@ -70,6 +83,9 @@ export interface Company {
   trade_name: string // Nome Fantasia
   legal_name?: string // Razão Social
   cnpj?: string
+  phone?: string
+  email?: string
+  address?: string
   city?: string
   state?: string
   segment?: string
@@ -86,6 +102,7 @@ export interface Contact {
   email?: string
   position?: string
   cpf?: string
+  is_primary?: boolean
   company_id?: string
   notes?: string
   expand?: {
@@ -190,7 +207,7 @@ export interface Opportunity {
   title: string
   pipeline_type: PipelineType
   stage: string
-  temperature: Temperature
+  temperature?: Temperature
   contact_id?: string
   company_id?: string
   product_id?: string
@@ -199,7 +216,14 @@ export interface Opportunity {
   current_carrier_name?: string // Nome da operadora atual quando não cadastrada
   assigned_to?: string // owner_id
   origin?: string
-  tags?: string
+  tags?: string | string[]
+  value?: number
+  lives_count?: number
+  probability?: number
+  expected_close_date?: string
+  close_date?: string
+  lost_details?: string
+  notes?: string
   sale_value?: number // Mensalidade / Valor do produto
   commission_value?: number // Faturamento estimado para KKJ
   quotation_link?: string
@@ -236,8 +260,31 @@ export type TaskType =
   | 'Implantação'
   | 'Cobrança/Pagamento'
   | 'Outro'
+  | 'LIGACAO'
+  | 'WHATSAPP'
+  | 'EMAIL'
+  | 'REUNIAO'
+  | 'PROPOSTA'
+  | 'FOLLOW_UP'
+  | 'OUTRO'
 
-export type TaskStatus = 'Pendente' | 'Concluída' | 'Cancelada'
+export type TaskStatus =
+  | 'Pendente'
+  | 'Concluída'
+  | 'Cancelada'
+  | 'CONCLUIDA'
+  | 'PENDENTE'
+  | 'CANCELADA'
+
+export type TaskPriority =
+  | 'Baixa'
+  | 'Média'
+  | 'Alta'
+  | 'Urgente'
+  | 'BAIXA'
+  | 'MEDIA'
+  | 'ALTA'
+  | 'URGENTE'
 
 export interface Task {
   id: string
@@ -246,11 +293,18 @@ export interface Task {
   due_date: string
   due_time?: string
   status: TaskStatus
+  priority?: TaskPriority
+  description?: string
+  completed_at?: string
   notes?: string
   opportunity_id?: string
+  contact_id?: string
+  company_id?: string
   assigned_to?: string
   expand?: {
     opportunity_id?: Opportunity
+    contact_id?: Contact
+    company_id?: Company
     assigned_to?: User
   }
   created_by?: string
@@ -269,7 +323,8 @@ export type TimelineActionType =
 export interface OpportunityTimeline {
   id: string
   opportunity_id: string
-  action_type: TimelineActionType
+  action_type?: TimelineActionType
+  action?: string
   title: string
   description?: string
   metadata?: Record<string, unknown>
@@ -280,6 +335,8 @@ export interface OpportunityTimeline {
   created?: string
   updated?: string
 }
+
+export type OpportunityTimelineAction = OpportunityTimeline
 
 export interface OpportunityAssignment {
   id: string
@@ -322,6 +379,9 @@ export interface Contract {
   operator?: string // Alias frontend em visualização expandida
   plano?: string
   start_date?: string
+  end_date?: string
+  billing_day?: number
+  notes?: string
   renewal_date?: string
   status: ContractStatus
   assigned_to?: string

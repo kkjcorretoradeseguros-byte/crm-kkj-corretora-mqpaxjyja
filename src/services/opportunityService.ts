@@ -196,7 +196,7 @@ function mapOpportunityRow(r: OpportunityDbRow): Opportunity {
 interface TimelineDbRow {
   id: string
   opportunity_id: string
-  action: OpportunityTimelineAction
+  action: string
   title: string
   description?: string | null
   metadata?: Record<string, unknown> | null
@@ -385,7 +385,7 @@ export const opportunityService = {
   async updateOpportunity(
     id: string,
     data: Partial<Opportunity>,
-    logTimelineAction?: OpportunityTimelineAction,
+    logTimelineAction?: string | OpportunityTimelineAction,
     timelineDescription?: string,
   ): Promise<Opportunity> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
@@ -432,11 +432,15 @@ export const opportunityService = {
 
     if (logTimelineAction) {
       try {
+        const actionStr =
+          typeof logTimelineAction === 'string'
+            ? logTimelineAction
+            : logTimelineAction.action || 'STAGE_CHANGE'
         await supabase.from('opportunity_timeline').insert({
           opportunity_id: id,
-          action: logTimelineAction,
+          action: actionStr,
           title:
-            logTimelineAction === 'STAGE_CHANGE'
+            actionStr === 'STAGE_CHANGE'
               ? `Etapa alterada para ${mapped.stage}`
               : 'Atualização de oportunidade',
           description: timelineDescription || `Atualizado para etapa ${mapped.stage}`,
@@ -450,17 +454,26 @@ export const opportunityService = {
     return mapped
   },
 
-  async updateStage(id: string, stage: string, lostReason?: string): Promise<Opportunity> {
+  async updateStage(
+    id: string,
+    stage: string,
+    previousStageOrLostReason?: string,
+    lostReasonParam?: string,
+  ): Promise<Opportunity> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
+    const lostReason =
+      lostReasonParam ||
+      (stage === 'PERDIDO' || stage === 'Venda perdida' ? previousStageOrLostReason : undefined)
+
     const updatePayload: Partial<Opportunity> = { stage }
-    if (stage === 'PERDIDO') {
+    if (stage === 'PERDIDO' || stage === 'Venda perdida') {
       updatePayload.lost_reason = lostReason || 'Outro'
       updatePayload.close_date = new Date().toISOString()
-    } else if (stage === 'IMPLANTADO' || stage === 'GANHO') {
+    } else if (stage === 'IMPLANTADO' || stage === 'GANHO' || stage === 'Venda ganha') {
       updatePayload.close_date = new Date().toISOString()
     }
 
@@ -483,6 +496,10 @@ export const opportunityService = {
     }
 
     return updated
+  },
+
+  async updateAssigned(id: string, newUserId: string, _newUserName?: string): Promise<Opportunity> {
+    return this.transferOpportunity(id, newUserId)
   },
 
   async transferOpportunity(id: string, newUserId: string): Promise<Opportunity> {

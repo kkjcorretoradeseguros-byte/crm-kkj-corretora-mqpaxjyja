@@ -162,4 +162,8 @@ export const carrierService = {
 
     return this.updateCarrier(id, { ativo: !current.ativo })
   },
+
+  async toggleCarrier(id: string): Promise<Carrier> {
+    return this.toggleCarrierStatus(id)
+  },
 }

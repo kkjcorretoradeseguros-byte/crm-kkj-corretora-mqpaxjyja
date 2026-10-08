@@ -329,9 +329,12 @@ export function OpportunityDetailModal({
                         Tags
                       </span>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {opportunity.tags.split(',').map((t, idx) => (
+                        {(Array.isArray(opportunity.tags)
+                          ? opportunity.tags
+                          : opportunity.tags.split(',')
+                        ).map((t, idx) => (
                           <Badge key={idx} variant="secondary" className="text-[10px] bg-slate-100">
-                            {t.trim()}
+                            {typeof t === 'string' ? t.trim() : String(t)}
                           </Badge>
                         ))}
                       </div>
