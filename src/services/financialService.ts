@@ -1,38 +1,34 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client'
 
 export interface FinancialCommissionSummary {
-  vendedor_id: string
-  vendedor_nome: string
-  total_faturado_kkj: number
-  total_comissao_recebida: number
-  total_comissao_prevista: number
-  parcelas_pagas: number
-  parcelas_pendentes: number
-  parcelas_atrasadas: number
+  total_contratos: number
+  total_repasse_previsto: number
+  total_repasse_pago: number
+  total_repasse_pendente: number
+  parcelas_a_vencer: number
+  parcelas_vencidas: number
 }
 
 export interface FinancialInstallmentItem {
-  installment_id: string
-  policy_id: string
-  numero_proposta_apolice: string | null
-  carrier_nome: string | null
-  product_nome: string | null
-  client_nome: string | null
+  parcela_id: string
+  contract_id: string
+  numero_contrato: string | null
+  cliente_nome: string | null
+  operadora_nome: string | null
   numero_parcela: number
+  total_parcelas: number
+  tipo_parcela: string
   data_vencimento: string
-  data_pagamento_cliente: string | null
-  valor_premio_parcela: number
-  valor_base_comissao: number
-  percentual_comissao_vendedor: number
-  valor_comissao_vendedor: number
-  status_comissao: 'PREVISTA' | 'CONFIRMADA' | 'PAGA' | 'CANCELADA' | 'ESTORNADA'
-  data_repasse_vendedor: string | null
+  repasse_previsto_vendedor: number
+  repasse_pago_vendedor: number
+  data_repasse: string | null
+  status: string
 }
 
 export const financialService = {
   /**
-   * Consulta o resumo financeiro consolidado do vendedor autenticado via RPC SECURITY DEFINER `get_meu_financeiro`.
-   * Vendedor só enxerga seus números; admin/gestor podem chamar para obter o resumo individual.
+   * Consulta o resumo financeiro consolidado via RPC SECURITY DEFINER `get_meu_financeiro`.
+   * Vendedor enxerga seus contratos; gestor enxerga subordinados de sua equipe ativa; admin enxerga tudo.
    */
   async getMeuFinanceiro(): Promise<FinancialCommissionSummary | null> {
     if (!isSupabaseConfigured) return null
@@ -51,14 +47,12 @@ export const financialService = {
       if (!row) return null
 
       return {
-        vendedor_id: row.vendedor_id,
-        vendedor_nome: row.vendedor_nome,
-        total_faturado_kkj: Number(row.total_faturado_kkj || 0),
-        total_comissao_recebida: Number(row.total_comissao_recebida || 0),
-        total_comissao_prevista: Number(row.total_comissao_prevista || 0),
-        parcelas_pagas: Number(row.parcelas_pagas || 0),
-        parcelas_pendentes: Number(row.parcelas_pendentes || 0),
-        parcelas_atrasadas: Number(row.parcelas_atrasadas || 0),
+        total_contratos: Number(row.total_contratos || 0),
+        total_repasse_previsto: Number(row.total_repasse_previsto || 0),
+        total_repasse_pago: Number(row.total_repasse_pago || 0),
+        total_repasse_pendente: Number(row.total_repasse_pendente || 0),
+        parcelas_a_vencer: Number(row.parcelas_a_vencer || 0),
+        parcelas_vencidas: Number(row.parcelas_vencidas || 0),
       }
     } catch (err) {
       console.warn('Falha inesperada ao consultar RPC get_meu_financeiro:', err)
@@ -67,14 +61,16 @@ export const financialService = {
   },
 
   /**
-   * Consulta a lista de parcelas de comissão do vendedor autenticado via RPC SECURITY DEFINER `get_minhas_parcelas`.
+   * Consulta a lista de parcelas de comissão via RPC SECURITY DEFINER `get_minhas_parcelas(p_mes, p_ano)`.
+   * Suporta filtros opcionais de mês e ano para conciliação.
    */
-  async getMinhasParcelas(statusFiltro?: string): Promise<FinancialInstallmentItem[]> {
+  async getMinhasParcelas(mes?: number, ano?: number): Promise<FinancialInstallmentItem[]> {
     if (!isSupabaseConfigured) return []
 
     try {
       const { data, error } = await supabase.rpc('get_minhas_parcelas', {
-        status_filtro: statusFiltro || null,
+        p_mes: mes ?? null,
+        p_ano: ano ?? null,
       })
 
       if (error) {
@@ -85,28 +81,19 @@ export const financialService = {
       if (!data || !Array.isArray(data)) return []
 
       return data.map((item: Record<string, unknown>) => ({
-        installment_id: String(item.installment_id || ''),
-        policy_id: String(item.policy_id || ''),
-        numero_proposta_apolice: item.numero_proposta_apolice
-          ? String(item.numero_proposta_apolice)
-          : null,
-        carrier_nome: item.carrier_nome ? String(item.carrier_nome) : null,
-        product_nome: item.product_nome ? String(item.product_nome) : null,
-        client_nome: item.client_nome ? String(item.client_nome) : null,
+        parcela_id: String(item.parcela_id || ''),
+        contract_id: String(item.contract_id || ''),
+        numero_contrato: item.numero_contrato ? String(item.numero_contrato) : null,
+        cliente_nome: item.cliente_nome ? String(item.cliente_nome) : null,
+        operadora_nome: item.operadora_nome ? String(item.operadora_nome) : null,
         numero_parcela: Number(item.numero_parcela || 1),
+        total_parcelas: Number(item.total_parcelas || 1),
+        tipo_parcela: String(item.tipo_parcela || 'vitalicia'),
         data_vencimento: String(item.data_vencimento || ''),
-        data_pagamento_cliente: item.data_pagamento_cliente
-          ? String(item.data_pagamento_cliente)
-          : null,
-        valor_premio_parcela: Number(item.valor_premio_parcela || 0),
-        valor_base_comissao: Number(item.valor_base_comissao || 0),
-        percentual_comissao_vendedor: Number(item.percentual_comissao_vendedor || 0),
-        valor_comissao_vendedor: Number(item.valor_comissao_vendedor || 0),
-        status_comissao:
-          (item.status_comissao as FinancialInstallmentItem['status_comissao']) || 'PREVISTA',
-        data_repasse_vendedor: item.data_repasse_vendedor
-          ? String(item.data_repasse_vendedor)
-          : null,
+        repasse_previsto_vendedor: Number(item.repasse_previsto_vendedor || 0),
+        repasse_pago_vendedor: Number(item.repasse_pago_vendedor || 0),
+        data_repasse: item.data_repasse ? String(item.data_repasse) : null,
+        status: String(item.status || 'previsto'),
       }))
     } catch (err) {
       console.warn('Falha inesperada ao consultar RPC get_minhas_parcelas:', err)

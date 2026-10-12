@@ -127,16 +127,14 @@ CREATE POLICY "system_settings_history_admin_write"
   WITH CHECK (public.is_admin());
 
 -- Seed padrão de alíquota de imposto: 11.00%
+-- Inicialização somente quando a chave não existir; preserva edições posteriores de administradores.
 INSERT INTO public.system_settings (key, value, description)
 VALUES (
   'aliquota_imposto_padrao',
   '11.00'::jsonb,
   'Alíquota de imposto/retenção padrão da KKJ em percentual (11.00%)'
 )
-ON CONFLICT (key) DO UPDATE
-  SET value = EXCLUDED.value,
-      description = EXCLUDED.description,
-      updated_at = timezone('utc'::text, now());
+ON CONFLICT (key) DO NOTHING;
 
 -- ------------------------------------------------------------------------------
 -- 2. TABELA DE TAGS DO CRM (crm_tags) COM AS 8 PADRÃO DA KKJ
@@ -431,21 +429,13 @@ CREATE TRIGGER trg_snapshots_updated_at
 -- RLS de contract_commission_snapshots
 ALTER TABLE public.contract_commission_snapshots ENABLE ROW LEVEL SECURITY;
 
+-- RLS de contract_commission_snapshots: RESTRITO EXCLUSIVAMENTE A ADMINISTRADORES.
+-- Vendedores e gestores consultam dados financeiros exclusivamente via RPCs seguras (get_meu_financeiro, get_minhas_parcelas).
 DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
 CREATE POLICY "snapshots_admin_select"
   ON public.contract_commission_snapshots FOR SELECT
   TO authenticated
-  USING (
-    public.is_admin()
-    OR EXISTS (
-      SELECT 1 FROM public.contracts c
-      WHERE c.id = contract_commission_snapshots.contract_id
-        AND (
-          c.responsavel_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(c.responsavel_id))
-        )
-    )
-  );
+  USING (public.is_admin());
 
 DROP POLICY IF EXISTS "snapshots_admin_all" ON public.contract_commission_snapshots;
 CREATE POLICY "snapshots_admin_all"
@@ -656,8 +646,11 @@ CREATE POLICY "meta_ads_leads_vendedor_select"
   );
 
 -- ------------------------------------------------------------------------------
--- 9. REGRAS ESPECIAIS KKJ SEED EM commission_rules (UPSERT ON CONFLICT (code) DO UPDATE)
--- NUNCA ON CONFLICT (id) DO NOTHING (que duplica por gerar novos IDs a cada execução).
+-- 9. REGRAS ESPECIAIS KKJ SEED EM commission_rules (ON CONFLICT (code) DO NOTHING)
+-- Insere as regras padrão da KKJ se o code não existir.
+-- Preserva estritamente customizações posteriores feitas pelo administrador (percentuais,
+-- cronogramas, repasses e recorrência) em caso de reaplicação da migration.
+-- Prevenção de duplicidade mantida pelo índice/constraint UNIQUE uq_commission_rules_code.
 -- - BRADESCO_PME: 100/100/100/50/50 sem recorrência
 -- - AMIL_PME: 100/100/100 + 2% recorrente a partir da 4ª
 -- - SULAMERICA_PME: 100/100/100 + 2% recorrente a partir da 4ª
@@ -682,19 +675,7 @@ BEGIN
       'Regra PME KKJ - Bradesco Saúde', 'BRADESCO_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}, {"month": 5, "pct": 50}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 2. AMIL (100/100/100 + 2% recorrente a partir da 4ª)
@@ -708,19 +689,7 @@ BEGIN
       'Regra PME KKJ - Amil', 'AMIL_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 3. SULAMÉRICA (100/100/100 + 2% recorrente a partir da 4ª)
@@ -734,19 +703,7 @@ BEGIN
       'Regra PME KKJ - SulAmérica', 'SULAMERICA_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 4. PORTO SEGURO (100/100/100 + 2% recorrente a partir da 4ª)
@@ -760,19 +717,7 @@ BEGIN
       'Regra PME KKJ - Porto Seguro', 'PORTO_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 5. ALICE (100/100/100 sem recorrência)
@@ -786,19 +731,7 @@ BEGIN
       'Regra PME KKJ - Alice', 'ALICE_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 6. MEDSÊNIOR (100/50/50 sem recorrência)
@@ -812,19 +745,7 @@ BEGIN
       'Regra PME KKJ - MedSênior', 'MEDSENIOR_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 50}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 7. HAPVIDA (100/100/100/50 sem recorrência)
@@ -838,19 +759,7 @@ BEGIN
       'Regra PME KKJ - Hapvida', 'HAPVIDA_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 5, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 
   -- 8. PLENA SAÚDE (EXCLUSIVAMENTE OPÇÃO 1: 100/50/40/20/20 = 230%)
@@ -864,18 +773,6 @@ BEGIN
       'Regra PME KKJ - Plena Saúde (Opção 1)', 'PLENA_OP1', v_carrier_id, 'pme', 'percentual', false,
       0.00, 6, 50.00, 11.00,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 40}, {"month": 4, "pct": 20}, {"month": 5, "pct": 20}]'::jsonb, true
-    ) ON CONFLICT (code) DO UPDATE
-      SET nome = EXCLUDED.nome,
-          carrier_id = EXCLUDED.carrier_id,
-          contract_type = EXCLUDED.contract_type,
-          tipo_regra = EXCLUDED.tipo_regra,
-          has_recurring = EXCLUDED.has_recurring,
-          recurring_percentage = EXCLUDED.recurring_percentage,
-          recurring_start_month = EXCLUDED.recurring_start_month,
-          repasse_vendedor_pct = EXCLUDED.repasse_vendedor_pct,
-          aliquota_imposto_pct = EXCLUDED.aliquota_imposto_pct,
-          cronograma_parcelas = EXCLUDED.cronograma_parcelas,
-          ativo = EXCLUDED.ativo,
-          updated_at = timezone('utc'::text, now());
+    ) ON CONFLICT (code) DO NOTHING;
   END IF;
 END $$;

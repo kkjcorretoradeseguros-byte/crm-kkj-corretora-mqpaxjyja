@@ -216,6 +216,13 @@ GRANT EXECUTE ON FUNCTION public.get_subordinate_seller_ids() TO authenticated;
 -- equipe_atual_id mudarem (IS DISTINCT FROM) e o usuário não for admin, RAISE EXCEPTION.
 -- Protege contra elevação de privilégio via chamadas diretas à API REST/GraphQL.
 -- ------------------------------------------------------------------------------
+-- Substitui / unifica a proteção de campos administrativos de public.profiles:
+-- Garante que vendedores e gestores não possam alterar:
+-- role, ativo, recebe_leads_automaticos, superior_direto_id, equipe_atual_id
+-- nem por chamadas diretas de API/REST/GraphQL. Apenas administradores ativos podem alterar.
+-- Substitui a trigger legada trg_protect_profile_role da 0001 e cobre todos os campos novos.
+DROP TRIGGER IF EXISTS trg_protect_profile_role ON public.profiles;
+
 CREATE OR REPLACE FUNCTION public.protect_sensitive_profile_fields()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -231,7 +238,7 @@ BEGIN
     OR OLD.equipe_atual_id IS DISTINCT FROM NEW.equipe_atual_id
   ) THEN
     IF NOT public.is_admin() THEN
-      RAISE EXCEPTION 'Acesso negado: apenas administradores podem alterar papel, status ativo, distribuição de leads ou vinculação hierárquica do usuário.';
+      RAISE EXCEPTION 'Acesso negado: apenas administradores podem alterar papel (role), status ativo, distribuição de leads ou vinculação hierárquica do usuário.';
     END IF;
 
     -- Se o role foi alterado por um admin, registra no histórico de papéis
@@ -267,14 +274,17 @@ CREATE TRIGGER trg_protect_sensitive_profile_fields
   EXECUTE FUNCTION public.protect_sensitive_profile_fields();
 
 -- ------------------------------------------------------------------------------
--- 8. EXPURGO (DROP) DE POLÍTICAS LEGADAS DA 0001 / VERSÕES ANTERIORES
+-- 8. EXPURGO (DROP) DE POLÍTICAS LEGADAS DA 0001, 0003 E VERSÕES ANTERIORES
 -- Evita que regras OR permissivas antigas anulem as restrições da hierarquia.
+-- Alinhado 100% com os nomes reais criados na 0001 e na 0003.
 -- ------------------------------------------------------------------------------
 -- Profiles
 DROP POLICY IF EXISTS "profiles_select_all_authenticated" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_update_own_or_admin" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_select_authenticated" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_update_self_or_admin" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_update_policy" ON public.profiles;
 
 -- Opportunities
 DROP POLICY IF EXISTS "opportunities_select_policy" ON public.opportunities;
@@ -324,18 +334,39 @@ DROP POLICY IF EXISTS "teams_select_policy" ON public.teams;
 DROP POLICY IF EXISTS "teams_insert_policy" ON public.teams;
 DROP POLICY IF EXISTS "teams_update_policy" ON public.teams;
 DROP POLICY IF EXISTS "teams_delete_policy" ON public.teams;
+DROP POLICY IF EXISTS "teams_admin_write" ON public.teams;
 DROP POLICY IF EXISTS "team_members_read_policy" ON public.team_members;
 DROP POLICY IF EXISTS "team_members_admin_all" ON public.team_members;
 DROP POLICY IF EXISTS "team_members_select_policy" ON public.team_members;
 DROP POLICY IF EXISTS "team_members_insert_policy" ON public.team_members;
 DROP POLICY IF EXISTS "team_members_update_policy" ON public.team_members;
 DROP POLICY IF EXISTS "team_members_delete_policy" ON public.team_members;
+DROP POLICY IF EXISTS "team_members_admin_write" ON public.team_members;
 
 -- Management Rules & Settlements
 DROP POLICY IF EXISTS "mgm_rules_policy" ON public.management_commission_rules;
 DROP POLICY IF EXISTS "mgm_rules_gestor_select" ON public.management_commission_rules;
+DROP POLICY IF EXISTS "management_rules_admin_all" ON public.management_commission_rules;
+DROP POLICY IF EXISTS "management_rules_gestor_select" ON public.management_commission_rules;
 DROP POLICY IF EXISTS "mgm_settlements_admin" ON public.management_commission_settlements;
 DROP POLICY IF EXISTS "mgm_settlements_gestor_select" ON public.management_commission_settlements;
+DROP POLICY IF EXISTS "management_settlements_admin_all" ON public.management_commission_settlements;
+DROP POLICY IF EXISTS "management_settlements_gestor_select" ON public.management_commission_settlements;
+
+-- Snapshots da 0003 (reforço de segurança: restrito exclusivamente a admin)
+DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
+DROP POLICY IF EXISTS "snapshots_admin_all" ON public.contract_commission_snapshots;
+
+CREATE POLICY "snapshots_admin_select"
+  ON public.contract_commission_snapshots FOR SELECT
+  TO authenticated
+  USING (public.is_admin());
+
+CREATE POLICY "snapshots_admin_all"
+  ON public.contract_commission_snapshots FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
 -- ------------------------------------------------------------------------------
 -- 9. NOVAS POLÍTICAS RLS ESTRITAS POR TABELA
@@ -798,8 +829,15 @@ CREATE POLICY "management_settlements_gestor_select"
 -- REMOVER o is_manager_or_admin() que dava visão ampla e faturamento global a gestores.
 -- Gestor visualiza sua carteira própria e de seus subordinados da equipe ativa.
 -- Vendedor visualiza estritamente seus contratos.
+-- DROP FUNCTION IF EXISTS explícito antes de CREATE FUNCTION para garantir compatibilidade
+-- de assinaturas e tipos de retorno entre versões.
 -- SECURITY DEFINER, SET search_path = '', REVOKE ALL FROM PUBLIC/anon, GRANT TO authenticated.
 -- ------------------------------------------------------------------------------
+
+-- Expurgo prévio das funções financeiras com assinaturas anteriores
+DROP FUNCTION IF EXISTS public.get_minhas_parcelas(INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS public.get_minhas_parcelas();
+DROP FUNCTION IF EXISTS public.get_meu_financeiro();
 
 -- 10.1 get_minhas_parcelas(p_mes, p_ano) e get_minhas_parcelas()
 CREATE OR REPLACE FUNCTION public.get_minhas_parcelas(p_mes INTEGER DEFAULT NULL, p_ano INTEGER DEFAULT NULL)
