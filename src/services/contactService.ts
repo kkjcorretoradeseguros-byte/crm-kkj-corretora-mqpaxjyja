@@ -11,24 +11,28 @@ export interface ContactFilterOptions {
 interface ContactRow {
   id: string
   company_id?: string | null
-  name: string
-  email?: string | null
+  nome?: string | null
+  name?: string | null
+  celular?: string | null
   phone?: string | null
+  email?: string | null
+  cargo?: string | null
   position?: string | null
-  is_primary?: boolean
+  cpf?: string | null
+  notas?: string | null
   notes?: string | null
   created_by?: string | null
   created_at?: string
   updated_at?: string
   companies?: {
     id: string
-    trade_name: string
+    nome_fantasia?: string | null
+    trade_name?: string | null
+    razao_social?: string | null
     legal_name?: string | null
     cnpj?: string | null
-    city?: string | null
-    state?: string | null
-    phone?: string | null
-    email?: string | null
+    cidade?: string | null
+    estado?: string | null
   } | null
 }
 
@@ -36,12 +40,12 @@ function mapContactRow(r: ContactRow): Contact {
   const c: Contact = {
     id: r.id,
     company_id: r.company_id || '',
-    name: r.name,
+    name: r.nome || r.name || 'Sem nome',
     email: r.email || undefined,
-    phone: r.phone || undefined,
-    position: r.position || undefined,
-    is_primary: r.is_primary ?? false,
-    notes: r.notes || undefined,
+    phone: r.celular || r.phone || '',
+    position: r.cargo || r.position || undefined,
+    cpf: r.cpf || undefined,
+    notes: r.notas || r.notes || undefined,
     created_by: r.created_by || undefined,
     created: r.created_at || new Date().toISOString(),
     updated: r.updated_at || new Date().toISOString(),
@@ -51,13 +55,11 @@ function mapContactRow(r: ContactRow): Contact {
     c.expand = {
       company_id: {
         id: r.companies.id,
-        trade_name: r.companies.trade_name,
-        legal_name: r.companies.legal_name || undefined,
+        trade_name: r.companies.nome_fantasia || r.companies.trade_name || 'Empresa',
+        legal_name: r.companies.razao_social || r.companies.legal_name || undefined,
         cnpj: r.companies.cnpj || undefined,
-        city: r.companies.city || undefined,
-        state: r.companies.state || undefined,
-        phone: r.companies.phone || undefined,
-        email: r.companies.email || undefined,
+        city: r.companies.cidade || undefined,
+        state: r.companies.estado || undefined,
       } as Company,
     }
   }
@@ -79,22 +81,21 @@ export const contactService = {
     try {
       let query = supabase
         .from('contacts')
-        .select(
-          '*, companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email)',
-          { count: 'exact' },
-        )
+        .select('*, companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado)', {
+          count: 'exact',
+        })
 
       if (options.search) {
         const s = options.search.trim()
         query = query.or(
-          `name.ilike.%${s}%,email.ilike.%${s}%,phone.ilike.%${s}%,position.ilike.%${s}%`,
+          `nome.ilike.%${s}%,email.ilike.%${s}%,celular.ilike.%${s}%,cargo.ilike.%${s}%`,
         )
       }
       if (options.companyId) {
         query = query.eq('company_id', options.companyId)
       }
 
-      query = query.order('name', { ascending: true }).range(from, to)
+      query = query.order('nome', { ascending: true }).range(from, to)
 
       const { data, count, error } = await query
       if (error) {
@@ -118,10 +119,8 @@ export const contactService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select(
-          '*, companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email)',
-        )
-        .order('name', { ascending: true })
+        .select('*, companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado)')
+        .order('nome', { ascending: true })
 
       if (error) {
         console.warn('Erro ao carregar lista completa de contatos:', error.message)
@@ -138,9 +137,7 @@ export const contactService = {
 
     const { data, error } = await supabase
       .from('contacts')
-      .select(
-        '*, companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email)',
-      )
+      .select('*, companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado)')
       .eq('id', id)
       .single()
 
@@ -161,17 +158,15 @@ export const contactService = {
       .from('contacts')
       .insert({
         company_id: data.company_id || null,
-        name: data.name || '',
+        nome: data.name || 'Contato',
         email: data.email || null,
-        phone: data.phone || null,
-        position: data.position || null,
-        is_primary: data.is_primary ?? false,
-        notes: data.notes || null,
+        celular: data.phone || '',
+        cargo: data.position || null,
+        cpf: data.cpf || null,
+        notas: data.notes || null,
         created_by: currentUserId,
       })
-      .select(
-        '*, companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email)',
-      )
+      .select('*, companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado)')
       .single()
 
     if (error || !created) {
@@ -188,20 +183,18 @@ export const contactService = {
       updated_at: new Date().toISOString(),
     }
     if (data.company_id !== undefined) payload.company_id = data.company_id || null
-    if (data.name !== undefined) payload.name = data.name
+    if (data.name !== undefined) payload.nome = data.name
     if (data.email !== undefined) payload.email = data.email
-    if (data.phone !== undefined) payload.phone = data.phone
-    if (data.position !== undefined) payload.position = data.position
-    if (data.is_primary !== undefined) payload.is_primary = data.is_primary
-    if (data.notes !== undefined) payload.notes = data.notes
+    if (data.phone !== undefined) payload.celular = data.phone
+    if (data.position !== undefined) payload.cargo = data.position
+    if (data.cpf !== undefined) payload.cpf = data.cpf
+    if (data.notes !== undefined) payload.notas = data.notes
 
     const { data: updated, error } = await supabase
       .from('contacts')
       .update(payload)
       .eq('id', id)
-      .select(
-        '*, companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email)',
-      )
+      .select('*, companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado)')
       .single()
 
     if (error || !updated) {

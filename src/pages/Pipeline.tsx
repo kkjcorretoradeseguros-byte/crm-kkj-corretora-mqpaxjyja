@@ -43,16 +43,23 @@ import { opportunityService } from '@/services/opportunityService'
 import { companyService } from '@/services/companyService'
 import { contactService } from '@/services/contactService'
 import { productService } from '@/services/productService'
+import { carrierService } from '@/services/carrierService'
 import { taskService } from '@/services/taskService'
 import { userService } from '@/services/userService'
 import { contractService } from '@/services/contractService'
+import { tagService } from '@/services/tagService'
+import { commissionEngine } from '@/services/commissionEngine'
+import { adesaoService } from '@/services/adesaoService'
 import { useAuth } from '@/contexts/AuthContext'
 import { OpportunityDetailModal } from '@/components/OpportunityDetailModal'
+import { VendaGanhaModal } from '@/components/VendaGanhaModal'
 import type {
   Opportunity,
   Company,
   Contact,
   Product,
+  Carrier,
+  CrmTag,
   Task,
   User as UserType,
   PipelineType,
@@ -101,32 +108,51 @@ export default function Pipeline() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [carriers, setCarriers] = useState<Carrier[]>([])
   const [users, setUsers] = useState<UserType[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [crmTags, setCrmTags] = useState<CrmTag[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Filtros avançados do Pipeline
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('TODAS')
+  const [selectedCarrierFilter, setSelectedCarrierFilter] = useState<string>('TODAS')
+  const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('TODOS')
 
   // Drag-and-drop state
   const [draggedOppId, setDraggedOppId] = useState<string | null>(null)
 
-  // Modals state
+  // Modais de Venda Ganha e Perda
   const [isNewOppOpen, setIsNewOppOpen] = useState(false)
   const [detailOppId, setDetailOppId] = useState<string | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLostModalOpen, setIsLostModalOpen] = useState(false)
   const [pendingLostOpp, setPendingLostOpp] = useState<Opportunity | null>(null)
   const [lostReasonChoice, setLostReasonChoice] = useState<LostReason>('Preço')
+  const [isVendaGanhaOpen, setIsVendaGanhaOpen] = useState(false)
+  const [vendaGanhaTargetOpp, setVendaGanhaTargetOpp] = useState<Opportunity | null>(null)
 
-  // New Opportunity Form states
+  // Novo Cadastro Rápido inline dentro do formulário
+  const [showQuickCompany, setShowQuickCompany] = useState(false)
+  const [showQuickContact, setShowQuickContact] = useState(false)
+  const [quickCompanyName, setQuickCompanyName] = useState('')
+  const [quickCompanyCnpj, setQuickCompanyCnpj] = useState('')
+  const [quickContactName, setQuickContactName] = useState('')
+  const [quickContactPhone, setQuickContactPhone] = useState('')
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
+
+  // New Opportunity Form states (flexíveis, sem exigência de empresa/CNPJ/telefone/email)
   const [formTitle, setFormTitle] = useState('')
   const [formCompanyId, setFormCompanyId] = useState('')
   const [formContactId, setFormContactId] = useState('')
   const [formProductId, setFormProductId] = useState('')
+  const [formCarrierId, setFormCarrierId] = useState('')
+  const [formSuggestedPlan, setFormSuggestedPlan] = useState('')
   const [formStage, setFormStage] = useState('Novo Lead')
   const [formTemperature, setFormTemperature] = useState<Temperature>('Morno')
-  const [formSaleValue, setFormSaleValue] = useState('')
-  const [formCommissionValue, setFormCommissionValue] = useState('')
+  const [formQuotedValue, setFormQuotedValue] = useState('') // Valor da Cotação / Mensalidade (R$)
   const [formOrigin, setFormOrigin] = useState('')
-  const [formTags, setFormTags] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [formQuotationLink, setFormQuotationLink] = useState('')
   const [formNotes, setFormNotes] = useState('')
 
@@ -144,11 +170,12 @@ export default function Pipeline() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [oppsRes, compRes, contRes, prodRes, usersRes, tasksRes] = await Promise.all([
+      const [oppsRes, compRes, contRes, prodRes, carrRes, usersRes, tasksRes] = await Promise.all([
         opportunityService.getAllOpportunities(pipelineType),
         companyService.getAllCompanies(),
         contactService.getAllContacts(),
         productService.getAllProducts(),
+        carrierService.getAllCarriers(),
         userService.getAllUsers(),
         taskService.getAllTasks(),
       ])
@@ -156,8 +183,10 @@ export default function Pipeline() {
       setCompanies(compRes)
       setContacts(contRes)
       setProducts(prodRes)
+      setCarriers(carrRes)
       setUsers(usersRes)
       setTasks(tasksRes)
+      setCrmTags(tagService.getAllTags())
     } catch (err) {
       console.error('Failed to load pipeline data:', err)
     } finally {
@@ -200,44 +229,10 @@ export default function Pipeline() {
     const opp = opportunities.find((o) => o.id === oppId)
     if (!opp || opp.stage === targetStage) return
 
-    // If moving to Venda Ganha in Sales Funnel: start automatic Post-Sales flow
+    // Se for Venda Ganha no Funil de Vendas: EXIGIR conferência cadastral via VendaGanhaModal
     if (pipelineType === 'VENDAS' && targetStage === 'Venda ganha') {
-      try {
-        await opportunityService.updateStage(opp.id, 'Venda ganha', opp.stage)
-        // Automatically create or transition to Post-Sales (Funil de Pós-Venda)
-        await opportunityService.createOpportunity({
-          title: `[Pós-Venda] ${opp.title.replace(/^\[DEMO\]\s*/, '')}`,
-          pipeline_type: 'POS_VENDA',
-          stage: 'Documentação', // 1ª etapa obrigatória do pós-venda
-          temperature: 'Quente',
-          contact_id: opp.contact_id,
-          company_id: opp.company_id,
-          product_id: opp.product_id,
-          assigned_to: opp.assigned_to,
-          sale_value: opp.sale_value,
-          commission_value: opp.commission_value,
-          origin: opp.origin,
-          health_data: opp.health_data,
-        })
-
-        // Also record contract snapshot
-        await contractService.createContract({
-          contract_number: `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-          opportunity_id: opp.id,
-          company_id: opp.company_id,
-          contact_id: opp.contact_id,
-          product_id: opp.product_id,
-          sale_value: opp.sale_value || 0,
-          commission_value: opp.commission_value || 0,
-          lives_count: opp.health_data?.lives_count || 1,
-          operator: opp.health_data?.quoted_operator || 'Operadora Parceira',
-          status: 'Em Implantação',
-          assigned_to: opp.assigned_to,
-        })
-      } catch (err) {
-        console.error('Error on Venda Ganha transition:', err)
-      }
-      fetchData()
+      setVendaGanhaTargetOpp(opp)
+      setIsVendaGanhaOpen(true)
       return
     }
 
@@ -263,6 +258,11 @@ export default function Pipeline() {
       setIsLostModalOpen(true)
       return
     }
+    if (targetStage === 'Venda ganha' && pipelineType === 'VENDAS') {
+      setVendaGanhaTargetOpp(opp)
+      setIsVendaGanhaOpen(true)
+      return
+    }
 
     try {
       await opportunityService.updateStage(opp.id, targetStage, opp.stage)
@@ -270,6 +270,118 @@ export default function Pipeline() {
     } catch (err) {
       console.error(err)
     }
+  }
+
+  // Conclusão auditada e consistente de Venda Ganha com regras completas
+  const handleConfirmVendaGanha = async (data: {
+    contractedCarrierId: string
+    contractedCarrierName: string
+    contractedPlan: string
+    contractedValue: number
+    modalidade: string
+    livesCount: number
+    hiringDate: string
+    firstInstallmentRef: string
+    companyName: string
+    cnpj: string
+    contactName: string
+    phone: string
+    email: string
+  }) => {
+    if (!vendaGanhaTargetOpp) return
+
+    // 1. Atualizar ou vincular Empresa e Contato com dados completos
+    let companyId = vendaGanhaTargetOpp.company_id
+    if (companyId) {
+      await companyService.updateCompany(companyId, {
+        trade_name: data.companyName,
+        legal_name: data.companyName,
+        cnpj: data.cnpj,
+      })
+    } else {
+      const newComp = await companyService.createCompany({
+        trade_name: data.companyName,
+        legal_name: data.companyName,
+        cnpj: data.cnpj,
+      })
+      companyId = newComp.id
+    }
+
+    let contactId = vendaGanhaTargetOpp.contact_id
+    if (contactId) {
+      await contactService.updateContact(contactId, {
+        name: data.contactName,
+        phone: data.phone,
+        email: data.email,
+        company_id: companyId,
+      })
+    } else {
+      const newCont = await contactService.createContact({
+        name: data.contactName,
+        phone: data.phone,
+        email: data.email,
+        company_id: companyId,
+      })
+      contactId = newCont.id
+    }
+
+    // 2. Atualizar oportunidade com status de Venda Ganha e valores contratados
+    await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
+      stage: 'Venda ganha',
+      company_id: companyId,
+      contact_id: contactId,
+      carrier_id: data.contractedCarrierId,
+      value: data.contractedValue,
+      sale_value: data.contractedValue,
+    })
+
+    // 3. Criar Contrato único e auditável
+    const contractNum = `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+    const createdContract = await contractService.createContract({
+      contract_number: contractNum,
+      opportunity_id: vendaGanhaTargetOpp.id,
+      company_id: companyId,
+      contact_id: contactId,
+      carrier_id: data.contractedCarrierId,
+      product_id: vendaGanhaTargetOpp.product_id,
+      plano: data.contractedPlan,
+      sale_value: data.contractedValue,
+      lives_count: data.livesCount,
+      start_date: data.hiringDate,
+      status: 'Em Implantação',
+      assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
+      notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
+    })
+
+    // 4. Se for Adesão: Gerar 1º Boleto Integral KKJ (100% receita bruta da corretora)
+    if (data.modalidade === 'Adesão') {
+      await adesaoService.registrarPrimeiroBoleto({
+        contract_id: createdContract.id,
+        company_id: companyId,
+        contact_id: contactId,
+        vendedor_id: vendaGanhaTargetOpp.assigned_to || user?.id,
+        valor_integral: data.contractedValue,
+        data_vencimento: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+      })
+    }
+
+    // 5. Criar automaticamente fluxo de Pós-Venda
+    await opportunityService.createOpportunity({
+      title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
+      pipeline_type: 'POS_VENDA',
+      stage: 'Documentação',
+      temperature: 'Quente',
+      company_id: companyId,
+      contact_id: contactId,
+      carrier_id: data.contractedCarrierId,
+      assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
+      sale_value: data.contractedValue,
+      origin: vendaGanhaTargetOpp.origin,
+    })
+
+    setIsVendaGanhaOpen(false)
+    setVendaGanhaTargetOpp(null)
+    fetchData()
   }
 
   const handleConfirmLost = async () => {
@@ -291,17 +403,25 @@ export default function Pipeline() {
 
   const openCreateModal = (initialStage?: string) => {
     setFormTitle('')
-    setFormCompanyId(companies[0]?.id || '')
+    setFormCompanyId('')
     setFormContactId('')
     setFormProductId(products[0]?.id || '')
+    setFormCarrierId(carriers[0]?.id || '')
+    setFormSuggestedPlan('')
     setFormStage(initialStage || currentStages[0])
     setFormTemperature('Morno')
-    setFormSaleValue('')
-    setFormCommissionValue('')
+    setFormQuotedValue('')
     setFormOrigin('')
-    setFormTags('')
+    setSelectedTags([])
     setFormQuotationLink('')
     setFormNotes('')
+    setShowQuickCompany(false)
+    setShowQuickContact(false)
+    setQuickCompanyName('')
+    setQuickCompanyCnpj('')
+    setQuickContactName('')
+    setQuickContactPhone('')
+    setDuplicateWarning(null)
     setIncludeHealthData(true)
     setHealthOperator('')
     setHealthQuotedOperator('')
@@ -309,6 +429,59 @@ export default function Pipeline() {
     setHealthNetwork('')
     setFormError(null)
     setIsNewOppOpen(true)
+  }
+
+  // Cadastro rápido inline de empresa
+  const handleCreateQuickCompany = async () => {
+    if (!quickCompanyName.trim()) return
+    try {
+      const created = await companyService.createCompany({
+        trade_name: quickCompanyName.trim(),
+        legal_name: quickCompanyName.trim(),
+        cnpj: quickCompanyCnpj.trim() || undefined,
+      })
+      setCompanies((prev) => [created, ...prev])
+      setFormCompanyId(created.id)
+      setShowQuickCompany(false)
+      setQuickCompanyName('')
+      setQuickCompanyCnpj('')
+    } catch (err: any) {
+      setFormError(err.message || 'Erro ao cadastrar empresa rápida.')
+    }
+  }
+
+  // Cadastro rápido inline de contato
+  const handleCreateQuickContact = async () => {
+    if (!quickContactName.trim()) return
+    try {
+      const created = await contactService.createContact({
+        name: quickContactName.trim(),
+        phone: quickContactPhone.trim(),
+        company_id: formCompanyId || undefined,
+      })
+      setContacts((prev) => [created, ...prev])
+      setFormContactId(created.id)
+      setShowQuickContact(false)
+      setQuickContactName('')
+      setQuickContactPhone('')
+    } catch (err: any) {
+      setFormError(err.message || 'Erro ao cadastrar contato rápido.')
+    }
+  }
+
+  // Verificação de possíveis duplicidades ao digitar nome/título
+  const checkDuplicateWarning = (title: string) => {
+    const trimmed = title.trim().toLowerCase()
+    if (trimmed.length >= 3) {
+      const match = opportunities.find((o) => o.title.toLowerCase().includes(trimmed))
+      if (match) {
+        setDuplicateWarning(
+          `Atenção: Já existe uma oportunidade com título semelhante ("${match.title}").`,
+        )
+        return
+      }
+    }
+    setDuplicateWarning(null)
   }
 
   const handleSaveOpportunity = async (e: React.FormEvent) => {
@@ -322,24 +495,48 @@ export default function Pipeline() {
 
     setIsSaving(true)
     try {
-      const saleVal = formSaleValue ? parseFloat(formSaleValue) : 0
-      const commVal = formCommissionValue
-        ? parseFloat(formCommissionValue)
-        : Math.round(saleVal * 0.2) // estimativa padrão de comissão se não informado
+      // Valor da Cotação / Mensalidade Comercial (podendo ficar vazio)
+      const quotedVal = formQuotedValue ? parseFloat(formQuotedValue) : 0
+
+      // Se o usuário digitou dados de contato rápido e não clicou em salvar
+      let finalContactId = formContactId || undefined
+      if (!finalContactId && quickContactName.trim()) {
+        const quickC = await contactService.createContact({
+          name: quickContactName.trim(),
+          phone: quickContactPhone.trim() || '',
+          company_id: formCompanyId || undefined,
+        })
+        setContacts((prev) => [quickC, ...prev])
+        finalContactId = quickC.id
+      }
+
+      // Se o usuário digitou dados de empresa rápida e não clicou em salvar
+      let finalCompanyId = formCompanyId || undefined
+      if (!finalCompanyId && quickCompanyName.trim()) {
+        const quickComp = await companyService.createCompany({
+          trade_name: quickCompanyName.trim(),
+          legal_name: quickCompanyName.trim(),
+          cnpj: quickCompanyCnpj.trim() || undefined,
+        })
+        setCompanies((prev) => [quickComp, ...prev])
+        finalCompanyId = quickComp.id
+      }
 
       const payload: Partial<Opportunity> = {
         title: formTitle.trim(),
         pipeline_type: pipelineType,
         stage: formStage,
         temperature: formTemperature,
-        company_id: formCompanyId || undefined,
-        contact_id: formContactId || undefined,
+        company_id: finalCompanyId,
+        contact_id: finalContactId,
         product_id: formProductId || undefined,
+        carrier_id: formCarrierId || undefined,
+        suggested_plan: formSuggestedPlan.trim() || undefined,
         assigned_to: user?.id,
         origin: formOrigin.trim() || undefined,
-        tags: formTags.trim() || undefined,
-        sale_value: saleVal,
-        commission_value: commVal,
+        tags: selectedTags,
+        value: quotedVal,
+        sale_value: quotedVal,
         quotation_link: formQuotationLink.trim() || undefined,
         qualification_notes: formNotes.trim() || undefined,
       }
@@ -348,7 +545,8 @@ export default function Pipeline() {
         payload.health_data = {
           has_current_plan: !!healthOperator,
           current_operator: healthOperator,
-          quoted_operator: healthQuotedOperator,
+          quoted_operator:
+            healthQuotedOperator || carriers.find((c) => c.id === formCarrierId)?.nome || '',
           lives_count: healthLives ? parseInt(healthLives, 10) : undefined,
           accommodation: healthAccommodation,
           objective: healthObjective,
@@ -412,17 +610,15 @@ export default function Pipeline() {
         </div>
 
         {/* Center / Right: Indicators & Action */}
-        <div className="flex flex-wrap items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          {/* Indicadores Separados: Volume do Pipeline (Mensalidades em Negociação) vs Total Oportunidades */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#F5F7FA] border border-[#E4E7EC]">
             <span className="font-bold text-[#1B2A4A]">{totalOppsCount}</span>
-            <span className="text-[#667085]">oportunidades</span>
+            <span className="text-[#667085]">em negociação</span>
             <span className="text-slate-300">•</span>
-            <span className="text-[#667085]">Venda:</span>
-            <strong className="text-[#101828]">R$ {totalSaleValue.toLocaleString('pt-BR')}</strong>
-            <span className="text-slate-300">•</span>
-            <span className="text-[#667085]">Faturamento KKJ:</span>
-            <strong className="text-emerald-700">
-              R$ {totalCommissionValue.toLocaleString('pt-BR')}
+            <span className="text-[#667085]">Volume do Pipeline (Mensalidades):</span>
+            <strong className="text-[#1B2A4A] font-bold">
+              R$ {totalSaleValue.toLocaleString('pt-BR')}
             </strong>
           </div>
 
@@ -432,6 +628,68 @@ export default function Pipeline() {
           >
             <Plus className="h-4 w-4" /> Nova Oportunidade
           </Button>
+        </div>
+      </div>
+
+      {/* Barra de Filtros por Tag, Operadora e Responsável */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-white border border-[#E4E7EC] text-xs">
+        <div className="flex items-center gap-1.5 text-slate-500 font-semibold mr-1">
+          <Filter className="h-3.5 w-3.5" />
+          <span>Filtros:</span>
+        </div>
+
+        {/* Filtro por Tag */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-500">Tag:</span>
+          <Select value={selectedTagFilter} onValueChange={setSelectedTagFilter}>
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-slate-50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODAS">Todas as tags</SelectItem>
+              {crmTags.map((t) => (
+                <SelectItem key={t.id} value={t.name}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Filtro por Operadora */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-500">Operadora:</span>
+          <Select value={selectedCarrierFilter} onValueChange={setSelectedCarrierFilter}>
+            <SelectTrigger className="h-7 text-xs w-[140px] bg-slate-50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODAS">Todas as operadoras</SelectItem>
+              {carriers.map((car) => (
+                <SelectItem key={car.id} value={car.id}>
+                  {car.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Filtro por Responsável */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-500">Responsável:</span>
+          <Select value={selectedOwnerFilter} onValueChange={setSelectedOwnerFilter}>
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-slate-50">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODOS">Todos corretores</SelectItem>
+              {users.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -445,7 +703,24 @@ export default function Pipeline() {
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-6 items-start min-h-[640px]">
           {currentStages.map((stageName, stageIdx) => {
-            const stageOpps = opportunities.filter((o) => o.stage === stageName)
+            const stageOpps = opportunities.filter((o) => {
+              if (o.stage !== stageName) return false
+              if (selectedTagFilter !== 'TODAS') {
+                const oppTags = Array.isArray(o.tags)
+                  ? o.tags
+                  : typeof o.tags === 'string'
+                    ? [o.tags]
+                    : []
+                if (!oppTags.includes(selectedTagFilter)) return false
+              }
+              if (selectedCarrierFilter !== 'TODAS' && o.carrier_id !== selectedCarrierFilter) {
+                return false
+              }
+              if (selectedOwnerFilter !== 'TODOS' && o.assigned_to !== selectedOwnerFilter) {
+                return false
+              }
+              return true
+            })
             const stageSaleTotal = stageOpps.reduce((sum, o) => sum + (o.sale_value || 0), 0)
 
             // Stage color accent
@@ -568,20 +843,45 @@ export default function Pipeline() {
                           )}
                         </div>
 
-                        {/* Values (Valor Vendido / Mensalidade + Faturamento KKJ) */}
+                        {/* Tags Coloridas */}
+                        {Array.isArray(opp.tags) && opp.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {opp.tags.map((tName) => {
+                              const tagObj = crmTags.find(
+                                (t) => t.name.toLowerCase() === tName.toLowerCase(),
+                              )
+                              return (
+                                <span
+                                  key={tName}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                  style={{
+                                    backgroundColor: tagObj?.bg_color || '#F1F5F9',
+                                    color: tagObj?.text_color || '#334155',
+                                  }}
+                                >
+                                  {tName}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Mensalidade Comercial (Cotação Principal) - Sem estimativa de comissão */}
                         <div className="pt-1 border-t border-[#E4E7EC] flex items-center justify-between text-xs">
                           <div>
-                            <span className="text-[10px] text-[#667085] block">Mensalidade:</span>
+                            <span className="text-[10px] text-[#667085] block">
+                              Mensalidade Cotação:
+                            </span>
                             <span className="font-extrabold text-[#1B2A4A]">
-                              R$ {(opp.sale_value || 0).toLocaleString('pt-BR')}
+                              R$ {(opp.sale_value || opp.value || 0).toLocaleString('pt-BR')}
                             </span>
                           </div>
                           <div className="text-right">
-                            <span className="text-[10px] text-[#667085] block">
-                              Faturamento KKJ:
+                            <span className="text-[10px] text-slate-400 block">
+                              Cotação Principal
                             </span>
-                            <span className="font-semibold text-emerald-700 text-[11px]">
-                              R$ {(opp.commission_value || 0).toLocaleString('pt-BR')}
+                            <span className="text-[11px] font-medium text-slate-600">
+                              {opp.expand?.carrier_id?.nome || 'Operadora'}
                             </span>
                           </div>
                         </div>
@@ -682,44 +982,132 @@ export default function Pipeline() {
               <Input
                 placeholder="Ex: Cotação Saúde PME 24 Vidas - Empresa XYZ"
                 value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
+                onChange={(e) => {
+                  setFormTitle(e.target.value)
+                  checkDuplicateWarning(e.target.value)
+                }}
                 required
                 className="h-8 text-xs"
               />
+              {duplicateWarning && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded border border-amber-200 mt-1">
+                  {duplicateWarning}
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Empresa / Cliente</Label>
-                <Select value={formCompanyId} onValueChange={setFormCompanyId}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Selecione a empresa" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {companies.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.trade_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Cadastro Flexível: Empresa Opcional + Botão + Nova Empresa */}
+            <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Empresa (Opcional na entrada)
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowQuickCompany(!showQuickCompany)}
+                  className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
+                >
+                  {showQuickCompany ? '✕ Fechar rápida' : '+ Nova empresa'}
+                </Button>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-xs">Contato Principal</Label>
-                <Select value={formContactId} onValueChange={setFormContactId}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Selecione o contato" />
+              {!showQuickCompany ? (
+                <Select value={formCompanyId} onValueChange={setFormCompanyId}>
+                  <SelectTrigger className="h-8 text-xs bg-white">
+                    <SelectValue placeholder="Selecione empresa cadastrada ou deixe vazio" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableContacts.map((ct) => (
-                      <SelectItem key={ct.id} value={ct.id}>
-                        {ct.name} ({ct.phone})
+                    <SelectItem value="">Nenhuma / Lead sem empresa ainda</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.trade_name} {c.cnpj ? `(${c.cnpj})` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2 rounded border border-blue-200">
+                  <Input
+                    placeholder="Nome Fantasia / Razão"
+                    value={quickCompanyName}
+                    onChange={(e) => setQuickCompanyName(e.target.value)}
+                    className="h-7 text-xs sm:col-span-1"
+                  />
+                  <Input
+                    placeholder="CNPJ (opcional)"
+                    value={quickCompanyCnpj}
+                    onChange={(e) => setQuickCompanyCnpj(e.target.value)}
+                    className="h-7 text-xs sm:col-span-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCreateQuickCompany}
+                    className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Salvar Empresa
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Cadastro Flexível: Contato Opcional + Botão + Novo Contato */}
+            <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">
+                  Contato (Opcional na entrada)
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowQuickContact(!showQuickContact)}
+                  className="h-6 text-[11px] text-blue-600 hover:text-blue-800 p-1"
+                >
+                  {showQuickContact ? '✕ Fechar rápido' : '+ Novo contato'}
+                </Button>
               </div>
+
+              {!showQuickContact ? (
+                <Select value={formContactId} onValueChange={setFormContactId}>
+                  <SelectTrigger className="h-8 text-xs bg-white">
+                    <SelectValue placeholder="Selecione contato cadastrado ou deixe vazio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Nenhum / Informar depois</SelectItem>
+                    {availableContacts.map((ct) => (
+                      <SelectItem key={ct.id} value={ct.id}>
+                        {ct.name} {ct.phone ? `(${ct.phone})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2 rounded border border-blue-200">
+                  <Input
+                    placeholder="Nome do cliente"
+                    value={quickContactName}
+                    onChange={(e) => setQuickContactName(e.target.value)}
+                    className="h-7 text-xs sm:col-span-1"
+                  />
+                  <Input
+                    placeholder="Telefone / WhatsApp"
+                    value={quickContactPhone}
+                    onChange={(e) => setQuickContactPhone(e.target.value)}
+                    className="h-7 text-xs sm:col-span-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleCreateQuickContact}
+                    className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Salvar Contato
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -773,28 +1161,43 @@ export default function Pipeline() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Sugestão de Plano (Operadora Sugerida e Plano Sugerido) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Valor da Venda / Mensalidade (R$)</Label>
+                <Label className="text-xs">Operadora Sugerida</Label>
+                <Select value={formCarrierId} onValueChange={setFormCarrierId}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {carriers.map((car) => (
+                      <SelectItem key={car.id} value={car.id}>
+                        {car.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Plano Sugerido</Label>
                 <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Ex: 12500"
-                  value={formSaleValue}
-                  onChange={(e) => setFormSaleValue(e.target.value)}
+                  placeholder="Ex: Smart 500 / Nacional"
+                  value={formSuggestedPlan}
+                  onChange={(e) => setFormSuggestedPlan(e.target.value)}
                   className="h-8 text-xs"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Faturamento KKJ / Comissão (R$)</Label>
+                <Label className="text-xs">Valor da Cotação / Mensalidade (R$)</Label>
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder="Ex: 2500 (deixe vazio p/ 20% est.)"
-                  value={formCommissionValue}
-                  onChange={(e) => setFormCommissionValue(e.target.value)}
-                  className="h-8 text-xs"
+                  placeholder="Opcional. Ex: 1850.00"
+                  value={formQuotedValue}
+                  onChange={(e) => setFormQuotedValue(e.target.value)}
+                  className="h-8 text-xs font-semibold"
                 />
               </div>
             </div>
@@ -809,14 +1212,40 @@ export default function Pipeline() {
                   className="h-8 text-xs"
                 />
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Tags (separadas por vírgula)</Label>
-                <Input
-                  placeholder="Ex: PME, Bradesco, Urgente"
-                  value={formTags}
-                  onChange={(e) => setFormTags(e.target.value)}
-                  className="h-8 text-xs"
-                />
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs">Tags Coloridas (clique para selecionar):</Label>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {crmTags
+                    .filter((t) => t.active)
+                    .map((t) => {
+                      const isSelected = selectedTags.includes(t.name)
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedTags((prev) => prev.filter((name) => name !== t.name))
+                            } else {
+                              setSelectedTags((prev) => [...prev, t.name])
+                            }
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-semibold border transition ${
+                            isSelected
+                              ? 'ring-2 ring-blue-500 shadow-sm'
+                              : 'opacity-70 hover:opacity-100'
+                          }`}
+                          style={{
+                            backgroundColor: t.bg_color,
+                            color: t.text_color,
+                            borderColor: t.color,
+                          }}
+                        >
+                          {isSelected ? `✓ ${t.name}` : `+ ${t.name}`}
+                        </button>
+                      )
+                    })}
+                </div>
               </div>
             </div>
 
@@ -1021,6 +1450,20 @@ export default function Pipeline() {
         salesStages={SALES_STAGES}
         postSalesStages={POST_SALES_STAGES}
         lostReasons={LOST_REASONS}
+      />
+
+      {/* MODAL RIGOROSO DE VENDA GANHA */}
+      <VendaGanhaModal
+        open={isVendaGanhaOpen}
+        onClose={() => {
+          setIsVendaGanhaOpen(false)
+          setVendaGanhaTargetOpp(null)
+        }}
+        opportunity={vendaGanhaTargetOpp}
+        carriers={carriers}
+        companies={companies}
+        contacts={contacts}
+        onConfirm={handleConfirmVendaGanha}
       />
     </div>
   )

@@ -202,6 +202,30 @@ export interface MarketingAttribution {
   utm_term?: string
 }
 
+export interface PlanSuggestion {
+  id: string
+  opportunity_id?: string
+  carrier_id?: string
+  carrier_name: string
+  product_name?: string
+  categoria?: string
+  quoted_monthly_value: number
+  is_principal: boolean
+  quotation_date?: string
+  notes?: string
+}
+
+export interface CrmTag {
+  id: string
+  name: string
+  color: string
+  bg_color: string
+  text_color: string
+  is_system?: boolean
+  active: boolean
+  created_at?: string
+}
+
 export interface Opportunity {
   id: string
   title: string
@@ -211,21 +235,23 @@ export interface Opportunity {
   contact_id?: string
   company_id?: string
   product_id?: string
-  carrier_id?: string // Operadora cotada/selecionada principal
+  carrier_id?: string // Operadora sugerida principal
+  suggested_plan?: string // Plano sugerido
+  plan_suggestions?: PlanSuggestion[] // Lista de sugestões de plano cotadas
   current_carrier_id?: string // Operadora atual cadastrada (FK carriers)
   current_carrier_name?: string // Nome da operadora atual quando não cadastrada
   assigned_to?: string // owner_id
   origin?: string
   tags?: string | string[]
-  value?: number
+  value?: number // Mensalidade Comercial (Cotação Principal)
+  sale_value?: number // Mensalidade Comercial (Cotação Principal)
+  commission_value?: number // Removido da entrada; apenas retrocompatibilidade
   lives_count?: number
   probability?: number
   expected_close_date?: string
   close_date?: string
   lost_details?: string
   notes?: string
-  sale_value?: number // Mensalidade / Valor do produto
-  commission_value?: number // Faturamento estimado para KKJ
   quotation_link?: string
   qualification_notes?: string
   lost_reason?: LostReason | string
@@ -372,20 +398,26 @@ export interface Contract {
   company_id?: string
   contact_id?: string
   product_id?: string
-  carrier_id?: string // FK exclusiva para carriers (sem coluna operadora TEXT no banco)
-  sale_value: number // Valor vendido / Mensalidade
-  commission_value?: number // Faturamento da KKJ
+  carrier_id?: string // FK exclusiva para carriers
+  contracted_carrier_name?: string // Operadora Contratada
+  contracted_plan_name?: string // Plano Contratado
+  monthly_value?: number // Mensalidade Contratada
+  sale_value: number // Mensalidade Contratada efetiva
+  commission_value?: number // Faturamento KKJ da venda
   lives_count?: number
-  operator?: string // Alias frontend em visualização expandida
+  operator?: string
   plano?: string
   start_date?: string
   end_date?: string
+  first_installment_reference?: string // Referência da 1ª mensalidade
+  hiring_date?: string // Data de contratação
   billing_day?: number
   notes?: string
   renewal_date?: string
   status: ContractStatus
   assigned_to?: string
   dias_alerta_renovacao?: number[]
+  modalidade?: 'PME' | 'PF' | 'Adesão' | string
   expand?: {
     company_id?: Company
     contact_id?: Contact
@@ -397,6 +429,27 @@ export interface Contract {
   created_by?: string
   created?: string
   updated?: string
+}
+
+export interface AdesaoBoleto {
+  id: string
+  contract_id: string
+  company_id?: string
+  contact_id?: string
+  vendedor_id?: string
+  valor_integral: number
+  data_vencimento: string
+  data_pagamento?: string
+  status: 'pendente' | 'pago' | 'atrasado' | 'estornado' | 'cancelado'
+  receita_bruta_kkj: number
+  aliquota_imposto: number
+  valor_imposto: number
+  receita_liquida_kkj: number
+  comissao_vendedor_percentual: number
+  comissao_vendedor_valor: number
+  resultado_liquido_corretora: number
+  observacoes?: string
+  created_at: string
 }
 
 export interface ContractFinancial {

@@ -1,0 +1,395 @@
+import React, { useState, useEffect } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import type { Opportunity, Carrier, Company, Contact } from '@/types/crm'
+
+interface VendaGanhaModalProps {
+  open: boolean
+  onClose: () => void
+  opportunity: Opportunity | null
+  carriers: Carrier[]
+  companies: Company[]
+  contacts: Contact[]
+  onConfirm: (data: {
+    contractedCarrierId: string
+    contractedCarrierName: string
+    contractedPlan: string
+    contractedValue: number
+    modalidade: string
+    livesCount: number
+    hiringDate: string
+    firstInstallmentRef: string
+    companyName: string
+    cnpj: string
+    contactName: string
+    phone: string
+    email: string
+  }) => Promise<void>
+}
+
+export function VendaGanhaModal({
+  open,
+  onClose,
+  opportunity,
+  carriers,
+  companies,
+  contacts,
+  onConfirm,
+}: VendaGanhaModalProps) {
+  const [carrierId, setCarrierId] = useState('')
+  const [contractedPlan, setContractedPlan] = useState('')
+  const [contractedValue, setContractedValue] = useState('')
+  const [modalidade, setModalidade] = useState('PME')
+  const [livesCount, setLivesCount] = useState('1')
+  const [hiringDate, setHiringDate] = useState(new Date().toISOString().slice(0, 10))
+  const [firstInstallmentRef, setFirstInstallmentRef] = useState(
+    new Date().toISOString().slice(0, 7),
+  )
+
+  // Dados cadastrais obrigatórios
+  const [companyName, setCompanyName] = useState('')
+  const [cnpj, setCnpj] = useState('')
+  const [contactName, setContactName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Preenche dados existentes quando a oportunidade for aberta
+  useEffect(() => {
+    if (opportunity) {
+      const comp =
+        opportunity.expand?.company_id || companies.find((c) => c.id === opportunity.company_id)
+      const cont =
+        opportunity.expand?.contact_id || contacts.find((c) => c.id === opportunity.contact_id)
+
+      setCompanyName(comp?.legal_name || comp?.trade_name || '')
+      setCnpj(comp?.cnpj || '')
+      setContactName(cont?.name || '')
+      setPhone(cont?.phone || '')
+      setEmail(cont?.email || '')
+
+      setCarrierId(opportunity.carrier_id || carriers[0]?.id || '')
+      setContractedPlan(opportunity.suggested_plan || '')
+      setContractedValue(opportunity.sale_value ? String(opportunity.sale_value) : '')
+      setLivesCount(
+        opportunity.health_data?.lives_count ? String(opportunity.health_data.lives_count) : '1',
+      )
+      setErrorMsg(null)
+    }
+  }, [opportunity, companies, contacts, carriers])
+
+  // Validações
+  const validateForm = () => {
+    if (!contactName.trim()) return 'Nome do cliente é obrigatório.'
+    if (!companyName.trim()) return 'Razão Social / Nome da Empresa é obrigatório.'
+
+    // CNPJ obrigatório para PME
+    const cleanCnpj = cnpj.replace(/\D/g, '')
+    if (modalidade === 'PME' && cleanCnpj.length !== 14) {
+      return 'CNPJ válido com 14 dígitos é obrigatório para modalidade PME.'
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '')
+    if (cleanPhone.length < 10) {
+      return 'Telefone / WhatsApp válido com DDD é obrigatório.'
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      return 'E-mail corporativo válido é obrigatório.'
+    }
+
+    if (!carrierId) {
+      return 'Companhia / Operadora contratada é obrigatória.'
+    }
+
+    const numVal = parseFloat(contractedValue)
+    if (!numVal || numVal <= 0) {
+      return 'Valor real da mensalidade contratada deve ser maior que zero.'
+    }
+
+    if (!contractedPlan.trim()) {
+      return 'Nome do plano contratado é obrigatório.'
+    }
+
+    return null
+  }
+
+  const handleConfirm = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const validation = validateForm()
+    if (validation) {
+      setErrorMsg(validation)
+      return
+    }
+
+    setErrorMsg(null)
+    setIsSubmitting(true)
+
+    const selectedCarrier = carriers.find((c) => c.id === carrierId)
+    const carrierName = selectedCarrier?.nome || 'Operadora Contratada'
+
+    try {
+      await onConfirm({
+        contractedCarrierId: carrierId,
+        contractedCarrierName: carrierName,
+        contractedPlan: contractedPlan.trim(),
+        contractedValue: parseFloat(contractedValue),
+        modalidade,
+        livesCount: parseInt(livesCount, 10) || 1,
+        hiringDate,
+        firstInstallmentRef,
+        companyName: companyName.trim(),
+        cnpj: cnpj.trim(),
+        contactName: contactName.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+      })
+      onClose()
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao consolidar Venda Ganha.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-base sm:text-lg font-bold text-[#101828] flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            Conferência e Fechamento: Venda Ganha
+          </DialogTitle>
+          <DialogDescription className="text-xs text-[#667085]">
+            Para concluir a venda, o cadastro completo e a confirmação das condições contratadas são
+            obrigatórios.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleConfirm} className="space-y-4 py-2 text-xs">
+          {errorMsg && (
+            <div className="p-3 rounded-lg bg-red-50 text-red-900 border border-red-200 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Dados Cadastrais Obrigatórios */}
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+              1. Dados Cadastrais do Cliente (Obrigatórios)
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Razão Social / Nome da Empresa *</Label>
+                <Input
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Ex: Jekabson Benefícios LTDA"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">CNPJ * (Obrigatório em PME)</Label>
+                <Input
+                  value={cnpj}
+                  onChange={(e) => setCnpj(e.target.value)}
+                  placeholder="00.000.000/0001-00"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nome do Titular / Interlocutor *</Label>
+                <Input
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  placeholder="Ex: Carlos Eduardo"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Telefone / WhatsApp *</Label>
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(11) 98888-7777"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">E-mail *</Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="contato@empresa.com.br"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Condições Contratuais Efetivas */}
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-3">
+            <h4 className="font-bold text-emerald-900 text-xs uppercase tracking-wider">
+              2. Condições Contratadas Efetivas (Base de Comissões e Contrato)
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Operadora Contratada *</Label>
+                <Select value={carrierId} onValueChange={setCarrierId}>
+                  <SelectTrigger className="h-8 text-xs bg-white">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {carriers.map((car) => (
+                      <SelectItem key={car.id} value={car.id}>
+                        {car.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Plano Contratado *</Label>
+                <Input
+                  value={contractedPlan}
+                  onChange={(e) => setContractedPlan(e.target.value)}
+                  placeholder="Ex: Top Nacional Plus"
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Modalidade *</Label>
+                <Select value={modalidade} onValueChange={setModalidade}>
+                  <SelectTrigger className="h-8 text-xs bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PME">Saúde PME</SelectItem>
+                    <SelectItem value="PF">Pessoa Física (PF)</SelectItem>
+                    <SelectItem value="Adesão">Adesão</SelectItem>
+                    <SelectItem value="Odonto">Odontológico</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Mensalidade Real (R$) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={contractedValue}
+                  onChange={(e) => setContractedValue(e.target.value)}
+                  placeholder="Ex: 2450.00"
+                  className="h-8 text-xs bg-white font-bold"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Qtd. de Vidas *</Label>
+                <Input
+                  type="number"
+                  value={livesCount}
+                  onChange={(e) => setLivesCount(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Data de Contratação *</Label>
+                <Input
+                  type="date"
+                  value={hiringDate}
+                  onChange={(e) => setHiringDate(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Ref. 1ª Mensalidade *</Label>
+                <Input
+                  type="month"
+                  value={firstInstallmentRef}
+                  onChange={(e) => setFirstInstallmentRef(e.target.value)}
+                  className="h-8 text-xs bg-white"
+                  required
+                />
+              </div>
+            </div>
+
+            {modalidade === 'Adesão' && (
+              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+                <strong>Regra KKJ para Adesão:</strong> A 1ª mensalidade de R${' '}
+                {parseFloat(contractedValue || '0').toLocaleString('pt-BR')} será gerada como boleto
+                integral KKJ (100% receita bruta da corretora). Nenhum repasse será feito à
+                operadora referente a esta 1ª mensalidade.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+            >
+              {isSubmitting ? 'Gerando Contrato...' : 'Concluir Venda Ganha'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -26,13 +26,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { contractService } from '@/services/contractService'
 import { opportunityService } from '@/services/opportunityService'
+import { adesaoService } from '@/services/adesaoService'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Contract, Opportunity } from '@/types/crm'
+import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
 
 export default function Financial() {
   const { user } = useAuth()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
+  const [adesaoBoletos, setAdesaoBoletos] = useState<AdesaoBoleto[]>([])
   const [loading, setLoading] = useState(true)
 
   const isSeller = user?.role === 'VENDEDOR'
@@ -40,18 +42,21 @@ export default function Financial() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [contractsRes, oppsRes] = await Promise.all([
+      const [contractsRes, oppsRes, boletosRes] = await Promise.all([
         contractService.getAllContracts(),
         opportunityService.getAllOpportunities(),
+        adesaoService.getBoletos(),
       ])
 
       // Vendedor vê apenas contratos e oportunidades da sua própria carteira
       if (isSeller && user?.id) {
         setContracts(contractsRes.filter((c) => c.assigned_to === user.id))
         setOpportunities(oppsRes.filter((o) => o.assigned_to === user.id))
+        setAdesaoBoletos(boletosRes.filter((b) => b.vendedor_id === user.id))
       } else {
         setContracts(contractsRes)
         setOpportunities(oppsRes)
+        setAdesaoBoletos(boletosRes)
       }
     } catch (err) {
       console.error(err)
@@ -65,19 +70,31 @@ export default function Financial() {
   }, [loadData])
 
   // =========================================================================
-  // SEPARAÇÃO CONCEITUAL:
-  // 1. VALOR DA VENDA = Valor / Mensalidade do plano de saúde/seguro contratado
-  // 2. COMISSÃO = Percentual / valor repassado ao vendedor
-  // 3. FATURAMENTO = Total de comissão/receita bruta gerada para a KKJ
-  // 4. RESULTADO KKJ = Faturamento KKJ menos a comissão do vendedor (visão admin)
+  // SEPARAÇÃO CONCEITUAL E FINANCEIRA RIGOROSA:
+  // 1. VALOR VENDIDO = Mensalidades de contratos fechados
+  // 2. RECEITA BRUTA DE ADESÃO = Boletos pagos da 1ª mensalidade 100% KKJ
+  // 3. COMISSÃO PREVISTA DE VENDAS FECHADAS ≠ COMISSÃO RECEBIDA
+  // 4. NÃO ANTECIPAR COMISSÕES / NÃO PRESUMIR RECEBIMENTOS
   // =========================================================================
   const totalSaleValue = contracts.reduce((sum, c) => sum + (c.sale_value || 0), 0)
-  const totalFaturamentoKKJ = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
+  const totalReceitaAdesaoPaga = adesaoBoletos
+    .filter((b) => b.status === 'pago')
+    .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
+  const totalReceitaAdesaoPendente = adesaoBoletos
+    .filter((b) => b.status === 'pendente')
+    .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
 
-  // Comissão estimada do vendedor (ex.: 50% da receita da corretora na primeira parcela)
-  const totalComissaoVendedor = totalFaturamentoKKJ * 0.5
-  // Resultado líquido da corretora KKJ
-  const totalResultadoKKJ = totalFaturamentoKKJ - totalComissaoVendedor
+  const totalComissaoPrevista = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
+  const totalComissaoRecebida = contracts
+    .filter((c) => c.status === 'Ativo')
+    .reduce((sum, c) => sum + (c.commission_value || 0), 0)
+
+  // Faturamento KKJ Realmente Recebido = Comissões Confirmadas + Adesão Paga
+  const faturamentoKKJConfirmado = totalComissaoRecebida + totalReceitaAdesaoPaga
+  // Comissão repassada ao vendedor
+  const totalComissaoVendedor = faturamentoKKJConfirmado * 0.4
+  // Resultado líquido da corretora
+  const totalResultadoKKJ = faturamentoKKJConfirmado - totalComissaoVendedor
 
   const exportCSV = () => {
     const headers = [
@@ -167,16 +184,18 @@ export default function Financial() {
         </div>
       </div>
 
-      {/* Financial Metrics Cards */}
+      {/* Financial Metrics Cards: Separados e Não Conflitantes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Valor da Venda */}
+        {/* 1. Valor Vendido (Mensalidades dos Contratos Fechados) */}
         <Card className="border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
-                Valor da Venda
+                Valor Vendido
               </span>
-              <p className="text-[10px] text-muted-foreground">Mensalidade total contratada</p>
+              <p className="text-[10px] text-muted-foreground">
+                Mensalidades de contratos fechados
+              </p>
             </div>
             <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#1B2A4A] dark:text-blue-400">
               <DollarSign className="h-5 w-5" />
@@ -187,71 +206,73 @@ export default function Financial() {
               R$ {totalSaleValue.toLocaleString('pt-BR')}
             </div>
             <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-              Volume total sob gestão
+              Contratos ativos e em implantação
             </p>
           </CardContent>
         </Card>
 
-        {/* 2. Faturamento KKJ */}
-        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+        {/* 2. Receita Bruta de Adesão (100% KKJ) */}
+        <Card className="border-orange-200 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                Faturamento KKJ
+              <span className="text-xs font-bold uppercase tracking-wider text-orange-800 dark:text-orange-300">
+                Receita Adesão 100% KKJ
               </span>
-              <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
-                Receita bruta da corretora
+              <p className="text-[10px] text-orange-700 dark:text-orange-400">
+                1ª mensalidade integral retida
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300">
               <Award className="h-5 w-5" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-              R$ {totalFaturamentoKKJ.toLocaleString('pt-BR')}
+            <div className="text-2xl font-black text-orange-900 dark:text-orange-200">
+              R$ {totalReceitaAdesaoPaga.toLocaleString('pt-BR')}
             </div>
-            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-              Comissões recebidas/a receber
+            <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-1">
+              {totalReceitaAdesaoPendente > 0
+                ? `+ R$ ${totalReceitaAdesaoPendente.toLocaleString('pt-BR')} pendentes`
+                : 'Sem boletos pendentes'}
             </p>
           </CardContent>
         </Card>
 
-        {/* 3. Comissão Vendedor */}
-        <Card className="border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-card shadow-sm">
+        {/* 3. Faturamento KKJ (Confirmado vs Previsto) */}
+        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
-                Comissão Vendedor
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                Faturamento KKJ Confirmado
               </span>
-              <p className="text-[10px] text-muted-foreground">
-                {isSeller ? 'Sua comissão prevista' : 'Total de repasses comerciais'}
+              <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                Comissões recebidas + Adesão paga
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
               <TrendingUp className="h-5 w-5" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-purple-900 dark:text-purple-200">
-              R$ {totalComissaoVendedor.toLocaleString('pt-BR')}
+            <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
+              R$ {faturamentoKKJConfirmado.toLocaleString('pt-BR')}
             </div>
-            <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-              Repasses vinculados à produção
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+              Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
             </p>
           </CardContent>
         </Card>
 
-        {/* 4. Resultado Líquido KKJ (Oculto para VENDEDOR) */}
+        {/* 4. Resultado Líquido KKJ */}
         {!isSeller ? (
           <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/20 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[#1B2A4A] dark:text-blue-300">
-                  Resultado KKJ
+                  Resultado Líquido KKJ
                 </span>
                 <p className="text-[10px] text-[#1B2A4A]/80 dark:text-blue-400">
-                  Margem líquida da corretora
+                  Após impostos e comissões dos corretores
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-[#1B2A4A] dark:bg-primary text-white">
@@ -263,7 +284,7 @@ export default function Financial() {
                 R$ {totalResultadoKKJ.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Faturamento líquido retido
+                Comissões pagas aos vendedores: R$ {totalComissaoVendedor.toLocaleString('pt-BR')}
               </p>
             </CardContent>
           </Card>
@@ -274,6 +295,83 @@ export default function Financial() {
           </Card>
         )}
       </div>
+
+      {/* Tabela de Boletos de Adesão (100% KKJ) */}
+      {adesaoBoletos.length > 0 && (
+        <div className="bg-white dark:bg-card border border-orange-200 dark:border-orange-900/40 rounded-xl overflow-x-auto shadow-sm">
+          <div className="p-4 border-b border-orange-100 dark:border-orange-900/30 bg-orange-50/30 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-sm text-orange-950 dark:text-orange-200 flex items-center gap-1.5">
+                <Award className="h-4 w-4 text-orange-600" />
+                Gestão de Boletos de Adesão (1ª Mensalidade 100% KKJ)
+              </h3>
+              <p className="text-xs text-orange-700/80 dark:text-orange-400">
+                1ª mensalidade gerada pela KKJ sem repasse à operadora
+              </p>
+            </div>
+            <Badge variant="outline" className="border-orange-300 text-orange-800 text-xs">
+              {adesaoBoletos.length} boletos
+            </Badge>
+          </div>
+
+          <Table className="min-w-[680px]">
+            <TableHeader className="bg-[#F5F7FA]">
+              <TableRow>
+                <TableHead className="text-xs font-bold">Contrato</TableHead>
+                <TableHead className="text-xs font-bold">Valor Integral (100% KKJ)</TableHead>
+                <TableHead className="text-xs font-bold">Vencimento</TableHead>
+                <TableHead className="text-xs font-bold">Comissão Vendedor (30% Líq.)</TableHead>
+                <TableHead className="text-xs font-bold">Resultado Líquido KKJ</TableHead>
+                <TableHead className="text-xs font-bold">Status</TableHead>
+                <TableHead className="text-xs font-bold text-right">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {adesaoBoletos.map((b) => (
+                <TableRow key={b.id} className="text-xs">
+                  <TableCell className="font-mono font-bold">{b.contract_id.slice(0, 8)}</TableCell>
+                  <TableCell className="font-black text-orange-900">
+                    R$ {b.valor_integral.toLocaleString('pt-BR')}
+                  </TableCell>
+                  <TableCell>{b.data_vencimento}</TableCell>
+                  <TableCell className="font-semibold text-purple-700">
+                    R$ {b.comissao_vendedor_valor.toLocaleString('pt-BR')}
+                  </TableCell>
+                  <TableCell className="font-bold text-emerald-700">
+                    R$ {b.resultado_liquido_corretora.toLocaleString('pt-BR')}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      className={
+                        b.status === 'pago'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }
+                    >
+                      {b.status === 'pago' ? 'Pago' : 'Pendente'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {b.status === 'pendente' && !isSeller && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          await adesaoService.confirmarPagamento(b.id)
+                          loadData()
+                        }}
+                        className="h-6 text-[10px] border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Confirmar Pgto
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
 
       {/* Production / Contracts Table */}
       <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] rounded-xl overflow-x-auto shadow-sm">

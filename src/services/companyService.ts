@@ -11,14 +11,17 @@ export interface CompanyFilterOptions {
 
 interface CompanyRow {
   id: string
-  trade_name: string
+  nome_fantasia?: string | null
+  trade_name?: string | null
+  razao_social?: string | null
   legal_name?: string | null
   cnpj?: string | null
+  cidade?: string | null
   city?: string | null
+  estado?: string | null
   state?: string | null
-  phone?: string | null
-  email?: string | null
-  address?: string | null
+  segmento?: string | null
+  notas?: string | null
   notes?: string | null
   created_by?: string | null
   created_at?: string
@@ -28,15 +31,13 @@ interface CompanyRow {
 function mapCompanyRow(r: CompanyRow): Company {
   return {
     id: r.id,
-    trade_name: r.trade_name,
-    legal_name: r.legal_name || undefined,
+    trade_name: r.nome_fantasia || r.trade_name || 'Sem nome fantasia',
+    legal_name: r.razao_social || r.legal_name || undefined,
     cnpj: r.cnpj || undefined,
-    city: r.city || undefined,
-    state: r.state || undefined,
-    phone: r.phone || undefined,
-    email: r.email || undefined,
-    address: r.address || undefined,
-    notes: r.notes || undefined,
+    city: r.cidade || r.city || undefined,
+    state: r.estado || r.state || undefined,
+    segment: r.segmento || undefined,
+    notes: r.notas || r.notes || undefined,
     created_by: r.created_by || undefined,
     created: r.created_at || new Date().toISOString(),
     updated: r.updated_at || new Date().toISOString(),
@@ -60,14 +61,14 @@ export const companyService = {
       if (options.search) {
         const s = options.search.trim()
         query = query.or(
-          `trade_name.ilike.%${s}%,legal_name.ilike.%${s}%,cnpj.ilike.%${s}%,city.ilike.%${s}%`,
+          `nome_fantasia.ilike.%${s}%,razao_social.ilike.%${s}%,cnpj.ilike.%${s}%,cidade.ilike.%${s}%`,
         )
       }
       if (options.city) {
-        query = query.eq('city', options.city)
+        query = query.eq('cidade', options.city)
       }
       if (options.state) {
-        query = query.eq('state', options.state)
+        query = query.eq('estado', options.state)
       }
 
       query = query.order('created_at', { ascending: false }).range(from, to)
@@ -95,7 +96,7 @@ export const companyService = {
       const { data, error } = await supabase
         .from('companies')
         .select('*')
-        .order('trade_name', { ascending: true })
+        .order('nome_fantasia', { ascending: true })
 
       if (error) {
         console.warn('Erro ao listar todas empresas:', error.message)
@@ -128,15 +129,13 @@ export const companyService = {
     const { data: created, error } = await supabase
       .from('companies')
       .insert({
-        trade_name: data.trade_name || '',
-        legal_name: data.legal_name || null,
+        nome_fantasia: data.trade_name || 'Sem nome fantasia',
+        razao_social: data.legal_name || null,
         cnpj: data.cnpj || null,
-        city: data.city || null,
-        state: data.state || null,
-        phone: data.phone || null,
-        email: data.email || null,
-        address: data.address || null,
-        notes: data.notes || null,
+        cidade: data.city || null,
+        estado: data.state ? data.state.slice(0, 2).toUpperCase() : null,
+        segmento: data.segment || null,
+        notas: data.notes || null,
         created_by: currentUserId,
       })
       .select('*')
@@ -155,15 +154,14 @@ export const companyService = {
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
-    if (data.trade_name !== undefined) payload.trade_name = data.trade_name
-    if (data.legal_name !== undefined) payload.legal_name = data.legal_name
+    if (data.trade_name !== undefined) payload.nome_fantasia = data.trade_name
+    if (data.legal_name !== undefined) payload.razao_social = data.legal_name
     if (data.cnpj !== undefined) payload.cnpj = data.cnpj
-    if (data.city !== undefined) payload.city = data.city
-    if (data.state !== undefined) payload.state = data.state
-    if (data.phone !== undefined) payload.phone = data.phone
-    if (data.email !== undefined) payload.email = data.email
-    if (data.address !== undefined) payload.address = data.address
-    if (data.notes !== undefined) payload.notes = data.notes
+    if (data.city !== undefined) payload.cidade = data.city
+    if (data.state !== undefined)
+      payload.estado = data.state ? data.state.slice(0, 2).toUpperCase() : null
+    if (data.segment !== undefined) payload.segmento = data.segment
+    if (data.notes !== undefined) payload.notas = data.notes
 
     const { data: updated, error } = await supabase
       .from('companies')

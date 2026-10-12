@@ -37,13 +37,16 @@ import {
 import { productService } from '@/services/productService'
 import { userService } from '@/services/userService'
 import { carrierService } from '@/services/carrierService'
+import { tagService } from '@/services/tagService'
+import { SPECIAL_PME_RULES } from '@/services/commissionEngine'
+import { commissionImporter, type ImportReport } from '@/services/commissionImporter'
 import { useAuth } from '@/contexts/AuthContext'
-import type { Product, ProductCategory, User, UserRole, Carrier } from '@/types/crm'
+import type { Product, ProductCategory, User, UserRole, Carrier, CrmTag } from '@/types/crm'
 
 export default function SettingsPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<
-    'OPERADORAS' | 'PRODUTOS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
+    'OPERADORAS' | 'PRODUTOS' | 'COMISSOES' | 'TAGS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
   >('OPERADORAS')
 
   // Carriers state (Operadoras)
@@ -59,6 +62,15 @@ export default function SettingsPage() {
   const [productName, setProductName] = useState('')
   const [productCategory, setProductCategory] = useState<ProductCategory>('Saúde PME')
   const [productDescription, setProductDescription] = useState('')
+
+  // Tags state
+  const [tagsList, setTagsList] = useState<CrmTag[]>([])
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState('#2563EB')
+
+  // Importador de Planilha state
+  const [csvInput, setCsvInput] = useState('')
+  const [importReport, setImportReport] = useState<ImportReport | null>(null)
 
   // Users state
   const [users, setUsers] = useState<User[]>([])
@@ -101,6 +113,7 @@ export default function SettingsPage() {
       setProducts(prodRes)
       setUsers(usersRes)
       setCarriers(carriersRes)
+      setTagsList(tagService.getAllTags())
     } catch (err) {
       console.error(err)
     }
@@ -227,6 +240,8 @@ export default function SettingsPage() {
         {[
           { key: 'OPERADORAS', label: 'Operadoras (Carriers)', icon: Building },
           { key: 'PRODUTOS', label: 'Catálogo de Produtos', icon: Package },
+          { key: 'COMISSOES', label: 'Comissões & Regras', icon: Shield },
+          { key: 'TAGS', label: 'Tags Coloridas', icon: Layers },
           { key: 'ETAPAS', label: 'Funis & Etapas', icon: Layers },
           { key: 'PERDAS', label: 'Motivos de Perda', icon: AlertCircle },
           { key: 'TAREFAS', label: 'Tipos de Tarefa', icon: CheckSquare },
@@ -309,6 +324,183 @@ export default function SettingsPage() {
                   >
                     {c.ativo ? 'Desativar' : 'Ativar'}
                   </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB: COMISSÕES & REGRAS ESPECIAIS PME */}
+      {activeTab === 'COMISSOES' && (
+        <div className="space-y-6">
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-bold text-[#101828]">
+                Regras Especiais Saúde PME (Ativas e Vigentes)
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085]">
+                Regras especiais prescritas que prevalecem sobre qualquer planilha para contratações
+                PME
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="divide-y divide-[#E4E7EC]">
+                {Object.entries(SPECIAL_PME_RULES)
+                  .filter(([k]) => !k.includes(' '))
+                  .map(([key, rule]) => (
+                    <div key={key} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-slate-800 text-sm">{rule.carrier}</span>
+                        <span className="ml-2 font-mono text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {rule.parcelas.join('/')}%{' '}
+                          {rule.vitalicioPercentual
+                            ? `+ ${rule.vitalicioPercentual}% vitalício da ${rule.vitalicioAPartirDe}ª`
+                            : '(sem vitalício)'}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] text-slate-600">
+                        Total: {rule.totalPercentual}%
+                      </Badge>
+                    </div>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Importador da Planilha de Comissões */}
+          <Card className="border-blue-200 bg-blue-50/20 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-blue-950 flex items-center gap-2">
+                <Shield className="h-4 w-4 text-blue-600" />
+                Importação Oficial: "Grade de comissão - Saúde Bliss.xlsx"
+              </CardTitle>
+              <CardDescription className="text-xs text-blue-700">
+                Rotina idempotente com exclusão de Go Care, opção 1 da Plena Saúde PME e descarte de
+                duplicatas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                <strong>Status da Planilha:</strong> O arquivo original ainda não foi anexado nesta
+                sessão. Insira abaixo dados formatados (CSV) para teste ou importe assim que o
+                arquivo for disponibilizado.
+              </div>
+
+              <textarea
+                rows={3}
+                placeholder="Exemplo CSV:&#10;Operadora;Modalidade;1a;2a;3a;4a;5a&#10;Amil;PME;100;100;100;0;0"
+                value={csvInput}
+                onChange={(e) => setCsvInput(e.target.value)}
+                className="w-full text-xs font-mono p-2 border border-slate-300 rounded bg-white"
+              />
+
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!csvInput.trim()) return
+                  const rows = commissionImporter.parseCsv(csvInput)
+                  const rep = commissionImporter.processRows(rows)
+                  setImportReport(rep)
+                }}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Processar e Validar Importação
+              </Button>
+
+              {importReport && (
+                <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1 text-xs">
+                  <h4 className="font-bold text-slate-800">Relatório de Importação:</h4>
+                  <p>
+                    Linhas processadas: <strong>{importReport.totalLinhasLidas}</strong>
+                  </p>
+                  <p className="text-emerald-700">
+                    Regras importadas: <strong>{importReport.regrasImportadas}</strong>
+                  </p>
+                  <p className="text-red-700">
+                    Regras descartadas: <strong>{importReport.regrasDescartadas}</strong>
+                  </p>
+                  <p className="text-amber-700">
+                    Regras duplicadas ignoradas: <strong>{importReport.regrasDuplicadas}</strong>
+                  </p>
+                  {importReport.detalhesDescartes.length > 0 && (
+                    <ul className="list-disc pl-4 text-[11px] text-slate-600 pt-1">
+                      {importReport.detalhesDescartes.map((d, i) => (
+                        <li key={i}>{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB: TAGS COLORIDAS */}
+      {activeTab === 'TAGS' && (
+        <Card className="border-[#E4E7EC] shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold text-[#101828]">
+              Gerenciamento de Tags Coloridas
+            </CardTitle>
+            <CardDescription className="text-xs text-[#667085]">
+              Crie novas etiquetas ou desative tags existentes sem perder histórico
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="Nome da nova tag..."
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                className="h-8 text-xs max-w-xs"
+              />
+              <input
+                type="color"
+                value={newTagColor}
+                onChange={(e) => setNewTagColor(e.target.value)}
+                className="h-8 w-10 p-0 border rounded cursor-pointer"
+                title="Escolha a cor da tag"
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!newTagName.trim()) return
+                  tagService.createTag(newTagName.trim(), newTagColor)
+                  setNewTagName('')
+                  setTagsList(tagService.getAllTags())
+                }}
+                className="h-8 text-xs bg-[#1B2A4A] text-white"
+              >
+                + Nova Tag
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              {tagsList.map((t) => (
+                <div
+                  key={t.id}
+                  className="px-3 py-1.5 rounded-lg border flex items-center gap-2 text-xs font-semibold shadow-xs"
+                  style={{
+                    backgroundColor: t.bg_color,
+                    color: t.text_color,
+                    borderColor: t.color,
+                  }}
+                >
+                  <span>{t.name}</span>
+                  {!t.is_system && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        tagService.toggleActive(t.id)
+                        setTagsList(tagService.getAllTags())
+                      }}
+                      className="ml-1 text-xs opacity-70 hover:opacity-100 font-bold"
+                    >
+                      {t.active ? '✕' : '↺'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -19,49 +19,52 @@ export interface ContractFilterOptions {
 
 interface ContractDbRow {
   id: string
-  opportunity_id?: string | null
-  company_id: string
-  contact_id?: string | null
-  carrier_id?: string | null
-  product_id?: string | null
+  numero_contrato?: string | null
   contract_number?: string | null
-  status: ContractStatus
-  start_date: string
-  end_date?: string | null
-  renewal_date?: string | null
-  sale_value: number
-  commission_value?: number | null
-  lives_count?: number | null
-  billing_day?: number | null
-  notes?: string | null
-  assigned_to?: string | null
+  opportunity_id?: string | null
+  company_id?: string | null
+  contact_id?: string | null
+  carrier_id: string
+  product_id?: string | null
+  plano?: string | null
+  qtd_vidas?: number | null
+  valor_mensal?: number | null
+  valor_venda?: number | null
+  sale_value?: number | null
+  status: string
+  data_inicio_vigencia?: string | null
+  data_renovacao?: string | null
+  observacoes?: string | null
+  responsavel_id?: string | null
   created_at?: string
   updated_at?: string
   companies?: {
     id: string
-    trade_name: string
+    nome_fantasia?: string | null
+    trade_name?: string | null
+    razao_social?: string | null
     legal_name?: string | null
     cnpj?: string | null
-    city?: string | null
-    state?: string | null
-    phone?: string | null
-    email?: string | null
+    cidade?: string | null
+    estado?: string | null
   } | null
   contacts?: {
     id: string
-    name: string
+    nome?: string | null
+    name?: string | null
+    celular?: string | null
     phone?: string | null
     email?: string | null
-    position?: string | null
   } | null
   products?: {
     id: string
     nome: string
-    segmento: string
+    categoria?: string | null
   } | null
   carriers?: {
     id: string
     nome: string
+    nome_curto?: string | null
   } | null
   profiles?: {
     id: string
@@ -72,53 +75,56 @@ interface ContractDbRow {
 
 const SELECT_EXPAND = `
   id,
+  numero_contrato,
   opportunity_id,
   company_id,
   contact_id,
-  carrier_id,
   product_id,
-  contract_number,
+  carrier_id,
+  plano,
+  qtd_vidas,
+  valor_mensal,
+  valor_venda,
   status,
-  start_date,
-  end_date,
-  renewal_date,
-  sale_value,
-  commission_value,
-  lives_count,
-  billing_day,
-  notes,
-  assigned_to,
+  data_inicio_vigencia,
+  data_renovacao,
+  observacoes,
+  responsavel_id,
   created_at,
   updated_at,
-  companies:company_id(id, trade_name, legal_name, cnpj, city, state, phone, email),
-  contacts:contact_id(id, name, phone, email, position),
-  products:product_id(id, nome, segmento),
-  carriers:carrier_id(id, nome),
-  profiles:assigned_to(id, nome, email)
+  companies:company_id(id, razao_social, nome_fantasia, cnpj, cidade, estado),
+  contacts:contact_id(id, nome, celular, email),
+  products:product_id(id, nome, categoria),
+  carriers:carrier_id(id, nome, nome_curto),
+  profiles:responsavel_id(id, nome, email)
 `
 
 function mapContractRow(r: ContractDbRow): Contract {
+  const statusRaw = (r.status || 'em_implantacao').toLowerCase()
+  let uiStatus: ContractStatus = 'Em Implantação'
+  if (statusRaw === 'ativo') uiStatus = 'Ativo'
+  else if (statusRaw === 'cancelado') uiStatus = 'Cancelado'
+  else if (statusRaw === 'pendente_renovacao') uiStatus = 'Pendente Renovação'
+
+  const val = Number(r.valor_mensal ?? r.valor_venda ?? r.sale_value ?? 0)
+
   const c: Contract = {
     id: r.id,
-    company_id: r.company_id,
+    company_id: r.company_id || undefined,
     contact_id: r.contact_id || undefined,
-    carrier_id: r.carrier_id || undefined,
+    carrier_id: r.carrier_id,
     product_id: r.product_id || undefined,
     opportunity_id: r.opportunity_id || undefined,
-    contract_number: r.contract_number || undefined,
-    status: r.status,
-    start_date: r.start_date,
-    end_date: r.end_date || undefined,
-    renewal_date: r.renewal_date || undefined,
-    sale_value: Number(r.sale_value || 0),
-    commission_value:
-      r.commission_value !== null && r.commission_value !== undefined
-        ? Number(r.commission_value)
-        : undefined,
-    lives_count: r.lives_count || undefined,
-    billing_day: r.billing_day || undefined,
-    notes: r.notes || undefined,
-    assigned_to: r.assigned_to || undefined,
+    contract_number: r.numero_contrato || r.contract_number || undefined,
+    plano: r.plano || undefined,
+    status: uiStatus,
+    start_date: r.data_inicio_vigencia || new Date().toISOString().slice(0, 10),
+    renewal_date: r.data_renovacao || undefined,
+    sale_value: val,
+    commission_value: undefined,
+    lives_count: r.qtd_vidas || undefined,
+    notes: r.observacoes || undefined,
+    assigned_to: r.responsavel_id || undefined,
     created: r.created_at || new Date().toISOString(),
     updated: r.updated_at || new Date().toISOString(),
   }
@@ -127,30 +133,27 @@ function mapContractRow(r: ContractDbRow): Contract {
   if (r.companies) {
     c.expand.company_id = {
       id: r.companies.id,
-      trade_name: r.companies.trade_name,
-      legal_name: r.companies.legal_name || undefined,
+      trade_name: r.companies.nome_fantasia || r.companies.trade_name || 'Empresa',
+      legal_name: r.companies.razao_social || r.companies.legal_name || undefined,
       cnpj: r.companies.cnpj || undefined,
-      city: r.companies.city || undefined,
-      state: r.companies.state || undefined,
-      phone: r.companies.phone || undefined,
-      email: r.companies.email || undefined,
+      city: r.companies.cidade || undefined,
+      state: r.companies.estado || undefined,
     } as Company
   }
   if (r.contacts) {
     c.expand.contact_id = {
       id: r.contacts.id,
-      company_id: r.company_id,
-      name: r.contacts.name,
-      phone: r.contacts.phone || undefined,
+      company_id: r.company_id || '',
+      name: r.contacts.nome || r.contacts.name || 'Contato',
+      phone: r.contacts.celular || r.contacts.phone || '',
       email: r.contacts.email || undefined,
-      position: r.contacts.position || undefined,
     } as Contact
   }
   if (r.products) {
     c.expand.product_id = {
       id: r.products.id,
       name: r.products.nome,
-      category: (r.products.segmento as unknown) || 'SAUDE',
+      category: (r.products.categoria || 'SAUDE') as any,
       active: true,
     } as Product
   }
@@ -158,11 +161,8 @@ function mapContractRow(r: ContractDbRow): Contract {
     c.expand.carrier_id = {
       id: r.carriers.id,
       nome: r.carriers.nome,
-      segmento_principal: 'SAUDE',
-      segmentos_atendidos: [],
+      nome_curto: r.carriers.nome_curto || undefined,
       ativo: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     } as Carrier
   }
   if (r.profiles) {
@@ -201,10 +201,10 @@ export const contractService = {
       }
       if (options.search) {
         const s = options.search.trim()
-        query = query.ilike('contract_number', `%${s}%`)
+        query = query.ilike('numero_contrato', `%${s}%`)
       }
 
-      query = query.order('start_date', { ascending: false }).range(from, to)
+      query = query.order('created_at', { ascending: false }).range(from, to)
 
       const { data, count, error } = await query
       if (error) {
@@ -229,7 +229,7 @@ export const contractService = {
       const { data, error } = await supabase
         .from('contracts')
         .select(SELECT_EXPAND)
-        .order('start_date', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (error) {
         console.warn('Erro ao listar contratos:', error.message)
@@ -265,25 +265,32 @@ export const contractService = {
 
     const assignedTo = data.assigned_to || currentUserId
 
+    const statusMap: Record<string, string> = {
+      Ativo: 'ativo',
+      Cancelado: 'cancelado',
+      'Em Implantação': 'em_implantacao',
+      'Pendente Renovação': 'pendente_renovacao',
+    }
+    const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
+
     const { data: created, error } = await supabase
       .from('contracts')
       .insert({
         opportunity_id: data.opportunity_id || null,
-        company_id: data.company_id!,
+        company_id: data.company_id || null,
         contact_id: data.contact_id || null,
-        carrier_id: data.carrier_id || null,
+        carrier_id: data.carrier_id!,
         product_id: data.product_id || null,
-        contract_number: data.contract_number || null,
-        status: data.status || 'ATIVO',
-        start_date: data.start_date || new Date().toISOString().split('T')[0],
-        end_date: data.end_date || null,
-        renewal_date: data.renewal_date || null,
-        sale_value: data.sale_value || 0,
-        commission_value: data.commission_value || 0,
-        lives_count: data.lives_count || null,
-        billing_day: data.billing_day || null,
-        notes: data.notes || null,
-        assigned_to: assignedTo,
+        plano: data.plano || null,
+        numero_contrato: data.contract_number || null,
+        status: dbStatus,
+        data_inicio_vigencia: data.start_date || new Date().toISOString().split('T')[0],
+        data_renovacao: data.renewal_date || null,
+        valor_mensal: data.sale_value || 0,
+        valor_venda: data.sale_value || 0,
+        qtd_vidas: data.lives_count || 1,
+        observacoes: data.notes || null,
+        responsavel_id: assignedTo,
       })
       .select(SELECT_EXPAND)
       .single()
@@ -322,17 +329,26 @@ export const contractService = {
     if (data.contact_id !== undefined) payload.contact_id = data.contact_id || null
     if (data.carrier_id !== undefined) payload.carrier_id = data.carrier_id || null
     if (data.product_id !== undefined) payload.product_id = data.product_id || null
-    if (data.contract_number !== undefined) payload.contract_number = data.contract_number || null
-    if (data.status !== undefined) payload.status = data.status
-    if (data.start_date !== undefined) payload.start_date = data.start_date
-    if (data.end_date !== undefined) payload.end_date = data.end_date || null
-    if (data.renewal_date !== undefined) payload.renewal_date = data.renewal_date || null
-    if (data.sale_value !== undefined) payload.sale_value = data.sale_value
-    if (data.commission_value !== undefined) payload.commission_value = data.commission_value
-    if (data.lives_count !== undefined) payload.lives_count = data.lives_count || null
-    if (data.billing_day !== undefined) payload.billing_day = data.billing_day || null
-    if (data.notes !== undefined) payload.notes = data.notes || null
-    if (data.assigned_to !== undefined) payload.assigned_to = data.assigned_to || null
+    if (data.plano !== undefined) payload.plano = data.plano || null
+    if (data.contract_number !== undefined) payload.numero_contrato = data.contract_number || null
+    if (data.status !== undefined) {
+      const statusMap: Record<string, string> = {
+        Ativo: 'ativo',
+        Cancelado: 'cancelado',
+        'Em Implantação': 'em_implantacao',
+        'Pendente Renovação': 'pendente_renovacao',
+      }
+      payload.status = statusMap[data.status] || data.status
+    }
+    if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date
+    if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
+    if (data.sale_value !== undefined) {
+      payload.valor_mensal = data.sale_value
+      payload.valor_venda = data.sale_value
+    }
+    if (data.lives_count !== undefined) payload.qtd_vidas = data.lives_count || null
+    if (data.notes !== undefined) payload.observacoes = data.notes || null
+    if (data.assigned_to !== undefined) payload.responsavel_id = data.assigned_to || null
 
     const { data: updated, error } = await supabase
       .from('contracts')

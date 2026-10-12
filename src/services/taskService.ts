@@ -24,13 +24,17 @@ interface TaskDbRow {
   opportunity_id?: string | null
   company_id?: string | null
   contact_id?: string | null
-  type: TaskType
-  title: string
+  tipo?: string | null
+  type?: TaskType
+  titulo?: string | null
+  title?: string | null
+  descricao?: string | null
   description?: string | null
   due_date: string
   due_time?: string | null
-  priority: TaskPriority
-  status: TaskStatus
+  priority?: TaskPriority
+  status: string
+  assignee_id?: string | null
   assigned_to?: string | null
   completed_at?: string | null
   notes?: string | null
@@ -38,19 +42,24 @@ interface TaskDbRow {
   updated_at?: string
   opportunities?: {
     id: string
-    title: string
-    stage: string
-    pipeline_type: string
+    titulo?: string | null
+    title?: string | null
+    status?: string | null
+    funnel_type?: string | null
   } | null
   contacts?: {
     id: string
-    name: string
+    nome?: string | null
+    name?: string | null
+    celular?: string | null
     phone?: string | null
     email?: string | null
   } | null
   companies?: {
     id: string
-    trade_name: string
+    nome_fantasia?: string | null
+    trade_name?: string | null
+    razao_social?: string | null
     legal_name?: string | null
   } | null
   profiles?: {
@@ -63,39 +72,50 @@ interface TaskDbRow {
 const SELECT_TASK_EXPAND = `
   id,
   opportunity_id,
-  company_id,
-  contact_id,
-  type,
-  title,
-  description,
+  tipo,
+  titulo,
+  descricao,
   due_date,
   due_time,
-  priority,
+  assignee_id,
   status,
-  assigned_to,
-  completed_at,
-  notes,
+  created_by,
   created_at,
   updated_at,
-  opportunities:opportunity_id(id, title, stage, pipeline_type),
-  contacts:contact_id(id, name, phone, email),
-  companies:company_id(id, trade_name, legal_name),
-  profiles:assigned_to(id, nome, email)
+  opportunities:opportunity_id(id, titulo, funnel_type, status),
+  profiles:assignee_id(id, nome, email)
 `
 
 function mapTaskRow(r: TaskDbRow): Task {
+  // Mapear status enum 0001 ('pendente', 'concluida', 'cancelada') para formato UI
+  const rawStatus = (r.status || 'pendente').toLowerCase()
+  let uiStatus: TaskStatus = 'Pendente'
+  if (rawStatus === 'concluida' || rawStatus === 'concluída') uiStatus = 'Concluída'
+  if (rawStatus === 'cancelada') uiStatus = 'Cancelada'
+
+  // Mapear tipo slug 0001 ('ligacao', 'whatsapp', 'follow_up', etc.)
+  const rawType = (r.tipo || r.type || 'follow_up').toLowerCase()
+  let uiType: TaskType = 'Follow-up'
+  if (rawType === 'ligacao') uiType = 'Ligação'
+  else if (rawType === 'whatsapp') uiType = 'WhatsApp'
+  else if (rawType === 'reuniao') uiType = 'Reunião'
+  else if (rawType === 'cotacao') uiType = 'Cotação'
+  else if (rawType === 'documentacao') uiType = 'Documentação'
+  else if (rawType === 'implantacao') uiType = 'Implantação'
+  else if (rawType === 'cobranca_pagamento') uiType = 'Cobrança/Pagamento'
+  else if (rawType === 'outro') uiType = 'Outro'
+
   const t: Task = {
     id: r.id,
     opportunity_id: r.opportunity_id || undefined,
-    contact_id: r.contact_id || undefined,
-    type: r.type,
-    title: r.title,
-    description: r.description || undefined,
+    type: uiType,
+    title: r.titulo || r.title || 'Tarefa',
+    description: r.descricao || r.description || undefined,
     due_date: r.due_date,
     due_time: r.due_time || undefined,
-    priority: r.priority,
-    status: r.status,
-    assigned_to: r.assigned_to || undefined,
+    priority: r.priority || 'Média',
+    status: uiStatus,
+    assigned_to: r.assignee_id || r.assigned_to || undefined,
     completed_at: r.completed_at || undefined,
     notes: r.notes || undefined,
     created: r.created_at || new Date().toISOString(),
@@ -106,30 +126,14 @@ function mapTaskRow(r: TaskDbRow): Task {
   if (r.opportunities) {
     t.expand.opportunity_id = {
       id: r.opportunities.id,
-      title: r.opportunities.title,
-      company_id: r.company_id || '',
-      stage: r.opportunities.stage,
-      pipeline_type: r.opportunities.pipeline_type as 'VENDAS' | 'POS_VENDA',
+      title: r.opportunities.titulo || r.opportunities.title || '',
+      company_id: '',
+      stage: '',
+      pipeline_type: r.opportunities.funnel_type === 'pos_venda' ? 'POS_VENDA' : 'VENDAS',
       value: 0,
       created: r.created_at || new Date().toISOString(),
       updated: r.updated_at || new Date().toISOString(),
     } as Opportunity
-  }
-  if (r.contacts) {
-    t.expand.contact_id = {
-      id: r.contacts.id,
-      company_id: r.company_id || '',
-      name: r.contacts.name,
-      phone: r.contacts.phone || undefined,
-      email: r.contacts.email || undefined,
-    } as Contact
-  }
-  if (r.companies) {
-    t.expand.company_id = {
-      id: r.companies.id,
-      trade_name: r.companies.trade_name,
-      legal_name: r.companies.legal_name || undefined,
-    } as Company
   }
   if (r.profiles) {
     t.expand.assigned_to = {
@@ -160,20 +164,26 @@ export const taskService = {
       let query = supabase.from('tasks').select(SELECT_TASK_EXPAND, { count: 'exact' })
 
       if (options.status && options.status !== 'TODOS') {
-        query = query.eq('status', options.status)
+        const sVal =
+          options.status === 'Concluída'
+            ? 'concluida'
+            : options.status === 'Cancelada'
+              ? 'cancelada'
+              : 'pendente'
+        query = query.eq('status', sVal)
       }
       if (options.opportunityId) {
         query = query.eq('opportunity_id', options.opportunityId)
       }
       if (options.assignedTo) {
-        query = query.eq('assigned_to', options.assignedTo)
+        query = query.eq('assignee_id', options.assignedTo)
       }
 
       const todayStr = new Date().toISOString().slice(0, 10)
       if (options.dateFilter === 'HOJE') {
         query = query.eq('due_date', todayStr)
       } else if (options.dateFilter === 'ATRASADAS') {
-        query = query.lt('due_date', todayStr).eq('status', 'Pendente')
+        query = query.lt('due_date', todayStr).eq('status', 'pendente')
       } else if (options.dateFilter === 'PROXIMAS') {
         query = query.gt('due_date', todayStr)
       }
@@ -262,21 +272,36 @@ export const taskService = {
 
     const assignedTo = data.assigned_to || currentUserId
 
+    // Converter tipo da UI para slug do enum 0001
+    const tSlugMap: Record<string, string> = {
+      Ligação: 'ligacao',
+      LIGACAO: 'ligacao',
+      WhatsApp: 'whatsapp',
+      WHATSAPP: 'whatsapp',
+      'Follow-up': 'follow_up',
+      FOLLOW_UP: 'follow_up',
+      Reunião: 'reuniao',
+      REUNIAO: 'reuniao',
+      Cotação: 'cotacao',
+      Documentação: 'documentacao',
+      Implantação: 'implantacao',
+      'Cobrança/Pagamento': 'cobranca_pagamento',
+      Outro: 'outro',
+      OUTRO: 'outro',
+    }
+    const slug = (data.type && tSlugMap[data.type]) || 'follow_up'
+
     const { data: created, error } = await supabase
       .from('tasks')
       .insert({
         opportunity_id: data.opportunity_id || null,
-        company_id: (data as { company_id?: string }).company_id || null,
-        contact_id: data.contact_id || null,
-        type: data.type || 'LIGACAO',
-        title: data.title || '',
-        description: data.description || null,
+        tipo: slug,
+        titulo: data.title || 'Tarefa',
+        descricao: data.description || null,
         due_date: data.due_date || new Date().toISOString().slice(0, 10),
         due_time: data.due_time || null,
-        priority: data.priority || 'Média',
-        status: data.status || 'Pendente',
-        assigned_to: assignedTo,
-        notes: data.notes || null,
+        assignee_id: assignedTo,
+        status: 'pendente',
       })
       .select(SELECT_TASK_EXPAND)
       .single()
@@ -314,21 +339,19 @@ export const taskService = {
       updated_at: new Date().toISOString(),
     }
     if (data.opportunity_id !== undefined) payload.opportunity_id = data.opportunity_id || null
-    if (data.contact_id !== undefined) payload.contact_id = data.contact_id || null
-    if (data.type !== undefined) payload.type = data.type
-    if (data.title !== undefined) payload.title = data.title
-    if (data.description !== undefined) payload.description = data.description || null
+    if (data.title !== undefined) payload.titulo = data.title
+    if (data.description !== undefined) payload.descricao = data.description || null
     if (data.due_date !== undefined) payload.due_date = data.due_date
     if (data.due_time !== undefined) payload.due_time = data.due_time || null
-    if (data.priority !== undefined) payload.priority = data.priority
     if (data.status !== undefined) {
-      payload.status = data.status
-      if (data.status === 'Concluída') {
-        payload.completed_at = new Date().toISOString()
-      }
+      payload.status =
+        data.status === 'Concluída'
+          ? 'concluida'
+          : data.status === 'Cancelada'
+            ? 'cancelada'
+            : 'pendente'
     }
-    if (data.assigned_to !== undefined) payload.assigned_to = data.assigned_to || null
-    if (data.notes !== undefined) payload.notes = data.notes || null
+    if (data.assigned_to !== undefined) payload.assignee_id = data.assigned_to || null
 
     const { data: updated, error } = await supabase
       .from('tasks')
