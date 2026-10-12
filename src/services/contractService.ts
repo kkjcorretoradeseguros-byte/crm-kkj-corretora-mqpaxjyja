@@ -13,6 +13,7 @@ export interface ContractFilterOptions {
   page?: number
   perPage?: number
   companyId?: string
+  opportunity_id?: string
   status?: ContractStatus
   search?: string
 }
@@ -195,6 +196,9 @@ export const contractService = {
 
       if (options.companyId) {
         query = query.eq('company_id', options.companyId)
+      }
+      if (options.opportunity_id) {
+        query = query.eq('opportunity_id', options.opportunity_id)
       }
       if (options.status) {
         query = query.eq('status', options.status)

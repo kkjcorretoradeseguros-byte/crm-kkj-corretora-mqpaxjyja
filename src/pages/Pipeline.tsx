@@ -392,7 +392,10 @@ export default function Pipeline() {
             aliquota_imposto: 0.11, // Padrão central KKJ 11%
           })
         } catch (err: any) {
-          console.warn('Registro de primeiro boleto Adesão (aguardando migration financeira 0003/0004):', err?.message)
+          console.warn(
+            'Registro de primeiro boleto Adesão (aguardando migration financeira 0003/0004):',
+            err?.message,
+          )
         }
       }
 
@@ -455,7 +458,9 @@ export default function Pipeline() {
           'Rotina financeira ainda não implantada neste banco Supabase. Por favor, aplique as migrations pendentes 0003 e 0004.',
         )
       } else {
-        alert(`Erro ao concluir venda ganha: ${msg || 'Verifique a conexão ou os dados informados.'}`)
+        alert(
+          `Erro ao concluir venda ganha: ${msg || 'Verifique a conexão ou os dados informados.'}`,
+        )
       }
     }
   }
