@@ -34,7 +34,7 @@ export const adesaoService = {
     vendedor_id?: string
     valor_integral: number
     data_vencimento: string
-    aliquota_imposto?: number // Padrão 8%
+    aliquota_imposto?: number // Decimal (ex: 0.11 para 11%) ou percentual (11)
   }): Promise<AdesaoBoleto | null> {
     const {
       contract_id,
@@ -43,10 +43,13 @@ export const adesaoService = {
       vendedor_id,
       valor_integral,
       data_vencimento,
-      aliquota_imposto = 0.08,
+      aliquota_imposto = 0.11, // Padrão 11% KKJ
     } = params
 
-    const impostoValor = valor_integral * aliquota_imposto
+    // Normaliza alíquota para fração decimal se fornecida como percentual (ex: 11 -> 0.11)
+    const taxaDecimal = aliquota_imposto > 1 ? aliquota_imposto / 100 : aliquota_imposto
+
+    const impostoValor = valor_integral * taxaDecimal
     const receitaLiquida = valor_integral - impostoValor
     const comissaoVendedor = receitaLiquida * 0.3 // 30% da receita líquida elegível
     const resultadoCorretora = receitaLiquida - comissaoVendedor

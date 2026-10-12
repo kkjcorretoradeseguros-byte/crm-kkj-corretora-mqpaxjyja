@@ -213,26 +213,28 @@ export const teamService = {
   ): Promise<void> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    // 1. Desativar qualquer equipe anterior do vendedor (cada vendedor só pode ter 1 equipe ativa)
+    // 1. Transferência preservando histórico: encerra vínculo ativo anterior com data_fim
+    // A transferência NÃO altera o responsável (owner_id) de oportunidades já existentes
     await supabase
       .from('team_members')
       .update({ ativo: false, data_fim: new Date().toISOString() })
       .eq('vendedor_id', vendedorId)
       .eq('ativo', true)
 
-    // 2. Inserir na nova equipe
+    // 2. Inserir novo vínculo ativo com data_inicio
     const { error } = await supabase.from('team_members').insert({
       team_id: teamId,
       vendedor_id: vendedorId,
       ativo: true,
       participa_distribuicao: participaDistribuicao,
+      data_inicio: new Date().toISOString(),
     })
 
     if (error) {
       throw new Error(error.message || 'Falha ao vincular vendedor à equipe')
     }
 
-    // 3. Atualizar profile do vendedor com a equipe atual
+    // 3. Atualizar profile do vendedor com a equipe atual sem alterar seus leads
     await supabase
       .from('profiles')
       .update({ equipe_atual_id: teamId, recebe_leads_automaticos: participaDistribuicao })
@@ -242,7 +244,8 @@ export const teamService = {
   async removeMemberFromTeam(teamId: string, vendedorId: string): Promise<void> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    // Desativar da equipe atual e vincular diretamente ao administrador
+    // Desativar da equipe atual preservando data_fim histórica
+    // O corretor fica vinculado diretamente ao administrador
     await supabase
       .from('team_members')
       .update({ ativo: false, data_fim: new Date().toISOString() })

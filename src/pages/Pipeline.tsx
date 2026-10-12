@@ -362,6 +362,7 @@ export default function Pipeline() {
         vendedor_id: vendaGanhaTargetOpp.assigned_to || user?.id,
         valor_integral: data.contractedValue,
         data_vencimento: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+        aliquota_imposto: 0.11, // Padrão central KKJ 11%
       })
     }
 

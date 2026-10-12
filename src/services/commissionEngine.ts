@@ -153,22 +153,26 @@ export const commissionEngine = {
     modalidade?: string
     mensalidade: number
     leadOrigin?: 'kkj' | 'vendedor' // Para repasse do vendedor
-    impostoAliquota?: number // Default configurável (ex: 10% = 0.10)
+    impostoAliquota?: number // Default configurável (ex: 11% = 0.11 ou 11)
   }): CommissionCalculationResult {
     const {
       carrierName,
       modalidade = 'PME',
       mensalidade,
       leadOrigin = 'kkj',
-      impostoAliquota = 0.08,
+      impostoAliquota = 0.11, // Padrão 11% KKJ
     } = params
+
+    // Normaliza para decimal (se vier 11, converte para 0.11)
+    const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
+
     const normCarrier = carrierName.trim().toLowerCase()
     const normMod = modalidade.trim().toUpperCase()
 
     // Caso especial Adesão: Primeira mensalidade é 100% KKJ via boleto próprio!
     if (normMod === 'ADESÃO' || normMod === 'ADESAO') {
       const primeiroBoletoIntegral = mensalidade
-      const imposto = primeiroBoletoIntegral * impostoAliquota
+      const imposto = primeiroBoletoIntegral * taxaDecimal
       const receitaLiquida = primeiroBoletoIntegral - imposto
       const comissaoVendedor = receitaLiquida * 0.3 // 30% da receita líquida na 1ª
 
@@ -205,7 +209,7 @@ export const commissionEngine = {
         // PME lead KKJ -> 50% da líquida; Lead vendedor -> 100% da líquida
         let repasse = 0
         if (num === 1) {
-          const liq = valorPrevisto * (1 - impostoAliquota)
+          const liq = valorPrevisto * (1 - taxaDecimal)
           repasse = leadOrigin === 'vendedor' ? liq : liq * 0.5
         }
 
@@ -240,7 +244,7 @@ export const commissionEngine = {
     // Modalidade Pessoa Física (PF)
     if (normMod === 'PF' || normMod.includes('FÍSICA') || normMod.includes('FISICA')) {
       const valor1a = mensalidade * 1.0 // Padrão 100% na 1ª
-      const liq = valor1a * (1 - impostoAliquota)
+      const liq = valor1a * (1 - taxaDecimal)
       const repasse = liq * 0.3 // 30% da 1ª parcela para o vendedor
 
       return {

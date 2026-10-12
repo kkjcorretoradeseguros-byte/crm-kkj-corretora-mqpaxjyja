@@ -39,12 +39,17 @@ import { userService } from '@/services/userService'
 import {
   teamService,
   type CommercialTeam,
+  type TeamMember,
   type ManagementCommissionRule,
 } from '@/services/teamService'
 import { carrierService } from '@/services/carrierService'
 import { tagService } from '@/services/tagService'
 import { SPECIAL_PME_RULES } from '@/services/commissionEngine'
 import { commissionImporter, type ImportReport } from '@/services/commissionImporter'
+import {
+  systemSettingsService,
+  type SystemSettingHistoryItem,
+} from '@/services/systemSettingsService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Product, ProductCategory, User, UserRole, Carrier, CrmTag } from '@/types/crm'
 
@@ -61,7 +66,22 @@ export default function SettingsPage() {
     | 'EQUIPES'
     | 'COMISSAO_GESTAO'
     | 'USUARIOS'
+    | 'CONFIG_SISTEMA'
   >('OPERADORAS')
+
+  // Alíquota de imposto e configurações do sistema
+  const [taxRate, setTaxRate] = useState<number>(11.0)
+  const [taxRateInput, setTaxRateInput] = useState<string>('11.00')
+  const [taxHistory, setTaxHistory] = useState<SystemSettingHistoryItem[]>([])
+  const [isSavingTax, setIsSavingTax] = useState(false)
+  const [taxMessage, setTaxMessage] = useState<string | null>(null)
+
+  // Membros da equipe selecionada no painel de equipes
+  const [selectedTeamIdForMembers, setSelectedTeamIdForMembers] = useState<string | null>(null)
+  const [currentTeamMembers, setCurrentTeamMembers] = useState<TeamMember[]>([])
+  const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false)
+  const [selectedSellerIdToAdd, setSelectedSellerIdToAdd] = useState('')
+  const [participaDistribuicao, setParticipaDistribuicao] = useState(true)
 
   // Carriers state (Operadoras)
   const [carriers, setCarriers] = useState<Carrier[]>([])
@@ -137,23 +157,91 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [prodRes, usersRes, carriersRes, teamsRes, mgmRes] = await Promise.all([
-        productService.getAllProducts(false),
-        userService.getAllUsers(),
-        carrierService.getAllCarriers(false),
-        teamService.getTeams(),
-        teamService.getManagementRules(),
-      ])
+      const [prodRes, usersRes, carriersRes, teamsRes, mgmRes, currentTax, taxHist] =
+        await Promise.all([
+          productService.getAllProducts(false),
+          userService.getAllUsers(),
+          carrierService.getAllCarriers(false),
+          teamService.getTeams(),
+          teamService.getManagementRules(),
+          systemSettingsService.getDefaultTaxRate(),
+          systemSettingsService.getTaxHistory(),
+        ])
       setProducts(prodRes)
       setUsers(usersRes)
       setCarriers(carriersRes)
       setTeams(teamsRes)
       setManagementRules(mgmRes)
       setTagsList(tagService.getAllTags())
+      setTaxRate(currentTax)
+      setTaxRateInput(currentTax.toString())
+      setTaxHistory(taxHist)
     } catch (err) {
       console.error(err)
     }
   }, [])
+
+  const handleSaveTaxRate = async () => {
+    const val = parseFloat(taxRateInput)
+    if (isNaN(val) || val < 0 || val > 100) {
+      setTaxMessage('A alíquota deve ser um número entre 0 e 100%.')
+      return
+    }
+
+    try {
+      setIsSavingTax(true)
+      setTaxMessage(null)
+      await systemSettingsService.updateDefaultTaxRate(
+        val,
+        'Atualização via Central do Administrador',
+      )
+      setTaxRate(val)
+      const updatedHist = await systemSettingsService.getTaxHistory()
+      setTaxHistory(updatedHist)
+      setTaxMessage('Alíquota atualizada com sucesso para ' + val + '%!')
+    } catch (err: any) {
+      setTaxMessage(err.message || 'Erro ao salvar a alíquota.')
+    } finally {
+      setIsSavingTax(false)
+    }
+  }
+
+  const handleSelectTeamMembers = async (teamId: string) => {
+    setSelectedTeamIdForMembers(teamId)
+    const members = await teamService.getTeamMembers(teamId)
+    setCurrentTeamMembers(members)
+  }
+
+  const handleAddMemberToTeam = async () => {
+    if (!selectedTeamIdForMembers || !selectedSellerIdToAdd) return
+    try {
+      await teamService.addMemberToTeam(
+        selectedTeamIdForMembers,
+        selectedSellerIdToAdd,
+        participaDistribuicao,
+      )
+      setIsAddMemberModalOpen(false)
+      setSelectedSellerIdToAdd('')
+      const members = await teamService.getTeamMembers(selectedTeamIdForMembers)
+      setCurrentTeamMembers(members)
+      const updatedTeams = await teamService.getTeams()
+      setTeams(updatedTeams)
+    } catch (err: any) {
+      alert(err.message || 'Erro ao transferir/vincular corretor.')
+    }
+  }
+
+  const handleRemoveMember = async (teamId: string, vendedorId: string) => {
+    try {
+      await teamService.removeMemberFromTeam(teamId, vendedorId)
+      const members = await teamService.getTeamMembers(teamId)
+      setCurrentTeamMembers(members)
+      const updatedTeams = await teamService.getTeams()
+      setTeams(updatedTeams)
+    } catch (err: any) {
+      alert(err.message || 'Erro ao remover vínculo.')
+    }
+  }
 
   useEffect(() => {
     loadData()
@@ -284,6 +372,7 @@ export default function SettingsPage() {
           { key: 'EQUIPES', label: 'Equipes & Hierarquia', icon: Users },
           { key: 'COMISSAO_GESTAO', label: 'Comissão de Gestão', icon: Shield },
           { key: 'USUARIOS', label: 'Usuários & Perfis', icon: Users },
+          { key: 'CONFIG_SISTEMA', label: 'Impostos & Configurações', icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon
           return (
@@ -771,11 +860,12 @@ export default function SettingsPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-sm font-bold text-[#101828]">
-                  Equipes Comerciais & Vínculo Hierárquico
+                  Equipes Comerciais & Vínculo Histórico
                 </CardTitle>
                 <CardDescription className="text-xs text-[#667085]">
-                  Vincule vendedores a equipes sob um gestor ou mantenha vínculo direto ao
-                  administrador. Cada vendedor tem no máximo uma equipe ativa.
+                  Modelo com data_inicio e data_fim: transfira vendedores mantendo histórico
+                  integral. Apenas 1 equipe ativa por corretor; a transferência NÃO altera o
+                  responsável de leads existentes.
                 </CardDescription>
               </div>
               <Button
@@ -842,7 +932,15 @@ export default function SettingsPage() {
                           <p className="text-[11px] text-slate-500">{team.descricao}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleSelectTeamMembers(team.id)}
+                          className="text-xs h-8"
+                        >
+                          Ver Membros Ativos
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -853,13 +951,173 @@ export default function SettingsPage() {
                           }}
                           className="text-xs h-8"
                         >
-                          {team.ativo ? 'Desativar Equipe' : 'Ativar Equipe'}
+                          {team.ativo ? 'Desativar' : 'Ativar'}
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Seção de Membros da Equipe Selecionada */}
+          {selectedTeamIdForMembers && (
+            <Card className="border-blue-200 bg-blue-50/20 shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900">
+                    Membros da Equipe: {teams.find((t) => t.id === selectedTeamIdForMembers)?.nome}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-600">
+                    Apenas 1 vínculo ativo por corretor. Vínculos encerrados guardam data_fim.
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setIsAddMemberModalOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Transferir / Vincular Corretor
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {currentTeamMembers.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-2">
+                    Nenhum corretor vinculado a esta equipe no momento.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-blue-100">
+                    {currentTeamMembers.map((m) => (
+                      <div key={m.id} className="py-2.5 flex items-center justify-between text-xs">
+                        <div>
+                          <strong className="text-slate-900">
+                            {m.vendedor?.nome || m.vendedor_id}
+                          </strong>
+                          <span className="text-slate-500 ml-2">({m.vendedor?.email})</span>
+                          <span className="text-slate-400 ml-2 text-[10px]">
+                            Desde {new Date(m.data_inicio).toLocaleDateString('pt-BR')}
+                          </span>
+                          {m.participa_distribuicao && (
+                            <Badge
+                              variant="outline"
+                              className="ml-2 text-[9px] text-emerald-700 bg-emerald-50"
+                            >
+                              Recebe Leads
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            handleRemoveMember(selectedTeamIdForMembers, m.vendedor_id)
+                          }
+                          className="text-xs text-red-600 hover:text-red-700 h-7"
+                        >
+                          Desvincular (Voltar p/ Admin)
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* TAB: CONFIGURAÇÕES CENTRAIS DO SISTEMA & ALÍQUOTA DE IMPOSTO */}
+      {activeTab === 'CONFIG_SISTEMA' && (
+        <div className="space-y-6">
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-bold text-[#101828]">
+                Alíquota de Imposto Padrão da KKJ (Configuração Central)
+              </CardTitle>
+              <CardDescription className="text-xs text-[#667085]">
+                Esta alíquota (padrão 11.00%) é gravada no snapshot no momento da contratação e na
+                emissão de boletos de adesão. Contratos anteriores preservam sua alíquota histórica
+                sem impacto retroativo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 max-w-md">
+                <div className="space-y-1 w-full">
+                  <Label className="text-xs font-semibold">Alíquota Padrão (%)</Label>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={taxRateInput}
+                      onChange={(e) => setTaxRateInput(e.target.value)}
+                      className="h-9 text-sm font-bold pr-8"
+                      disabled={isSavingTax}
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">
+                      %
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSaveTaxRate}
+                  disabled={isSavingTax}
+                  className="h-9 bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B] w-full sm:w-auto px-5"
+                >
+                  {isSavingTax ? 'Salvando...' : 'Atualizar Alíquota'}
+                </Button>
+              </div>
+
+              {taxMessage && (
+                <p
+                  className={`text-xs font-semibold ${taxMessage.includes('sucesso') ? 'text-emerald-600' : 'text-red-600'}`}
+                >
+                  {taxMessage}
+                </p>
+              )}
+
+              <div className="mt-6 pt-4 border-t border-slate-200">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
+                  Histórico Auditado de Alterações da Alíquota
+                </h4>
+                {taxHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">
+                    Nenhuma alteração registrada até o momento.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                    {taxHistory.map((item) => (
+                      <div key={item.id} className="py-2 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-slate-800">
+                            {typeof item.new_value === 'object'
+                              ? JSON.stringify(item.new_value)
+                              : item.new_value}
+                            %
+                          </span>
+                          {item.previous_value !== null && item.previous_value !== undefined && (
+                            <span className="text-slate-400 ml-2">
+                              (anterior:{' '}
+                              {typeof item.previous_value === 'object'
+                                ? JSON.stringify(item.previous_value)
+                                : item.previous_value}
+                              %)
+                            </span>
+                          )}
+                          <span className="text-slate-500 ml-2 text-[11px]">
+                            • {item.reason || 'Alteração manual'}
+                          </span>
+                        </div>
+                        <span className="text-slate-400 text-[10px]">
+                          {new Date(item.created_at).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1107,6 +1365,73 @@ export default function SettingsPage() {
               className="bg-[#1B2A4A] text-white text-xs"
             >
               Salvar Equipe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: TRANSFERIR / VINCULAR MEMBRO A EQUIPE */}
+      <Dialog open={isAddMemberModalOpen} onOpenChange={setIsAddMemberModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#101828]">
+              Vincular / Transferir Corretor para a Equipe
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <p className="text-slate-500 text-[11px]">
+              Se o corretor já tiver outra equipe ativa, seu vínculo anterior será encerrado com a
+              data de término atual, preservando o histórico. O responsável de oportunidades
+              existentes não será alterado.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs">Corretor / Vendedor *</Label>
+              <Select value={selectedSellerIdToAdd} onValueChange={setSelectedSellerIdToAdd}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecione o corretor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users
+                    .filter(
+                      (u) =>
+                        u.role?.toLowerCase() === 'vendedor' || u.role?.toLowerCase() === 'gestor',
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email} ({u.role})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="checkbox"
+                id="chk-participa"
+                checked={participaDistribuicao}
+                onChange={(e) => setParticipaDistribuicao(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              <label htmlFor="chk-participa" className="text-xs text-slate-700 cursor-pointer">
+                Participa da distribuição automática de leads da equipe
+              </label>
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddMemberModalOpen(false)}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleAddMemberToTeam}
+              className="bg-[#1B2A4A] text-white text-xs"
+            >
+              Confirmar Vínculo
             </Button>
           </DialogFooter>
         </DialogContent>
