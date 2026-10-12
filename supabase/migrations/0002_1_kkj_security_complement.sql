@@ -2,7 +2,7 @@
 -- MIGRAÇÃO 0002.1 (CORREÇÃO COMPLEMENTAR DA 0002):
 -- REFORÇO ESTRITO DE SEGURANÇA, TRIGGERS DE INTEGRIDADE EM INSERT E UPDATE,
 -- TRATAMENTO DE NULOS COM IS DISTINCT FROM E CONFERÊNCIA DE COLUNAS
--- Compatível com Schema 0001 (32 tabelas) e 0002 existente | Idempotente | Não destrutiva
+-- Compatível com Schema 0001 (32 tabelas), 0002, 0003 e 0004 | Idempotente | Não destrutiva
 -- NÃO EXECUTAR AUTOMATICAMENTE: o cliente aplica via SQL Editor do Supabase se necessário.
 -- ==============================================================================
 
@@ -15,7 +15,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns 
     WHERE table_schema = 'public' AND table_name = 'pipeline_stages' AND column_name = 'funnel_type'
   ) THEN
-    ALTER TABLE public.pipeline_stages ADD COLUMN funnel_type public.pipeline_type NOT NULL DEFAULT 'vendas';
+    ALTER TABLE public.pipeline_stages ADD COLUMN funnel_type public.funnel_type NOT NULL DEFAULT 'vendas';
   END IF;
 
   IF NOT EXISTS (
@@ -162,9 +162,29 @@ CREATE TRIGGER trg_check_conversation_links
   FOR EACH ROW
   EXECUTE FUNCTION public.check_conversation_links();
 
--- 4. CONFIRMAÇÃO DO TRIGGER DE PROTEÇÃO CONTRA AUTOTRANSFERÊNCIA DE LEADS (opportunities)
--- Preserva e reforça a verificação da migration 0001 sem substituição destrutiva.
--- Vendedor não transfere lead sem permissão 'redistribuir_leads' ou papel gestor/administrador.
+-- 4. TRIGGER DE VALIDAÇÃO DE OPORTUNIDADES, ETAPAS, FUNIL, PERDA E REDISTRIBUIÇÃO HIERÁRQUICA
+-- Preserva 100% de todas as validações de domínio da migration 0001 (INSERT e UPDATE segregados,
+-- coerência stage_id x funnel_type, loss_reason_id obrigatório e loss_notes em perda,
+-- limpeza de loss_reason_id e loss_notes ao sair de perdida, sincronização bidirecional
+-- com a etapa de fechamento ganho is_fechamento = true).
+--
+-- Reforça e estende a segurança em INSERT e UPDATE com tratamento seguro de NULL (IS DISTINCT FROM).
+--
+-- Regras de atribuição / transferência de responsável (owner_id):
+-- a) Administrador ativo (is_admin()): acesso irrestrito para atribuir ou transferir qualquer lead.
+-- b) Gestor ativo (is_gestor()):
+--    - Se a tabela teams existir (após migration 0004): gestor só redistribui leads dentro de sua equipe ativa
+--      (o novo responsável deve ser membro ativo da equipe liderada pelo gestor, ou o próprio gestor).
+--    - Não pode transferir para vendedores fora de sua equipe ativa (ex.: Eliana vinculada ao admin).
+--    - Se a 0004 ainda não foi aplicada: gestor pode redistribuir como na 0001.
+-- c) Vendedor comum (vendedor):
+--    - No INSERT: só pode criar oportunidades para si (owner_id = auth.uid()) ou sem responsável (owner_id IS NULL)
+--      caso tenha permissão para visualização de leads não atribuídos. NUNCA pode criar lead atribuído a terceiro.
+--    - No UPDATE: NÃO pode transferir nem remover responsável (owner_id). A permissão granular 'redistribuir_leads'
+--      NÃO autoriza vendedor a transferir oportunidades fora da hierarquia. Vendedor não possui autorização para
+--      redistribuir leads de terceiros nem atribuir a quem quer que seja.
+--
+-- Tipo de retorno mantido como TRIGGER compatível com os triggers da 0001.
 CREATE OR REPLACE FUNCTION public.validate_opportunity_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -172,50 +192,226 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_stage_funnel public.pipeline_type;
+  v_stage_funnel public.funnel_type;
+  v_stage_is_fechamento BOOLEAN;
   v_won_stage_id UUID;
+  v_is_admin BOOLEAN;
+  v_is_gestor BOOLEAN;
+  v_has_teams_table BOOLEAN;
+  v_is_subordinate BOOLEAN;
 BEGIN
-  -- 1. VALIDAÇÃO DE COERÊNCIA ETAPA X FUNIL
-  IF NEW.stage_id IS NOT NULL THEN
-    SELECT ps.funnel_type INTO v_stage_funnel
+  -- Determinação dos papéis hierárquicos do usuário autenticado
+  v_is_admin := public.is_admin();
+  v_is_gestor := public.is_gestor();
+
+  -- =========================================================================
+  -- BLOCO 1: REGRAS DE INSERT
+  -- =========================================================================
+  IF TG_OP = 'INSERT' THEN
+    -- 1.1 Coerência entre etapa (stage_id) e o funnel_type da oportunidade (regra 0001)
+    SELECT ps.funnel_type, ps.is_fechamento INTO v_stage_funnel, v_stage_is_fechamento
     FROM public.pipeline_stages ps
     WHERE ps.id = NEW.stage_id;
 
     IF v_stage_funnel IS NULL THEN
-      RAISE EXCEPTION 'A etapa informada não existe no catálogo de pipeline_stages.';
+      RAISE EXCEPTION 'Etapa de pipeline inválida ou inexistente.';
     END IF;
 
     IF v_stage_funnel <> NEW.funnel_type THEN
-      RAISE EXCEPTION 'Incoerência de funil: a etapa selecionada pertence ao funil "%" e a oportunidade está configurada como "%".',
+      RAISE EXCEPTION 'A etapa informada pertence ao funil %, mas a oportunidade está no funil %.',
         v_stage_funnel, NEW.funnel_type;
     END IF;
-  END IF;
 
-  -- 2. VALIDAÇÃO DE MOTIVO DE PERDA
-  IF NEW.status = 'perdida' THEN
-    IF NEW.loss_reason_id IS NULL THEN
-      RAISE EXCEPTION 'Para marcar a oportunidade como perdida, é obrigatório informar o motivo da perda (loss_reason_id).';
+    -- 1.2 Validação de perda no INSERT (regras 0001 preservadas)
+    IF NEW.status = 'perdida' THEN
+      IF NEW.loss_reason_id IS NULL THEN
+        RAISE EXCEPTION 'Oportunidades com status "perdida" exigem a seleção de um motivo de perda (loss_reason_id).';
+      END IF;
+      IF NEW.data_fechamento IS NULL THEN
+        NEW.data_fechamento := timezone('utc'::text, now());
+      END IF;
+    ELSE
+      NEW.loss_reason_id := NULL;
+      NEW.loss_notes := NULL;
     END IF;
-    IF NEW.data_fechamento IS NULL THEN
-      NEW.data_fechamento := timezone('utc'::text, now());
-    END IF;
-  END IF;
 
-  -- 3. FECHAMENTO GANHO
-  IF NEW.status = 'ganha' THEN
-    IF NEW.data_fechamento IS NULL THEN
-      NEW.data_fechamento := timezone('utc'::text, now());
-    END IF;
-  END IF;
-
-  -- 4. IMPEDIR AUTOTRANSFERÊNCIA DE LEADS NO UPDATE:
-  -- Se o owner_id estiver sendo alterado ou removido, exige privilégio de gestor/admin ou permissão redistribuir_leads
-  IF TG_OP = 'UPDATE' THEN
-    IF OLD.owner_id IS DISTINCT FROM NEW.owner_id THEN
-      IF NOT (public.is_manager_or_admin() OR public.has_permission('redistribuir_leads')) THEN
-        RAISE EXCEPTION 'Vendedor não possui permissão para transferir ou remover o responsável do lead. Exige permissão de redistribuição.';
+    -- 1.3 Fechamento ganho no INSERT: data de fechamento e sincronização de etapa (regras 0001 preservadas)
+    IF NEW.status = 'ganha' THEN
+      IF NEW.data_fechamento IS NULL THEN
+        NEW.data_fechamento := timezone('utc'::text, now());
       END IF;
     END IF;
+
+    -- Sincronização automática com etapa de fechamento (is_fechamento = true) no funil de vendas
+    IF NEW.funnel_type = 'vendas' THEN
+      SELECT ps.id INTO v_won_stage_id
+      FROM public.pipeline_stages ps
+      WHERE ps.funnel_type = 'vendas' AND ps.is_fechamento = true
+      LIMIT 1;
+
+      IF v_won_stage_id IS NOT NULL THEN
+        IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+          NEW.status := 'ganha';
+          IF NEW.data_fechamento IS NULL THEN
+            NEW.data_fechamento := timezone('utc'::text, now());
+          END IF;
+        ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id THEN
+          NEW.stage_id := v_won_stage_id;
+        END IF;
+      END IF;
+    END IF;
+
+    -- 1.4 Segurança de atribuição de responsável no INSERT
+    -- Vendedor comum NÃO pode criar lead atribuído a terceiro.
+    IF NOT v_is_admin THEN
+      IF v_is_gestor THEN
+        -- Gestor pode criar atribuído a si ou a subordinado de sua equipe ativa (se 0004 existir)
+        IF NEW.owner_id IS NOT NULL AND NEW.owner_id IS DISTINCT FROM auth.uid() THEN
+          v_has_teams_table := (to_regclass('public.teams') IS NOT NULL AND to_regclass('public.team_members') IS NOT NULL);
+          IF v_has_teams_table THEN
+            SELECT EXISTS (
+              SELECT 1
+              FROM public.teams t
+              JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+              WHERE t.gestor_id = auth.uid()
+                AND tm.vendedor_id = NEW.owner_id
+                AND t.ativo = true
+            ) INTO v_is_subordinate;
+
+            IF NOT v_is_subordinate THEN
+              RAISE EXCEPTION 'Gestor só pode atribuir oportunidades a corretores integrantes de sua equipe ativa.';
+            END IF;
+          END IF;
+        END IF;
+      ELSE
+        -- Vendedor comum: só pode criar para si ou sem responsável
+        IF NEW.owner_id IS NOT NULL AND NEW.owner_id IS DISTINCT FROM auth.uid() THEN
+          RAISE EXCEPTION 'Vendedores não possuem permissão para criar oportunidades atribuídas a outros corretores.';
+        END IF;
+      END IF;
+    END IF;
+
+    RETURN NEW;
+
+  -- =========================================================================
+  -- BLOCO 2: REGRAS DE UPDATE
+  -- =========================================================================
+  ELSIF TG_OP = 'UPDATE' THEN
+    -- 2.1 Coerência entre etapa (stage_id) e o funnel_type da oportunidade no UPDATE (regra 0001)
+    SELECT ps.funnel_type, ps.is_fechamento INTO v_stage_funnel, v_stage_is_fechamento
+    FROM public.pipeline_stages ps
+    WHERE ps.id = NEW.stage_id;
+
+    IF v_stage_funnel IS NULL THEN
+      RAISE EXCEPTION 'Etapa de pipeline inválida ou inexistente.';
+    END IF;
+
+    IF v_stage_funnel <> NEW.funnel_type THEN
+      RAISE EXCEPTION 'A etapa informada pertence ao funil %, mas a oportunidade está no funil %.',
+        v_stage_funnel, NEW.funnel_type;
+    END IF;
+
+    -- 2.2 Validação de perda no UPDATE (regras 0001 preservadas)
+    IF NEW.status = 'perdida' THEN
+      IF NEW.loss_reason_id IS NULL THEN
+        RAISE EXCEPTION 'Oportunidades com status "perdida" exigem a seleção de um motivo de perda (loss_reason_id).';
+      END IF;
+      IF NEW.data_fechamento IS NULL THEN
+        NEW.data_fechamento := timezone('utc'::text, now());
+      END IF;
+    ELSE
+      -- Ao sair de perdida (ou em qualquer outro status), limpa campos de perda (0001)
+      NEW.loss_reason_id := NULL;
+      NEW.loss_notes := NULL;
+    END IF;
+
+    -- 2.3 Fechamento ganho no UPDATE (regras 0001 preservadas)
+    IF NEW.status = 'ganha' THEN
+      IF NEW.data_fechamento IS NULL THEN
+        NEW.data_fechamento := timezone('utc'::text, now());
+      END IF;
+    END IF;
+
+    -- Sincronização automática com etapa de fechamento (is_fechamento = true) no funil de vendas (0001)
+    IF NEW.funnel_type = 'vendas' THEN
+      SELECT ps.id INTO v_won_stage_id
+      FROM public.pipeline_stages ps
+      WHERE ps.funnel_type = 'vendas' AND ps.is_fechamento = true
+      LIMIT 1;
+
+      IF v_won_stage_id IS NOT NULL THEN
+        IF NEW.stage_id = v_won_stage_id AND NEW.status <> 'ganha' THEN
+          NEW.status := 'ganha';
+          IF NEW.data_fechamento IS NULL THEN
+            NEW.data_fechamento := timezone('utc'::text, now());
+          END IF;
+        ELSIF NEW.status = 'ganha' AND NEW.stage_id <> v_won_stage_id AND NEW.stage_id = OLD.stage_id THEN
+          -- Se marcado como ganho sem mudar de etapa manualmente, ajusta para a etapa ganha
+          NEW.stage_id := v_won_stage_id;
+        END IF;
+      END IF;
+    END IF;
+
+    -- 2.4 PROTEÇÃO CONTRA TRANSFERÊNCIA INDEVIDA E REDISTRIBUIÇÃO HIERÁRQUICA
+    -- Verifica se o responsável (owner_id) está sendo alterado ou removido
+    IF OLD.owner_id IS DISTINCT FROM NEW.owner_id THEN
+      -- Se o usuário for administrador ativo: transferência sempre permitida
+      IF v_is_admin THEN
+        -- Administrador tem acesso geral irrestrito
+        NULL;
+      ELSIF v_is_gestor THEN
+        -- Gestor ativo:
+        -- Exige que tenha a permissão ou capacidade de gestão de equipe
+        -- Verifica se a tabela teams já existe (compatibilidade incremental com 0004)
+        v_has_teams_table := (to_regclass('public.teams') IS NOT NULL AND to_regclass('public.team_members') IS NOT NULL);
+
+        IF v_has_teams_table THEN
+          -- 1. O gestor só pode redistribuir leads de sua própria equipe (origem: de si ou de subordinado de equipe ativa)
+          IF OLD.owner_id IS NOT NULL AND OLD.owner_id IS DISTINCT FROM auth.uid() THEN
+            SELECT EXISTS (
+              SELECT 1
+              FROM public.teams t
+              JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+              WHERE t.gestor_id = auth.uid()
+                AND tm.vendedor_id = OLD.owner_id
+                AND t.ativo = true
+            ) INTO v_is_subordinate;
+
+            IF NOT v_is_subordinate THEN
+              RAISE EXCEPTION 'Gestor não possui permissão para redistribuir leads de corretores fora de sua equipe ativa.';
+            END IF;
+          END IF;
+
+          -- 2. O novo responsável deve ser o próprio gestor ou membro ativo de sua equipe (destino)
+          IF NEW.owner_id IS NOT NULL AND NEW.owner_id IS DISTINCT FROM auth.uid() THEN
+            SELECT EXISTS (
+              SELECT 1
+              FROM public.teams t
+              JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+              WHERE t.gestor_id = auth.uid()
+                AND tm.vendedor_id = NEW.owner_id
+                AND t.ativo = true
+            ) INTO v_is_subordinate;
+
+            IF NOT v_is_subordinate THEN
+              RAISE EXCEPTION 'Gestor só pode redistribuir leads para corretores integrantes de sua própria equipe ativa.';
+            END IF;
+          END IF;
+        ELSE
+          -- Antes da 0004 existir, validação padrão da 0001/0002.1 para gestor
+          IF NOT (public.is_manager_or_admin() OR public.has_permission('redistribuir_leads')) THEN
+            RAISE EXCEPTION 'Usuário não possui privilégio de gestor/administrador para redistribuir leads.';
+          END IF;
+        END IF;
+      ELSE
+        -- Vendedor comum (vendedor) ou qualquer outro papel não gestor/não admin:
+        -- Vendedores NÃO podem transferir oportunidades para terceiros nem desvincular o responsável.
+        -- Mesmo que possua a flag 'redistribuir_leads', vendedores não podem redistribuir fora da hierarquia.
+        RAISE EXCEPTION 'Vendedor não possui permissão para transferir ou remover o responsável da oportunidade comercial. Operação restrita a gestores e administradores.';
+      END IF;
+    END IF;
+
+    RETURN NEW;
   END IF;
 
   RETURN NEW;
