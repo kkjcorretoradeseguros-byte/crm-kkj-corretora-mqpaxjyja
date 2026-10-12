@@ -363,7 +363,8 @@ DROP POLICY IF EXISTS "opp_plan_suggestions_delete" ON public.opportunity_plan_s
 DROP POLICY IF EXISTS "adesao_boletos_admin_select" ON public.adesao_boletos;
 DROP POLICY IF EXISTS "meta_ads_leads_vendedor_select" ON public.meta_ads_leads;
 
--- Snapshots da 0003 (reforço de segurança: restrito exclusivamente a admin)DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
+-- Snapshots da 0003 (reforço de segurança: restrito exclusivamente a admin)
+DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
 DROP POLICY IF EXISTS "snapshots_admin_all" ON public.contract_commission_snapshots;
 
 CREATE POLICY "snapshots_admin_select"
@@ -620,6 +621,11 @@ CREATE POLICY "conversations_update_policy"
     OR responsible_user_id = auth.uid()
     OR (responsible_user_id IS NOT NULL AND public.is_gestor() AND public.is_manager_of_seller(responsible_user_id))
   );
+
+CREATE POLICY "conversations_delete_policy"
+  ON public.conversations FOR DELETE
+  TO authenticated
+  USING (public.is_admin());
 
 -- 9.6 COMPANIES
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
@@ -1020,6 +1026,11 @@ $$;
 REVOKE ALL ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) TO authenticated;
+
+-- Garantia de permissões quando chamada sem parâmetros
+REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas() TO authenticated;
 
 -- 10.2 get_meu_financeiro()
 CREATE OR REPLACE FUNCTION public.get_meu_financeiro()

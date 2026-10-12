@@ -6,9 +6,11 @@
 -- NÃO EXECUTAR AUTOMATICAMENTE: o cliente aplica via SQL Editor do Supabase se necessário.
 -- ==============================================================================
 
--- 1. CONFERÊNCIA E GARANTIA DAS COLUNAS DE ETAPAS (funnel_type, is_fechamento)
+-- 1. CONFERÊNCIA E GARANTIA DAS COLUNAS DE ETAPAS (funnel_type, is_fechamento) E OPORTUNIDADES (data_fechamento)
 -- A 0001 já criou funnel_type e is_fechamento em pipeline_stages.
 -- Asseguramos a existência e índices parciais sem recriação.
+-- Adicionamos data_fechamento em public.opportunities incrementalmente caso ausente,
+-- antes do seu uso pelo trigger validate_opportunity_rules().
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -24,11 +26,23 @@ BEGIN
   ) THEN
     ALTER TABLE public.pipeline_stages ADD COLUMN is_fechamento BOOLEAN NOT NULL DEFAULT false;
   END IF;
+
+  -- 1.1 Coluna data_fechamento em opportunities (auditada e garantida incrementalmente)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'opportunities' AND column_name = 'data_fechamento'
+  ) THEN
+    ALTER TABLE public.opportunities ADD COLUMN data_fechamento TIMESTAMPTZ;
+  END IF;
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_stages_fechamento
   ON public.pipeline_stages(funnel_type, is_fechamento)
   WHERE is_fechamento = true;
+
+CREATE INDEX IF NOT EXISTS idx_opportunities_data_fechamento
+  ON public.opportunities(data_fechamento)
+  WHERE data_fechamento IS NOT NULL;
 
 -- 2. REVISÃO INTEGRAL DO TRIGGER DE TAREFAS (tasks):
 -- Protege tanto em INSERT quanto em UPDATE:

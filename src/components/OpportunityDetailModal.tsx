@@ -304,16 +304,21 @@ export function OpportunityDetailModal({
         },
       )
       // Atualizar lista de contatos caso tenha alterado vínculo
-      const contRes = await contactService.getContacts()
-      setContacts(contRes.items)
+      try {
+        const contRes = await contactService.getContacts()
+        setContacts(contRes.items)
+      } catch (cErr: any) {
+        console.warn('Falha não-bloqueante ao recarregar contatos:', cErr?.message)
+      }
     } catch (err: any) {
-      setSaveError(err.message || 'Erro ao cadastrar e vincular nova empresa')
+      const msg = err.message || 'Erro ao cadastrar e vincular nova empresa'
+      setSaveError(msg)
     } finally {
       setIsSubmittingQuickCompany(false)
     }
   }
 
-  // Cadastro rápido de Contato
+  // Cadastro rápido de Contato (Pode existir sem empresa vinculada)
   const handleCreateQuickContact = async () => {
     if (!quickContactName.trim()) return
     setIsSubmittingQuickContact(true)
@@ -342,7 +347,8 @@ export function OpportunityDetailModal({
         },
       )
     } catch (err: any) {
-      setSaveError(err.message || 'Erro ao cadastrar e vincular novo contato')
+      const msg = err.message || 'Erro ao cadastrar e vincular novo contato'
+      setSaveError(msg)
     } finally {
       setIsSubmittingQuickContact(false)
     }

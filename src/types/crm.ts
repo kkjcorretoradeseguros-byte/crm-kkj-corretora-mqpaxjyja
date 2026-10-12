@@ -251,6 +251,7 @@ export interface Opportunity {
   probability?: number
   expected_close_date?: string
   close_date?: string
+  data_fechamento?: string
   lost_details?: string
   notes?: string
   quotation_link?: string

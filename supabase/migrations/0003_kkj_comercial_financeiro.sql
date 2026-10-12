@@ -221,6 +221,11 @@ CREATE INDEX IF NOT EXISTS idx_opp_plan_suggestions_carrier
   ON public.opportunity_plan_suggestions (carrier_id);
 
 -- RLS de opportunity_plan_suggestions
+-- NOTA DE AUDITORIA: Na migration 0003, as tabelas public.teams e public.team_members ainda não existem (criadas na 0004).
+-- Referências estáticas como SELECT 1 FROM public.teams falham no PostgreSQL mesmo com to_regclass() no predicado.
+-- Por isso, as políticas RLS na 0003 concedem acesso estrito ao admin e ao corretor titular da oportunidade (o.owner_id = auth.uid()).
+-- Gestores sem a 0004 NÃO ganham acesso global nem quebram o script.
+-- Na migration 0004, a função is_manager_of_seller() e as políticas hierárquicas definitivas são aplicadas.
 ALTER TABLE public.opportunity_plan_suggestions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "opp_plan_suggestions_select" ON public.opportunity_plan_suggestions;
@@ -232,22 +237,7 @@ CREATE POLICY "opp_plan_suggestions_select"
     OR EXISTS (
       SELECT 1 FROM public.opportunities o
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
-        AND (
-          o.owner_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = o.owner_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND o.owner_id = auth.uid()
     )
   );
 
@@ -260,22 +250,7 @@ CREATE POLICY "opp_plan_suggestions_insert"
     OR EXISTS (
       SELECT 1 FROM public.opportunities o
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
-        AND (
-          o.owner_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = o.owner_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND o.owner_id = auth.uid()
     )
   );
 
@@ -288,22 +263,7 @@ CREATE POLICY "opp_plan_suggestions_update"
     OR EXISTS (
       SELECT 1 FROM public.opportunities o
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
-        AND (
-          o.owner_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = o.owner_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND o.owner_id = auth.uid()
     )
   )
   WITH CHECK (
@@ -311,22 +271,7 @@ CREATE POLICY "opp_plan_suggestions_update"
     OR EXISTS (
       SELECT 1 FROM public.opportunities o
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
-        AND (
-          o.owner_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = o.owner_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND o.owner_id = auth.uid()
     )
   );
 
@@ -339,22 +284,7 @@ CREATE POLICY "opp_plan_suggestions_delete"
     OR EXISTS (
       SELECT 1 FROM public.opportunities o
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
-        AND (
-          o.owner_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = o.owner_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND o.owner_id = auth.uid()
     )
   );
 
@@ -648,22 +578,7 @@ CREATE POLICY "adesao_boletos_admin_select"
     OR EXISTS (
       SELECT 1 FROM public.contracts c
       WHERE c.id = adesao_boletos.contract_id
-        AND (
-          c.responsavel_id = auth.uid()
-          OR (
-            public.is_gestor() AND (
-              to_regclass('public.teams') IS NOT NULL
-              AND to_regclass('public.team_members') IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM public.teams t
-                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                WHERE t.gestor_id = auth.uid()
-                  AND tm.vendedor_id = c.responsavel_id
-                  AND t.ativo = true
-              )
-            )
-          )
-        )
+        AND c.responsavel_id = auth.uid()
     )
   );
 
@@ -729,22 +644,7 @@ CREATE POLICY "meta_ads_leads_vendedor_select"
       opportunity_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM public.opportunities o
         WHERE o.id = meta_ads_leads.opportunity_id
-          AND (
-            o.owner_id = auth.uid()
-            OR (
-              public.is_gestor() AND (
-                to_regclass('public.teams') IS NOT NULL
-                AND to_regclass('public.team_members') IS NOT NULL
-                AND EXISTS (
-                  SELECT 1 FROM public.teams t
-                  JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-                  WHERE t.gestor_id = auth.uid()
-                    AND tm.vendedor_id = o.owner_id
-                    AND t.ativo = true
-                )
-              )
-            )
-          )
+          AND o.owner_id = auth.uid()
       )
     )
   );

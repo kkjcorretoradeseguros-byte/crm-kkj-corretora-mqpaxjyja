@@ -45,6 +45,7 @@ interface OpportunityDbRow {
   probability?: number | null
   expected_close_date?: string | null
   close_date?: string | null
+  data_fechamento?: string | null
   owner_id?: string | null
   assigned_to?: string | null
   origin?: string | null
@@ -116,6 +117,7 @@ const SELECT_OPP_EXPAND = `
   temperatura,
   valor_venda,
   tags,
+  data_fechamento,
   owner_id,
   health_data,
   loss_reason_id,
@@ -175,7 +177,7 @@ function mapOpportunityRow(r: ExtendedOppRow): Opportunity {
     probability:
       r.probability !== null && r.probability !== undefined ? Number(r.probability) : undefined,
     expected_close_date: r.expected_close_date || undefined,
-    close_date: r.close_date || undefined,
+    close_date: r.data_fechamento || r.close_date || undefined,
     assigned_to: r.owner_id || r.assigned_to || undefined,
     origin: r.origem || r.origin || undefined,
     lost_reason: (r.lost_reason as any) || undefined,
@@ -497,6 +499,8 @@ export const opportunityService = {
     }
     if (data.assigned_to !== undefined) payload.owner_id = data.assigned_to || null
     if (data.origin !== undefined) payload.origem = data.origin || null
+    if (data.data_fechamento !== undefined) payload.data_fechamento = data.data_fechamento || null
+    else if (data.close_date !== undefined) payload.data_fechamento = data.close_date || null
     if (data.tags !== undefined) {
       payload.tags = Array.isArray(data.tags)
         ? data.tags
@@ -619,8 +623,10 @@ export const opportunityService = {
     if (stage === 'PERDIDO' || stage === 'Venda perdida') {
       updatePayload.lost_reason = lostReason || 'Outro'
       updatePayload.close_date = new Date().toISOString()
+      updatePayload.data_fechamento = new Date().toISOString()
     } else if (stage === 'IMPLANTADO' || stage === 'GANHO' || stage === 'Venda ganha') {
       updatePayload.close_date = new Date().toISOString()
+      updatePayload.data_fechamento = new Date().toISOString()
     }
 
     const updated = await this.updateOpportunity(id, updatePayload)
