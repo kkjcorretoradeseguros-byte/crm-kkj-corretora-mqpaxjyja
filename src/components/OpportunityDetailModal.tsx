@@ -459,11 +459,11 @@ export function OpportunityDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="max-w-7xl w-[96vw] max-h-[94vh] h-[94vh] p-0 flex flex-col overflow-hidden bg-[#F5F7FA]">
+      <DialogContent className="max-w-7xl w-[96vw] max-h-[94vh] h-[94vh] p-0 flex flex-col overflow-hidden bg-background text-foreground border-border">
         {/* ========================================================= */}
         {/* CABEÇALHO UNIFICADO COM ESCUDO OFICIAL KKJ */}
         {/* ========================================================= */}
-        <div className="bg-white border-b border-[#E4E7EC] px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
+        <div className="bg-card border-b border-border px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
           <div className="flex items-center gap-3 min-w-0">
             {/* ESCUDO OFICIAL KKJ: Acabamento prateado chanfrado e check azul */}
             <div className="p-1.5 rounded-lg bg-[#0F172A] flex items-center justify-center shrink-0 border border-slate-700">
@@ -485,7 +485,7 @@ export function OpportunityDetailModal({
                       )
                     }
                   }}
-                  className="text-base sm:text-lg font-bold text-[#101828] bg-transparent hover:bg-slate-100 focus:bg-white focus:ring-1 focus:ring-blue-500 rounded px-1.5 py-0.5 border-transparent border focus:border-slate-300 transition"
+                  className="text-base sm:text-lg font-bold text-foreground bg-transparent hover:bg-muted/60 focus:bg-background focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 border-transparent border focus:border-border transition"
                   title="Clique para editar o título"
                 />
 
@@ -565,7 +565,7 @@ export function OpportunityDetailModal({
           {/* ========================================================= */}
           {/* COLUNA ESQUERDA (33%): EDIÇÃO INLINE COMPLETA DE CAMPOS */}
           {/* ========================================================= */}
-          <div className="lg:col-span-4 p-4 lg:p-5 overflow-y-auto space-y-4 border-r border-[#E4E7EC] bg-white text-xs">
+          <div className="lg:col-span-4 p-4 lg:p-5 overflow-y-auto space-y-4 border-r border-border bg-card text-card-foreground text-xs">
             {/* Bloco 1: Dados Comerciais & Produto */}
             <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
               <span className="font-bold text-[#101828] text-xs uppercase tracking-wider block">

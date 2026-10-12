@@ -342,16 +342,16 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Top Header */}
-      <div className="p-6 rounded-xl bg-white border border-[#E4E7EC] shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="p-6 rounded-xl bg-card text-card-foreground border border-border shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-[#1B2A4A] text-white">
+          <div className="p-2.5 rounded-lg bg-primary text-primary-foreground shadow-sm">
             <Settings className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-base sm:text-lg font-bold text-[#101828]">
+            <h2 className="text-base sm:text-lg font-bold text-foreground">
               Central do Administrador — CRM KKJ
             </h2>
-            <p className="text-xs text-[#667085]">
+            <p className="text-xs text-muted-foreground">
               Gerenciamento de produtos, funis, motivos de perda, tipos de tarefa e perfis de
               usuários sem alterar código
             </p>
@@ -360,7 +360,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Settings Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#E4E7EC] dark:border-[#24324D] pb-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2 text-xs">
         {[
           { key: 'OPERADORAS', label: 'Operadoras (Carriers)', icon: Building },
           { key: 'PRODUTOS', label: 'Catálogo de Produtos', icon: Package },
@@ -381,8 +381,8 @@ export default function SettingsPage() {
               onClick={() => setActiveTab(tab.key as any)}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-medium transition ${
                 activeTab === tab.key
-                  ? 'bg-[#1B2A4A] text-white font-semibold shadow-sm'
-                  : 'bg-white text-[#667085] hover:bg-slate-100 border border-[#E4E7EC]'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                  : 'bg-card text-muted-foreground hover:bg-muted border border-border'
               }`}
             >
               <Icon className="h-4 w-4" />

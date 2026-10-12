@@ -57,40 +57,40 @@
   }
 
   .dark {
-    /* KKJ Dark Palette: Deep Navy / Graphite (#0E1726, #152238, #1E2D4A) - Never pure black */
-    --background: 222 47% 10%; /* #0E1726 deep navy-graphite */
-    --foreground: 210 40% 96%; /* #EDF2F7 high contrast light */
+    /* KKJ Dark Palette: Deep Navy & Graphite Surfaces (#0B1322, #141F36, #1E2D4A) - Hierarquia Sutil por Elevação */
+    --background: 222 47% 9%; /* #0B1322 Fundo geral da aplicação */
+    --foreground: 210 40% 98%; /* #F8FAFC Texto principal de altíssima legibilidade */
 
-    --card: 221 44% 14%; /* #141F36 slightly lighter navy card */
-    --card-foreground: 210 40% 96%;
+    --card: 221 44% 14%; /* #141F36 Cartões e superfícies principais */
+    --card-foreground: 210 40% 98%;
 
-    --popover: 221 44% 15%; /* #16223B popover */
-    --popover-foreground: 210 40% 96%;
+    --popover: 221 44% 16%; /* #182540 Modais, dialogs, dropdowns, selects */
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 217 91% 60%; /* #3B82F6 KKJ Institutional Blue highlight */
+    --primary: 217 91% 60%; /* #3B82F6 Azul elétrico oficial KKJ */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 152 76% 42%; /* #16B364 emerald success */
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 220 38% 20%; /* #1F2E47 Superfícies secundárias */
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 223 35% 20%; /* #212E47 subtle dark slate */
-    --muted-foreground: 215 20% 68%; /* #94A3B8 readable silver/grey text */
+    --muted: 222 35% 18%; /* #1D2A42 Áreas neutras discretas */
+    --muted-foreground: 215 22% 72%; /* #94A3B8 Textos secundários nítidos e confortáveis */
 
-    --accent: 46 65% 52%; /* #D4AF37 Gold accent */
+    --accent: 220 40% 22%; /* #223452 Destaque hover sutil */
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84% 60%; /* #EF4444 red error/lost */
+    --destructive: 0 84% 60%; /* #EF4444 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 223 35% 22%; /* #24324D discreet borders */
+    --border: 223 35% 22%; /* #24324D Bordas visíveis mas elegantes */
     --input: 223 35% 22%;
     --ring: 217 91% 60%;
 
-    --sidebar-background: 224 50% 9%; /* #0B1322 deep navy sidebar */
+    --sidebar-background: 224 50% 8%; /* #0A111E Barra lateral elegante */
     --sidebar-foreground: 210 40% 96%;
     --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 44% 16%;
+    --sidebar-accent: 222 44% 15%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 223 35% 18%;
     --sidebar-ring: 217 91% 60%;

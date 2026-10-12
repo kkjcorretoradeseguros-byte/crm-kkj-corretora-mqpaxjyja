@@ -595,35 +595,35 @@ export default function Pipeline() {
   return (
     <div className="space-y-6">
       {/* Top Operational Bar */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 rounded-xl bg-white border border-[#E4E7EC] shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 rounded-xl bg-card text-card-foreground border border-border shadow-sm">
         {/* Left: Funnel selector */}
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-[#1B2A4A] text-white">
+          <div className="p-2 rounded-lg bg-primary text-primary-foreground shadow-sm">
             <KanbanSquare className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#667085]">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Funil Ativo:
               </span>
               <Select
                 value={pipelineType}
                 onValueChange={(val) => setPipelineType(val as PipelineType)}
               >
-                <SelectTrigger className="h-8 font-extrabold text-sm text-[#1B2A4A] border-none shadow-none p-0 focus:ring-0 gap-1.5 w-auto">
+                <SelectTrigger className="h-8 font-extrabold text-sm text-foreground bg-transparent border-none shadow-none p-0 focus:ring-0 gap-1.5 w-auto">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="VENDAS" className="font-bold">
+                <SelectContent className="bg-popover border-border text-foreground">
+                  <SelectItem value="VENDAS" className="font-bold text-foreground">
                     FUNIL DE VENDAS ▾
                   </SelectItem>
-                  <SelectItem value="POS_VENDA" className="font-bold">
+                  <SelectItem value="POS_VENDA" className="font-bold text-foreground">
                     FUNIL DE PÓS-VENDA ▾
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-[#667085]">
+            <p className="text-xs text-muted-foreground">
               {pipelineType === 'VENDAS'
                 ? 'Novo Lead → Contato → Qualificado → Cotação → Follow-up → Negociação → Venda ganha'
                 : 'Documentação → Implantação → Aguardando pagamento → Implantado → Cliente ativo'}
@@ -634,19 +634,19 @@ export default function Pipeline() {
         {/* Center / Right: Indicators & Action */}
         <div className="flex flex-wrap items-center gap-3 text-xs">
           {/* Indicadores Separados: Volume do Pipeline (Mensalidades em Negociação) vs Total Oportunidades */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#F5F7FA] border border-[#E4E7EC]">
-            <span className="font-bold text-[#1B2A4A]">{totalOppsCount}</span>
-            <span className="text-[#667085]">em negociação</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-[#667085]">Volume do Pipeline (Mensalidades):</span>
-            <strong className="text-[#1B2A4A] font-bold">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/60 border border-border">
+            <span className="font-bold text-foreground">{totalOppsCount}</span>
+            <span className="text-muted-foreground">em negociação</span>
+            <span className="text-muted-foreground/50">•</span>
+            <span className="text-muted-foreground">Volume do Pipeline (Mensalidades):</span>
+            <strong className="text-foreground font-bold">
               R$ {totalSaleValue.toLocaleString('pt-BR')}
             </strong>
           </div>
 
           <Button
             onClick={() => openCreateModal()}
-            className="bg-[#1B2A4A] hover:bg-[#2A3D6B] text-white flex items-center gap-1.5 text-xs shadow-sm"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-1.5 text-xs shadow-sm font-semibold"
           >
             <Plus className="h-4 w-4" /> Nova Oportunidade
           </Button>
@@ -654,20 +654,20 @@ export default function Pipeline() {
       </div>
 
       {/* Barra de Filtros por Tag, Operadora e Responsável */}
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-white border border-[#E4E7EC] text-xs">
-        <div className="flex items-center gap-1.5 text-slate-500 font-semibold mr-1">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-xl bg-card border border-border text-xs">
+        <div className="flex items-center gap-1.5 text-muted-foreground font-semibold mr-1">
           <Filter className="h-3.5 w-3.5" />
           <span>Filtros:</span>
         </div>
 
         {/* Filtro por Tag */}
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-500">Tag:</span>
+          <span className="text-muted-foreground">Tag:</span>
           <Select value={selectedTagFilter} onValueChange={setSelectedTagFilter}>
-            <SelectTrigger className="h-7 text-xs w-[130px] bg-slate-50">
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-background border-border">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border-border">
               <SelectItem value="TODAS">Todas as tags</SelectItem>
               {crmTags.map((t) => (
                 <SelectItem key={t.id} value={t.name}>
@@ -680,12 +680,12 @@ export default function Pipeline() {
 
         {/* Filtro por Operadora */}
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-500">Operadora:</span>
+          <span className="text-muted-foreground">Operadora:</span>
           <Select value={selectedCarrierFilter} onValueChange={setSelectedCarrierFilter}>
-            <SelectTrigger className="h-7 text-xs w-[140px] bg-slate-50">
+            <SelectTrigger className="h-7 text-xs w-[140px] bg-background border-border">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border-border">
               <SelectItem value="TODAS">Todas as operadoras</SelectItem>
               {carriers.map((car) => (
                 <SelectItem key={car.id} value={car.id}>
@@ -698,12 +698,12 @@ export default function Pipeline() {
 
         {/* Filtro por Responsável */}
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-500">Responsável:</span>
+          <span className="text-muted-foreground">Responsável:</span>
           <Select value={selectedOwnerFilter} onValueChange={setSelectedOwnerFilter}>
-            <SelectTrigger className="h-7 text-xs w-[130px] bg-slate-50">
+            <SelectTrigger className="h-7 text-xs w-[130px] bg-background border-border">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border-border">
               <SelectItem value="TODOS">Todos corretores</SelectItem>
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
@@ -762,21 +762,21 @@ export default function Pipeline() {
                 key={stageName}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stageName)}
-                className="w-80 shrink-0 flex flex-col rounded-xl border border-[#E4E7EC] bg-[#F5F7FA] overflow-hidden"
+                className="w-80 shrink-0 flex flex-col rounded-xl border border-border bg-muted/30 overflow-hidden"
               >
                 {/* Column Header */}
-                <div className="p-3.5 bg-white border-b border-[#E4E7EC] relative">
+                <div className="p-3.5 bg-card border-b border-border relative">
                   <div
                     className="absolute top-0 left-0 right-0 h-1"
                     style={{ backgroundColor: accentColor }}
                   />
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-[#101828] truncate">{stageName}</span>
-                    <Badge variant="secondary" className="text-[10px] bg-slate-100 font-bold">
+                    <span className="font-bold text-xs text-foreground truncate">{stageName}</span>
+                    <Badge variant="secondary" className="text-[10px] font-bold">
                       {stageOpps.length}
                     </Badge>
                   </div>
-                  <div className="text-[11px] font-semibold text-[#667085] mt-1 flex items-center justify-between">
+                  <div className="text-[11px] font-semibold text-muted-foreground mt-1 flex items-center justify-between">
                     <span>
                       {stageSaleTotal > 0 ? `R$ ${stageSaleTotal.toLocaleString('pt-BR')}` : 'R$ 0'}
                     </span>
@@ -809,16 +809,16 @@ export default function Pipeline() {
                         draggable
                         onDragStart={(e) => handleDragStart(e, opp.id)}
                         onClick={() => openDetail(opp)}
-                        className="p-3 rounded-lg border border-[#E4E7EC] bg-white shadow-sm hover:shadow-md transition cursor-pointer active:cursor-grabbing space-y-2 text-xs relative group"
+                        className="p-3 rounded-lg border border-border bg-card shadow-sm hover:shadow-md transition cursor-pointer active:cursor-grabbing space-y-2 text-xs relative group text-card-foreground"
                       >
                         {/* Company & Contact */}
                         <div className="flex items-start justify-between gap-1.5">
                           <div className="min-w-0">
-                            <h4 className="font-bold text-[#101828] text-xs truncate">
+                            <h4 className="font-bold text-foreground text-xs truncate">
                               {opp.title}
                             </h4>
-                            <p className="text-[11px] text-[#667085] truncate flex items-center gap-1 mt-0.5">
-                              <Building2 className="h-3 w-3 shrink-0 text-[#667085]" />
+                            <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+                              <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
                               <span>{company?.trade_name || 'Sem empresa'}</span>
                             </p>
                           </div>
@@ -827,7 +827,7 @@ export default function Pipeline() {
                           {opp.temperature === 'Quente' && (
                             <span
                               title="Temperatura Quente"
-                              className="p-1 rounded bg-red-50 text-red-600 shrink-0"
+                              className="p-1 rounded bg-red-500/10 text-red-500 shrink-0 border border-red-500/20"
                             >
                               <Flame className="h-3.5 w-3.5 fill-red-500 text-red-500" />
                             </span>
@@ -835,7 +835,7 @@ export default function Pipeline() {
                           {opp.temperature === 'Morno' && (
                             <span
                               title="Temperatura Morna"
-                              className="p-1 rounded bg-amber-50 text-amber-600 shrink-0 text-[10px] font-semibold"
+                              className="p-1 rounded bg-amber-500/10 text-amber-500 shrink-0 text-[10px] font-semibold border border-amber-500/20"
                             >
                               Morno
                             </span>
@@ -843,7 +843,7 @@ export default function Pipeline() {
                           {opp.temperature === 'Frio' && (
                             <span
                               title="Temperatura Fria"
-                              className="p-1 rounded bg-blue-50 text-blue-600 shrink-0 text-[10px] font-semibold"
+                              className="p-1 rounded bg-blue-500/10 text-blue-500 shrink-0 text-[10px] font-semibold border border-blue-500/20"
                             >
                               Frio
                             </span>
@@ -851,14 +851,17 @@ export default function Pipeline() {
                         </div>
 
                         {/* Product & Lives */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#667085] flex-wrap">
-                          <Badge variant="outline" className="text-[10px] font-normal py-0">
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-normal py-0 border-border"
+                          >
                             {product?.name || 'Seguro / Plano'}
                           </Badge>
                           {opp.health_data?.lives_count && (
                             <Badge
                               variant="secondary"
-                              className="text-[10px] bg-emerald-50 text-emerald-700 py-0"
+                              className="text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 py-0 border border-emerald-500/20"
                             >
                               {opp.health_data.lives_count} vidas
                             </Badge>
@@ -875,10 +878,11 @@ export default function Pipeline() {
                               return (
                                 <span
                                   key={tName}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold border"
                                   style={{
                                     backgroundColor: tagObj?.bg_color || '#F1F5F9',
                                     color: tagObj?.text_color || '#334155',
+                                    borderColor: tagObj?.color || '#CBD5E1',
                                   }}
                                 >
                                   {tName}
@@ -889,20 +893,20 @@ export default function Pipeline() {
                         )}
 
                         {/* Mensalidade Comercial (Cotação Principal) - Sem estimativa de comissão */}
-                        <div className="pt-1 border-t border-[#E4E7EC] flex items-center justify-between text-xs">
+                        <div className="pt-1 border-t border-border flex items-center justify-between text-xs">
                           <div>
-                            <span className="text-[10px] text-[#667085] block">
+                            <span className="text-[10px] text-muted-foreground block">
                               Mensalidade Cotação:
                             </span>
-                            <span className="font-extrabold text-[#1B2A4A]">
+                            <span className="font-extrabold text-foreground">
                               R$ {(opp.sale_value || opp.value || 0).toLocaleString('pt-BR')}
                             </span>
                           </div>
                           <div className="text-right">
-                            <span className="text-[10px] text-slate-400 block">
+                            <span className="text-[10px] text-muted-foreground/70 block">
                               Cotação Principal
                             </span>
-                            <span className="text-[11px] font-medium text-slate-600">
+                            <span className="text-[11px] font-medium text-foreground/80">
                               {opp.expand?.carrier_id?.nome || 'Operadora'}
                             </span>
                           </div>
@@ -913,8 +917,8 @@ export default function Pipeline() {
                           <div
                             className={`p-1.5 rounded flex items-center justify-between text-[10px] ${
                               isTaskOverdue
-                                ? 'bg-red-50 text-red-700 border border-red-200 font-semibold'
-                                : 'bg-[#F5F7FA] text-[#667085]'
+                                ? 'bg-red-500/10 text-red-500 border border-red-500/25 font-semibold'
+                                : 'bg-muted text-muted-foreground'
                             }`}
                           >
                             <span className="truncate flex items-center gap-1">
@@ -929,25 +933,31 @@ export default function Pipeline() {
 
                         {/* Card footer: Responsible & quick stage mover */}
                         <div
-                          className="pt-1.5 border-t border-[#E4E7EC] flex items-center justify-between text-[10px]"
+                          className="pt-1.5 border-t border-border flex items-center justify-between text-[10px]"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span className="text-[#667085] truncate max-w-[120px]">
+                          <span className="text-muted-foreground truncate max-w-[120px]">
                             {assigned?.name || 'Corretor'}
                           </span>
 
                           <select
                             value={opp.stage}
                             onChange={(e) => handleQuickMove(opp, e.target.value)}
-                            className="bg-transparent text-[#1B2A4A] font-semibold text-[10px] focus:outline-none cursor-pointer"
+                            className="bg-transparent text-foreground font-semibold text-[10px] focus:outline-none cursor-pointer"
                           >
                             {currentStages.map((st) => (
-                              <option key={st} value={st}>
+                              <option
+                                key={st}
+                                value={st}
+                                className="bg-popover text-popover-foreground"
+                              >
                                 {st}
                               </option>
                             ))}
                             {pipelineType === 'VENDAS' && (
-                              <option value="Venda perdida">✕ Venda perdida</option>
+                              <option value="Venda perdida" className="bg-popover text-destructive">
+                                ✕ Venda perdida
+                              </option>
                             )}
                           </select>
                         </div>
@@ -956,19 +966,19 @@ export default function Pipeline() {
                   })}
 
                   {stageOpps.length === 0 && (
-                    <div className="h-28 border-2 border-dashed border-[#E4E7EC] rounded-lg flex items-center justify-center text-[11px] text-[#667085]">
+                    <div className="h-28 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-[11px] text-muted-foreground">
                       Arraste cards para cá
                     </div>
                   )}
                 </div>
 
                 {/* Column footer add button */}
-                <div className="p-2 border-t border-[#E4E7EC] bg-white">
+                <div className="p-2 border-t border-border bg-card">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => openCreateModal(stageName)}
-                    className="w-full text-xs text-[#667085] hover:text-[#101828] hover:bg-[#F5F7FA]"
+                    className="w-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
                   >
                     <Plus className="mr-1.5 h-3.5 w-3.5" /> Adicionar Oportunidade
                   </Button>

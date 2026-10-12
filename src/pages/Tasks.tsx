@@ -156,17 +156,17 @@ export default function Tasks() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white border border-[#E4E7EC] shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-card border border-border shadow-sm text-card-foreground">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-[#101828]">Gestão de Tarefas</h2>
-          <p className="text-xs text-[#667085]">
+          <h2 className="text-base sm:text-lg font-bold text-foreground">Gestão de Tarefas</h2>
+          <p className="text-xs text-muted-foreground">
             Acompanhamento de ligações, follow-ups de cotações, reuniões e implantação
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {/* View Mode Toggle */}
-          <div className="flex rounded-lg border border-[#E4E7EC] p-0.5 bg-[#F5F7FA]">
+          <div className="flex rounded-lg border border-border p-0.5 bg-muted">
             <Button
               variant={viewMode === 'LISTA' ? 'secondary' : 'ghost'}
               size="sm"
@@ -188,7 +188,7 @@ export default function Tasks() {
           <Button
             size="sm"
             onClick={openCreateModal}
-            className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+            className="bg-primary text-primary-foreground text-xs hover:bg-primary/90 font-semibold"
           >
             <Plus className="h-4 w-4 mr-1.5" /> Nova Tarefa
           </Button>
@@ -225,15 +225,17 @@ export default function Tasks() {
             onClick={() => setFilterTab(tab.key as any)}
             className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 ${
               filterTab === tab.key
-                ? 'bg-[#1B2A4A] text-white font-semibold'
-                : 'bg-white text-[#667085] hover:bg-slate-100 border border-[#E4E7EC]'
+                ? 'bg-primary text-primary-foreground font-semibold'
+                : 'bg-card text-muted-foreground hover:bg-muted border border-border'
             }`}
           >
             <span>{tab.label}</span>
             <Badge
               variant="secondary"
               className={`text-[10px] px-1.5 py-0 ${
-                filterTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-[#667085]'
+                filterTab === tab.key
+                  ? 'bg-primary-foreground/20 text-primary-foreground'
+                  : 'bg-muted text-muted-foreground'
               }`}
             >
               {tab.count}
@@ -252,7 +254,7 @@ export default function Tasks() {
       ) : viewMode === 'LISTA' ? (
         <div className="space-y-3">
           {filteredTasks.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#667085] bg-white rounded-xl border border-[#E4E7EC]">
+            <div className="p-8 text-center text-xs text-muted-foreground bg-card rounded-xl border border-border">
               Nenhuma tarefa encontrada neste filtro.
             </div>
           ) : (
@@ -263,12 +265,12 @@ export default function Tasks() {
               return (
                 <div
                   key={t.id}
-                  className={`p-3.5 rounded-xl border bg-white shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs transition ${
+                  className={`p-3.5 rounded-xl border bg-card text-card-foreground shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs transition ${
                     isOverdue
-                      ? 'border-red-200 bg-red-50/20'
+                      ? 'border-red-500/30 bg-red-500/10'
                       : isDone
-                        ? 'border-[#E4E7EC] opacity-60'
-                        : 'border-[#E4E7EC]'
+                        ? 'border-emerald-500/30 bg-emerald-500/10 opacity-75'
+                        : 'border-border hover:border-slate-400'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
@@ -278,7 +280,7 @@ export default function Tasks() {
                       className={`h-5 w-5 rounded border mt-0.5 flex items-center justify-center shrink-0 transition ${
                         isDone
                           ? 'bg-emerald-600 border-emerald-600 text-white'
-                          : 'border-slate-300 hover:border-[#1B2A4A] bg-white'
+                          : 'border-border hover:border-primary bg-background'
                       }`}
                     >
                       {isDone && <CheckCircle2 className="h-4 w-4" />}
@@ -288,7 +290,7 @@ export default function Tasks() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
                           className={`font-bold text-sm ${
-                            isDone ? 'line-through text-[#667085]' : 'text-[#101828]'
+                            isDone ? 'line-through text-muted-foreground' : 'text-foreground'
                           }`}
                         >
                           {t.title}
@@ -359,10 +361,10 @@ export default function Tasks() {
             return (
               <div
                 key={block}
-                className="rounded-xl border border-[#E4E7EC] bg-white p-4 shadow-sm space-y-3"
+                className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-3 text-card-foreground"
               >
-                <div className="flex items-center justify-between pb-2 border-b border-[#E4E7EC]">
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#101828]">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-foreground">
                     {block}
                   </h3>
                   <Badge variant="secondary" className="text-[10px]">

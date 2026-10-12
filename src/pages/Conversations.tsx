@@ -19,22 +19,21 @@ export default function Conversations() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Top Header Card */}
-      <div className="p-6 rounded-xl bg-white border border-[#E4E7EC] shadow-sm space-y-3">
+      <div className="p-6 rounded-xl bg-card text-card-foreground border border-border shadow-sm space-y-3">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
             <MessageSquare className="h-6 w-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-[#101828]">Conversas & Integração WhatsApp</h2>
-              <Badge
-                variant="outline"
-                className="text-[11px] bg-emerald-50 text-emerald-700 border-emerald-200"
-              >
-                Área Estrutural Preparada
-              </Badge>
+              <h2 className="text-lg font-bold text-foreground">Conversas & Integração WhatsApp</h2>
             </div>
-            <p className="text-xs text-[#667085]">
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Canal unificado para atendimento, envio de cotações e follow-up pelo WhatsApp oficial
+            </p>
+          </div>
+        </div>
+      </div>            <p className="text-xs text-[#667085]">
               Canal oficial de atendimento, triagem e comunicação de cotações com segurados e
               empresas
             </p>
@@ -113,9 +112,9 @@ export default function Conversations() {
       </div>
 
       {/* Status banner */}
-      <div className="p-4 rounded-xl border border-dashed border-[#E4E7EC] bg-white text-center text-xs text-[#667085] flex flex-col items-center gap-2">
-        <Lock className="h-6 w-6 text-slate-400" />
-        <span className="font-semibold text-[#101828]">
+      <div className="p-4 rounded-xl border border-dashed border-border bg-card text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+        <Lock className="h-6 w-6 text-muted-foreground/50" />
+        <span className="font-semibold text-foreground">
           Módulo de Mensageria aguardando credenciais da API de WhatsApp
         </span>
         <span className="max-w-md">

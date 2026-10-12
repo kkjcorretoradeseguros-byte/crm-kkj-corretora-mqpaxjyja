@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import kkjLogoUrl from '@/assets/logo-versao-escura-637a4.png'
+import { KkjOfficialLogo } from '@/components/KkjOfficialLogo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -66,16 +66,13 @@ export default function Login() {
 
         {/* Bloco central do Logo Oficial: integrado perfeitamente ao fundo azul-marinho uniforme */}
         <div className="my-auto flex flex-col items-center justify-center text-center w-full max-w-md z-10 py-4 sm:py-6 lg:py-0">
-          <div className="relative flex items-center justify-center p-2">
-            <img
-              src={kkjLogoUrl}
+          <div className="relative flex items-center justify-center p-2 w-full">
+            <KkjOfficialLogo
               alt="KK JEKABSON Corretora de Seguros"
               className="w-56 sm:w-72 md:w-80 lg:w-[380px] xl:w-[420px] max-w-full h-auto object-contain select-none pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
-              loading="eager"
             />
           </div>
-          {/* Nota técnica transparente caso a imagem contenha fundo opaco original */}
-          <span className="text-[10px] text-slate-500/70 mt-1 block">
+          <span className="text-[10px] text-slate-400/80 mt-1 block font-medium">
             Identidade oficial KK Jekabson Corretora de Seguros
           </span>
         </div>
