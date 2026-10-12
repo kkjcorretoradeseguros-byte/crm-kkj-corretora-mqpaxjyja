@@ -46,19 +46,16 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full bg-[#070D18] flex flex-col lg:flex-row text-slate-100 overflow-x-hidden selection:bg-[#1D4ED8] selection:text-white">
       {/* PAINEL ESQUERDO (DESKTOP) / HEADER (MOBILE): IDENTIDADE VISUAL KKJ EXCLUSIVA */}
-      <div className="relative w-full lg:w-1/2 min-h-[300px] sm:min-h-[360px] lg:min-h-screen flex flex-col items-center justify-between p-6 sm:p-10 lg:p-14 bg-gradient-to-b from-[#0B1528] via-[#070D18] to-[#040810] border-b lg:border-b-0 lg:border-r border-[#15233D] overflow-hidden">
-        {/* Glows sutis e harmônicos com a tonalidade azul-marinho do logo */}
+      {/* Fundo azul-marinho uniforme #070D18 em toda a tela, sem divisão visível de tonalidade */}
+      <div className="relative w-full lg:w-1/2 min-h-[300px] sm:min-h-[360px] lg:min-h-screen flex flex-col items-center justify-between p-6 sm:p-10 lg:p-14 bg-[#070D18] border-b lg:border-b-0 border-[#15233D]/60 overflow-hidden">
+        {/* Glows sutis e harmônicos com a tonalidade azul-marinho */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-600/15 blur-[100px]"
+          className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-600/10 blur-[100px]"
         />
         <div
           aria-hidden="true"
           className="pointer-events-none absolute top-1/2 -right-24 w-96 h-96 rounded-full bg-sky-500/10 blur-[120px]"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-24 left-1/3 w-80 h-80 rounded-full bg-blue-900/20 blur-[90px]"
         />
 
         {/* Topo institucional discreto (visível no desktop) */}
@@ -67,20 +64,24 @@ export default function Login() {
           <span className="text-[11px] text-slate-400">Seguros &amp; Benefícios</span>
         </div>
 
-        {/* Bloco central do Logo Oficial: preservação integral do escudo, tipografia metálica e proporções */}
+        {/* Bloco central do Logo Oficial: integrado perfeitamente ao fundo azul-marinho uniforme */}
         <div className="my-auto flex flex-col items-center justify-center text-center w-full max-w-md z-10 py-4 sm:py-6 lg:py-0">
-          <div className="relative flex items-center justify-center p-2 rounded-2xl">
+          <div className="relative flex items-center justify-center p-2">
             <img
               src={kkjLogoUrl}
               alt="KK JEKABSON Corretora de Seguros"
-              className="w-56 sm:w-72 md:w-80 lg:w-[380px] xl:w-[420px] max-w-full h-auto object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,0.65)] select-none pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
+              className="w-56 sm:w-72 md:w-80 lg:w-[380px] xl:w-[420px] max-w-full h-auto object-contain select-none pointer-events-none transition-transform duration-300 hover:scale-[1.01]"
               loading="eager"
             />
           </div>
+          {/* Nota técnica transparente caso a imagem contenha fundo opaco original */}
+          <span className="text-[10px] text-slate-500/70 mt-1 block">
+            Identidade oficial KK Jekabson Corretora de Seguros
+          </span>
         </div>
 
         {/* Rodapé institucional do painel esquerdo (desktop) */}
-        <div className="hidden lg:flex w-full items-center justify-between text-xs text-slate-400 border-t border-slate-800/80 pt-6 z-10">
+        <div className="hidden lg:flex w-full items-center justify-between text-xs text-slate-400 border-t border-slate-800/60 pt-6 z-10">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-sky-400" />
             <span className="text-[12px] text-slate-300 font-medium">Ambiente Seguro</span>
@@ -90,7 +91,7 @@ export default function Login() {
       </div>
 
       {/* PAINEL DIREITO (DESKTOP) / CORPO (MOBILE): FORMULÁRIO DE ACESSO */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 lg:p-14 bg-[#070D18] lg:bg-gradient-to-br lg:from-[#080F1D] lg:to-[#050A14]">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 lg:p-14 bg-[#070D18]">
         <div className="w-full max-w-md my-auto">
           <Card className="border-[#182846] bg-[#0C1527]/90 backdrop-blur-md shadow-[0_20px_50px_rgba(0,0,0,0.5)] text-slate-100">
             <CardHeader className="space-y-1.5 pb-4">

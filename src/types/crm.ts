@@ -16,6 +16,7 @@ export interface User {
   position?: string
   team?: string
   active?: boolean
+  ativo?: boolean
   receives_automatic_leads?: boolean
   created?: string
   updated?: string

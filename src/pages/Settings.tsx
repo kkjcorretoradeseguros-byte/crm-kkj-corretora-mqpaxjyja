@@ -36,6 +36,11 @@ import {
 } from '@/components/ui/dialog'
 import { productService } from '@/services/productService'
 import { userService } from '@/services/userService'
+import {
+  teamService,
+  type CommercialTeam,
+  type ManagementCommissionRule,
+} from '@/services/teamService'
 import { carrierService } from '@/services/carrierService'
 import { tagService } from '@/services/tagService'
 import { SPECIAL_PME_RULES } from '@/services/commissionEngine'
@@ -46,7 +51,16 @@ import type { Product, ProductCategory, User, UserRole, Carrier, CrmTag } from '
 export default function SettingsPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<
-    'OPERADORAS' | 'PRODUTOS' | 'COMISSOES' | 'TAGS' | 'ETAPAS' | 'PERDAS' | 'TAREFAS' | 'USUARIOS'
+    | 'OPERADORAS'
+    | 'PRODUTOS'
+    | 'COMISSOES'
+    | 'TAGS'
+    | 'ETAPAS'
+    | 'PERDAS'
+    | 'TAREFAS'
+    | 'EQUIPES'
+    | 'COMISSAO_GESTAO'
+    | 'USUARIOS'
   >('OPERADORAS')
 
   // Carriers state (Operadoras)
@@ -55,6 +69,24 @@ export default function SettingsPage() {
   const [carrierNome, setCarrierNome] = useState('')
   const [carrierNomeCurto, setCarrierNomeCurto] = useState('')
   const [carrierObservacoes, setCarrierObservacoes] = useState('')
+
+  // Equipes e comissão de gestão
+  const [teams, setTeams] = useState<CommercialTeam[]>([])
+  const [managementRules, setManagementRules] = useState<ManagementCommissionRule[]>([])
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false)
+  const [newTeamName, setNewTeamName] = useState('')
+  const [newTeamGestorId, setNewTeamGestorId] = useState('')
+  const [newTeamDescricao, setNewTeamDescricao] = useState('')
+
+  // Regra de comissão de gestão
+  const [isMgmRuleModalOpen, setIsMgmRuleModalOpen] = useState(false)
+  const [mgmRuleGestorId, setMgmRuleGestorId] = useState('')
+  const [mgmRuleName, setMgmRuleName] = useState('')
+  const [mgmRulePercent, setMgmRulePercent] = useState('0')
+  const [mgmRuleBase, setMgmRuleBase] = useState<
+    'comissao_liquida_equipe' | 'receita_bruta_equipe' | 'volume_mensalidade'
+  >('comissao_liquida_equipe')
+  const [mgmRuleAtivo, setMgmRuleAtivo] = useState(false) // Nathany inicialmente desativada (0%)
 
   // Products state
   const [products, setProducts] = useState<Product[]>([])
@@ -105,14 +137,18 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [prodRes, usersRes, carriersRes] = await Promise.all([
+      const [prodRes, usersRes, carriersRes, teamsRes, mgmRes] = await Promise.all([
         productService.getAllProducts(false),
         userService.getAllUsers(),
         carrierService.getAllCarriers(false),
+        teamService.getTeams(),
+        teamService.getManagementRules(),
       ])
       setProducts(prodRes)
       setUsers(usersRes)
       setCarriers(carriersRes)
+      setTeams(teamsRes)
+      setManagementRules(mgmRes)
       setTagsList(tagService.getAllTags())
     } catch (err) {
       console.error(err)
@@ -245,6 +281,8 @@ export default function SettingsPage() {
           { key: 'ETAPAS', label: 'Funis & Etapas', icon: Layers },
           { key: 'PERDAS', label: 'Motivos de Perda', icon: AlertCircle },
           { key: 'TAREFAS', label: 'Tipos de Tarefa', icon: CheckSquare },
+          { key: 'EQUIPES', label: 'Equipes & Hierarquia', icon: Users },
+          { key: 'COMISSAO_GESTAO', label: 'Comissão de Gestão', icon: Shield },
           { key: 'USUARIOS', label: 'Usuários & Perfis', icon: Users },
         ].map((tab) => {
           const Icon = tab.icon
@@ -726,40 +764,263 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {/* TAB: EQUIPES & HIERARQUIA COMERCIAL */}
+      {activeTab === 'EQUIPES' && (
+        <div className="space-y-4">
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-sm font-bold text-[#101828]">
+                  Equipes Comerciais & Vínculo Hierárquico
+                </CardTitle>
+                <CardDescription className="text-xs text-[#667085]">
+                  Vincule vendedores a equipes sob um gestor ou mantenha vínculo direto ao
+                  administrador. Cada vendedor tem no máximo uma equipe ativa.
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setIsTeamModalOpen(true)}
+                className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+              >
+                <Plus className="h-4 w-4 mr-1" /> Nova Equipe
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="p-3 mb-4 rounded-lg bg-blue-50/60 border border-blue-200 text-xs text-blue-900">
+                <strong>Configuração Inicial Vigente:</strong>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                  <li>
+                    <strong>Administrador:</strong> Controle geral e superior hierárquico direto de
+                    Eliana.
+                  </li>
+                  <li>
+                    <strong>Nathany (Gestora):</strong> Sem subordinados cadastrados inicialmente;
+                    atua com foco em vendas próprias.
+                  </li>
+                  <li>
+                    <strong>Eliana (Vendedora):</strong> Vinculada diretamente ao Administrador
+                    (fora da gestão de Nathany).
+                  </li>
+                </ul>
+              </div>
+
+              {teams.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 border border-dashed rounded-lg">
+                  Nenhuma equipe criada ainda. Crie uma equipe para alocar vendedores sob supervisão
+                  de gestores.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200">
+                  {teams.map((team) => (
+                    <div
+                      key={team.id}
+                      className="py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <strong className="text-sm text-slate-900">{team.nome}</strong>
+                          <Badge
+                            className={
+                              team.ativo
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }
+                          >
+                            {team.ativo ? 'Ativa' : 'Inativa'}
+                          </Badge>
+                        </div>
+                        <p className="text-slate-600 mt-0.5">
+                          Gestor responsável:{' '}
+                          <strong className="text-slate-800">
+                            {team.gestor
+                              ? `${team.gestor.nome} (${team.gestor.email})`
+                              : 'Sem gestor vinculado'}
+                          </strong>
+                        </p>
+                        {team.descricao && (
+                          <p className="text-[11px] text-slate-500">{team.descricao}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            await teamService.updateTeam(team.id, { ativo: !team.ativo })
+                            const tList = await teamService.getTeams()
+                            setTeams(tList)
+                          }}
+                          className="text-xs h-8"
+                        >
+                          {team.ativo ? 'Desativar Equipe' : 'Ativar Equipe'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB: COMISSÃO DE GESTÃO */}
+      {activeTab === 'COMISSAO_GESTAO' && (
+        <div className="space-y-4">
+          <Card className="border-[#E4E7EC] shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-sm font-bold text-[#101828]">
+                  Comissão de Gestão Comercial (Configurável por Gestor)
+                </CardTitle>
+                <CardDescription className="text-xs text-[#667085]">
+                  Regras de remuneração sobre o resultado da equipe subordinada. Inicialmente
+                  desativada (0%).
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setIsMgmRuleModalOpen(true)}
+                className="bg-[#1B2A4A] text-white text-xs hover:bg-[#2A3D6B]"
+              >
+                <Plus className="h-4 w-4 mr-1" /> Nova Regra de Gestão
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="p-3 mb-4 rounded-lg bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-950">
+                <strong>Diretriz Atual de Negócio:</strong> Nathany NÃO recebe comissão de gestão no
+                momento. Status padrão: desativada, 0%, nenhum lançamento financeiro gerado. Quando
+                ativada pelo Administrador, o cálculo respeitará vigência e equipe no ato da venda.
+              </div>
+
+              {managementRules.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 border border-dashed rounded-lg">
+                  Nenhuma regra de comissão de gestão configurada. Comissão desativada para todos os
+                  gestores.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200">
+                  {managementRules.map((rule) => {
+                    const gestorUser = users.find((u) => u.id === rule.gestor_id)
+                    return (
+                      <div
+                        key={rule.id}
+                        className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-slate-900">{rule.nome}</strong>
+                            <Badge
+                              className={
+                                rule.ativo
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-slate-100 text-slate-500'
+                              }
+                            >
+                              {rule.ativo ? 'Ativa' : 'Desativada (0%)'}
+                            </Badge>
+                          </div>
+                          <p className="text-slate-600 mt-0.5">
+                            Gestor: <strong>{gestorUser?.name || rule.gestor_id}</strong> •
+                            Percentual: <strong>{rule.percentual}%</strong> • Base:{' '}
+                            <strong>{rule.base_calculo}</strong>
+                          </p>
+                          {rule.observacoes && (
+                            <p className="text-[11px] text-slate-500">{rule.observacoes}</p>
+                          )}
+                        </div>
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              await teamService.toggleManagementRule(rule.id, !rule.ativo)
+                              const rList = await teamService.getManagementRules()
+                              setManagementRules(rList)
+                            }}
+                            className="text-xs h-8"
+                          >
+                            {rule.ativo ? 'Desativar Regra' : 'Ativar Regra'}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* TAB 5: USUÁRIOS & PERFIS */}
       {activeTab === 'USUARIOS' && (
         <Card className="border-[#E4E7EC] shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-bold text-[#101828]">
-              Usuários e Perfis de Acesso
+              Usuários, Perfis e Hierarquia de Acesso
             </CardTitle>
             <CardDescription className="text-xs text-[#667085]">
-              ADMINISTRADOR (acesso total), GESTOR (coordenação comercial), VENDEDOR (restrito à
-              própria carteira)
+              ADMINISTRADOR (acesso geral e vendas), GESTOR (vendas próprias + gestão de
+              subordinados), VENDEDOR (exclusivamente carteira própria). Alteração dinâmica com
+              histórico auditável.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="divide-y divide-[#E4E7EC]">
               {users.map((u) => (
-                <div key={u.id} className="py-3 flex items-center justify-between text-xs">
+                <div
+                  key={u.id}
+                  className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs"
+                >
                   <div>
-                    <span className="font-bold text-[#101828] text-sm">{u.name || 'Sem nome'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#101828] text-sm">
+                        {u.name || 'Sem nome'}
+                      </span>
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        {u.role}
+                      </Badge>
+                      <Badge
+                        className={
+                          u.ativo !== false
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-red-50 text-red-700'
+                        }
+                      >
+                        {u.ativo !== false ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    </div>
                     <p className="text-[11px] text-[#667085]">{u.email}</p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Select
-                      value={u.role || 'VENDEDOR'}
+                      value={u.role || 'vendedor'}
                       onValueChange={(val) => handleRoleChange(u.id, val as UserRole)}
                     >
-                      <SelectTrigger className="h-8 text-xs w-40">
+                      <SelectTrigger className="h-8 text-xs w-44 bg-white font-semibold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ADMINISTRADOR">ADMINISTRADOR</SelectItem>
-                        <SelectItem value="GESTOR">GESTOR</SelectItem>
-                        <SelectItem value="VENDEDOR">VENDEDOR</SelectItem>
+                        <SelectItem value="administrador">administrador</SelectItem>
+                        <SelectItem value="gestor">gestor</SelectItem>
+                        <SelectItem value="vendedor">vendedor</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        const nextAtivo = u.ativo === false ? true : false
+                        await userService.toggleUserActive(u.id, nextAtivo)
+                        loadData()
+                      }}
+                      className="text-xs h-8 text-slate-600 hover:text-slate-900"
+                    >
+                      {u.ativo === false ? 'Ativar' : 'Desativar'}
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -767,6 +1028,198 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* MODAL: NOVA EQUIPE */}
+      <Dialog open={isTeamModalOpen} onOpenChange={setIsTeamModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#101828]">
+              Nova Equipe Comercial
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs">Nome da Equipe *</Label>
+              <Input
+                placeholder="Ex: Equipe Saúde PME Alpha"
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Gestor Responsável</Label>
+              <Select value={newTeamGestorId} onValueChange={setNewTeamGestorId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecione o gestor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem gestor (Direto ao Admin)</SelectItem>
+                  {users
+                    .filter(
+                      (u) =>
+                        u.role?.toLowerCase() === 'gestor' ||
+                        u.role?.toLowerCase() === 'administrador',
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email} ({u.role})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Descrição / Observações</Label>
+              <Input
+                placeholder="Observações da equipe..."
+                value={newTeamDescricao}
+                onChange={(e) => setNewTeamDescricao(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsTeamModalOpen(false)}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (!newTeamName.trim()) return
+                await teamService.createTeam(
+                  newTeamName.trim(),
+                  newTeamGestorId === 'none' ? null : newTeamGestorId || null,
+                  newTeamDescricao.trim() || undefined,
+                )
+                setIsTeamModalOpen(false)
+                setNewTeamName('')
+                setNewTeamGestorId('')
+                setNewTeamDescricao('')
+                const tList = await teamService.getTeams()
+                setTeams(tList)
+              }}
+              className="bg-[#1B2A4A] text-white text-xs"
+            >
+              Salvar Equipe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: NOVA REGRA DE GESTÃO */}
+      <Dialog open={isMgmRuleModalOpen} onOpenChange={setIsMgmRuleModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#101828]">
+              Regra de Comissão de Gestão
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs">Gestor Elegível *</Label>
+              <Select value={mgmRuleGestorId} onValueChange={setMgmRuleGestorId}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecione o gestor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users
+                    .filter((u) => u.role?.toLowerCase() === 'gestor')
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nome da Regra *</Label>
+              <Input
+                placeholder="Ex: Gestão Padrão PME 5%"
+                value={mgmRuleName}
+                onChange={(e) => setMgmRuleName(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Percentual (%)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={mgmRulePercent}
+                  onChange={(e) => setMgmRulePercent(e.target.value)}
+                  className="h-8 text-xs font-bold"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Base de Cálculo</Label>
+                <Select value={mgmRuleBase} onValueChange={(val: any) => setMgmRuleBase(val)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="comissao_liquida_equipe">Comissão Líquida Equipe</SelectItem>
+                    <SelectItem value="receita_bruta_equipe">Receita Bruta Equipe</SelectItem>
+                    <SelectItem value="volume_mensalidade">Volume de Mensalidades</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="chkMgmAtivo"
+                checked={mgmRuleAtivo}
+                onChange={(e) => setMgmRuleAtivo(e.target.checked)}
+                className="rounded"
+              />
+              <Label htmlFor="chkMgmAtivo" className="text-xs cursor-pointer">
+                Regra Ativa Imediatamente (Deixar desmarcada para 0%)
+              </Label>
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsMgmRuleModalOpen(false)}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (!mgmRuleGestorId || !mgmRuleName.trim()) return
+                await teamService.saveManagementRule({
+                  gestor_id: mgmRuleGestorId,
+                  nome: mgmRuleName.trim(),
+                  percentual: parseFloat(mgmRulePercent) || 0,
+                  base_calculo: mgmRuleBase,
+                  ativo: mgmRuleAtivo,
+                })
+                setIsMgmRuleModalOpen(false)
+                setMgmRuleName('')
+                setMgmRuleGestorId('')
+                setMgmRulePercent('0')
+                setMgmRuleAtivo(false)
+                const rList = await teamService.getManagementRules()
+                setManagementRules(rList)
+              }}
+              className="bg-[#1B2A4A] text-white text-xs"
+            >
+              Gravar Regra
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* CREATE CARRIER MODAL */}
       <Dialog open={isCarrierModalOpen} onOpenChange={setIsCarrierModalOpen}>

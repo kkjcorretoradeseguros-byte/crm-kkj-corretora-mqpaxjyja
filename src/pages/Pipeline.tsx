@@ -365,8 +365,22 @@ export default function Pipeline() {
       })
     }
 
-    // 5. Criar automaticamente fluxo de Pós-Venda
-    await opportunityService.createOpportunity({
+    // 5. Timeline de Venda Ganha e Contrato Gerado
+    await opportunityService.addTimelineEvent(
+      vendaGanhaTargetOpp.id,
+      'venda_ganha',
+      `Venda Ganha concluída com sucesso! Contrato nº ${contractNum} (${data.contractedCarrierName} - ${data.contractedPlan}) gerado com mensalidade de R$ ${data.contractedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
+      {
+        contract_id: createdContract.id,
+        contract_number: contractNum,
+        operadora_id: data.contractedCarrierId,
+        mensalidade: data.contractedValue,
+        vidas: data.livesCount,
+      },
+    )
+
+    // 6. Criar automaticamente fluxo de Pós-Venda e registrar na timeline
+    const posVendaOpp = await opportunityService.createOpportunity({
       title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
       pipeline_type: 'POS_VENDA',
       stage: 'Documentação',
@@ -378,6 +392,13 @@ export default function Pipeline() {
       sale_value: data.contractedValue,
       origin: vendaGanhaTargetOpp.origin,
     })
+
+    await opportunityService.addTimelineEvent(
+      vendaGanhaTargetOpp.id,
+      'pos_venda',
+      `Lead encaminhado para o Funil de Pós-Venda (${posVendaOpp.title}). Etapa inicial: Documentação.`,
+      { pos_venda_id: posVendaOpp.id },
+    )
 
     setIsVendaGanhaOpen(false)
     setVendaGanhaTargetOpp(null)
@@ -405,7 +426,7 @@ export default function Pipeline() {
     setFormTitle('')
     setFormCompanyId('')
     setFormContactId('')
-    setFormProductId(products[0]?.id || '')
+    setFormProductId('') // NÃO selecionar automaticamente nenhum produto (ex.: Adesão)
     setFormCarrierId(carriers[0]?.id || '')
     setFormSuggestedPlan('')
     setFormStage(initialStage || currentStages[0])

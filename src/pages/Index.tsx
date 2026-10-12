@@ -34,6 +34,7 @@ import { contractService } from '@/services/contractService'
 import { productService } from '@/services/productService'
 import { userService } from '@/services/userService'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase/client'
 import type { Opportunity, Company, Task, Contract, Product, User } from '@/types/crm'
 
 type PeriodFilter = 'mes_atual' | 'trimestre' | 'ano' | 'todos'
@@ -67,7 +68,9 @@ export default function Index() {
   const [selectedUser, setSelectedUser] = useState<string>('todos')
   const [hoveredSliceIndex, setHoveredSliceIndex] = useState<number | null>(null)
 
-  const isSeller = user?.role === 'VENDEDOR'
+  const isAdmin = user?.role?.toLowerCase() === 'administrador'
+  const isManager = user?.role?.toLowerCase() === 'gestor'
+  const isSeller = user?.role?.toLowerCase() === 'vendedor'
 
   const loadData = useCallback(async () => {
     try {
@@ -119,15 +122,83 @@ export default function Index() {
     [period, startOfMonth, startOfQuarter, startOfYear],
   )
 
+  // 4 Visões Segregadas para Gestor (Nathany):
+  // 1: 'minhas_vendas' (apenas próprias)
+  // 2: 'minha_equipe' (apenas subordinados)
+  // 3: 'geral_gestao' (próprias + subordinados)
+  // 4: 'por_vendedor'
+  const [gestorView, setGestorView] = useState<
+    'minhas_vendas' | 'minha_equipe' | 'geral_gestao' | 'por_vendedor'
+  >('geral_gestao')
+  const [subordinateIds, setSubordinateIds] = useState<string[]>([])
+
+  // Carregar subordinados se for gestor
+  useEffect(() => {
+    async function loadSubordinates() {
+      if (isManager && user?.id) {
+        try {
+          const { data: teamData } = await supabase
+            .from('teams')
+            .select('id')
+            .eq('gestor_id', user.id)
+            .eq('ativo', true)
+
+          if (teamData && teamData.length > 0) {
+            const teamIds = teamData.map((t) => t.id)
+            const { data: members } = await supabase
+              .from('team_members')
+              .select('vendedor_id')
+              .in('team_id', teamIds)
+              .eq('ativo', true)
+
+            setSubordinateIds((members || []).map((m: any) => m.vendedor_id))
+          } else {
+            // Inicialmente Nathany não tem subordinados
+            setSubordinateIds([])
+          }
+        } catch {
+          setSubordinateIds([])
+        }
+      }
+    }
+    loadSubordinates()
+  }, [user?.id])
+
   // Filter items by role/user and period
   const effectiveUserId = isSeller ? user?.id : selectedUser === 'todos' ? null : selectedUser
 
   const filteredOpps = useMemo(() => {
     return opportunities.filter((o) => {
-      if (effectiveUserId && o.assigned_to !== effectiveUserId) return false
+      // Regras de hierarquia para Gestor:
+      if (isManager && !isAdmin) {
+        if (gestorView === 'minhas_vendas') {
+          if (o.assigned_to !== user?.id) return false
+        } else if (gestorView === 'minha_equipe') {
+          // Apenas subordinados da sua equipe (sem próprias, vazia se não tiver subordinados)
+          if (!o.assigned_to || !subordinateIds.includes(o.assigned_to)) return false
+        } else if (gestorView === 'geral_gestao') {
+          // Próprias + subordinados autorizados
+          const isOwn = o.assigned_to === user?.id
+          const isSub = o.assigned_to ? subordinateIds.includes(o.assigned_to) : false
+          if (!isOwn && !isSub) return false
+        } else if (gestorView === 'por_vendedor' && selectedUser !== 'todos') {
+          if (o.assigned_to !== selectedUser) return false
+        }
+      } else if (effectiveUserId && o.assigned_to !== effectiveUserId) {
+        return false
+      }
       return isWithinPeriod(o.updated || o.created)
     })
-  }, [opportunities, effectiveUserId, isWithinPeriod])
+  }, [
+    opportunities,
+    effectiveUserId,
+    isManager,
+    gestorView,
+    user?.id,
+    subordinateIds,
+    selectedUser,
+    isWithinPeriod,
+  ])
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {
@@ -356,8 +427,28 @@ export default function Index() {
             </Select>
           </div>
 
+          {/* 4 Visões Segregadas para o Perfil Gestor (Nathany) */}
+          {isManager && !isAdmin && (
+            <div className="flex items-center gap-1 bg-black/25 backdrop-blur-md rounded-xl p-1 border border-white/15">
+              <span className="text-[10px] text-slate-300 px-1 font-semibold uppercase">
+                Visão Gestão:
+              </span>
+              <Select value={gestorView} onValueChange={(val) => setGestorView(val as any)}>
+                <SelectTrigger className="h-7 text-xs bg-transparent border-none text-white focus:ring-0 gap-1 px-2 w-[160px] font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="geral_gestao">Geral sob minha gestão</SelectItem>
+                  <SelectItem value="minhas_vendas">Minhas vendas (próprias)</SelectItem>
+                  <SelectItem value="minha_equipe">Minha equipe (subordinados)</SelectItem>
+                  <SelectItem value="por_vendedor">Por vendedor específico</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* User Filter (Admin/Gestor only) */}
-          {!isSeller && (
+          {!isSeller && (isAdmin || gestorView === 'por_vendedor') && (
             <div className="flex items-center gap-1.5 bg-black/20 backdrop-blur-md rounded-xl p-1 border border-white/10">
               <UserCheck className="h-3.5 w-3.5 text-slate-300 ml-1.5" />
               <Select value={selectedUser} onValueChange={setSelectedUser}>
@@ -366,11 +457,15 @@ export default function Index() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Toda a Corretora</SelectItem>
-                  {usersList.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name || u.email}
-                    </SelectItem>
-                  ))}
+                  {usersList
+                    .filter((u) =>
+                      isAdmin ? true : subordinateIds.includes(u.id) || u.id === user?.id,
+                    )
+                    .map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

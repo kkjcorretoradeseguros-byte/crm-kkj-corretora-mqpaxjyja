@@ -528,6 +528,25 @@ export const opportunityService = {
       }
     }
 
+    // Buscar valores prévios para registrar alterações relevantes se não houver logTimelineAction explícito
+    let previousRow: any = null
+    if (
+      data.temperature !== undefined ||
+      data.stage !== undefined ||
+      data.assigned_to !== undefined
+    ) {
+      try {
+        const { data: cur } = await supabase
+          .from('opportunities')
+          .select('temperatura, etapa, owner_id')
+          .eq('id', id)
+          .single()
+        previousRow = cur
+      } catch {
+        // silencioso
+      }
+    }
+
     const { data: updated, error } = await supabase
       .from('opportunities')
       .update(payload)
@@ -546,19 +565,35 @@ export const opportunityService = {
         const actionStr =
           typeof logTimelineAction === 'string'
             ? logTimelineAction
-            : logTimelineAction.action || 'STAGE_CHANGE'
+            : logTimelineAction.action || 'etapa_alterada'
         await supabase.from('opportunity_timeline').insert({
           opportunity_id: id,
-          action: actionStr,
-          title:
-            actionStr === 'STAGE_CHANGE'
-              ? `Etapa alterada para ${mapped.stage}`
-              : 'Atualização de oportunidade',
-          description: timelineDescription || `Atualizado para etapa ${mapped.stage}`,
-          created_by: currentUserId,
+          tipo_evento: actionStr,
+          conteudo: timelineDescription || `Atualizado para etapa ${mapped.stage}`,
+          dados_adicionais: { stage: mapped.stage },
+          user_id: currentUserId,
         })
       } catch (err) {
         console.warn('Falha ao gravar evento na timeline:', err)
+      }
+    } else if (previousRow) {
+      // Registrar timeline apenas se houver mudança real de temperatura
+      if (data.temperature !== undefined && data.temperature !== previousRow.temperatura) {
+        await this.addTimelineEvent(
+          id,
+          'temperatura_alterada',
+          `Temperatura alterada de ${previousRow.temperatura || 'Não definida'} para ${data.temperature}`,
+          { anterior: previousRow.temperatura, nova: data.temperature },
+        )
+      }
+      // Mudança de responsável
+      if (data.assigned_to !== undefined && data.assigned_to !== previousRow.owner_id) {
+        await this.addTimelineEvent(
+          id,
+          'responsavel_alterado',
+          `Responsável comercial redistribuído para ${mapped.expand?.assigned_to?.name || data.assigned_to}`,
+          { anterior: previousRow.owner_id, novo: data.assigned_to },
+        )
       }
     }
 
@@ -593,14 +628,13 @@ export const opportunityService = {
     try {
       await supabase.from('opportunity_timeline').insert({
         opportunity_id: id,
-        action: 'STAGE_CHANGE',
-        title: `Etapa alterada para ${stage}`,
-        description:
+        tipo_evento: 'etapa_alterada',
+        conteudo:
           stage === 'PERDIDO'
-            ? `Motivo da perda: ${lostReason || 'Não informado'}`
-            : `Movido para ${stage}`,
-        metadata: { newStage: stage, lostReason },
-        created_by: currentUserId,
+            ? `Movido para ${stage}. Motivo da perda: ${lostReason || 'Não informado'}`
+            : `Etapa alterada para ${stage}`,
+        dados_adicionais: { newStage: stage, lostReason },
+        user_id: currentUserId,
       })
     } catch (err) {
       console.warn('Falha ao gravar transição de etapa na timeline:', err)
@@ -638,11 +672,10 @@ export const opportunityService = {
     try {
       await supabase.from('opportunity_timeline').insert({
         opportunity_id: id,
-        action: 'TRANSFER',
-        title: 'Responsável Alterado',
-        description: `Oportunidade reatribuída ao consultor (${mapped.expand?.assigned_to?.name || newUserId})`,
-        metadata: { newUserId },
-        created_by: currentUserId,
+        tipo_evento: 'responsavel_alterado',
+        conteudo: `Oportunidade reatribuída ao consultor (${mapped.expand?.assigned_to?.name || newUserId})`,
+        dados_adicionais: { newUserId },
+        user_id: currentUserId,
       })
     } catch (err) {
       console.warn('Falha ao registrar redistribuição na timeline:', err)
@@ -707,52 +740,88 @@ export const opportunityService = {
     }
   },
 
+  async addTimelineEvent(
+    opportunityId: string,
+    tipoEvento: string,
+    conteudo: string,
+    dadosAdicionais?: Record<string, any>,
+  ): Promise<OpportunityTimeline | null> {
+    if (!isSupabaseConfigured || !opportunityId) return null
+
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const currentUserId = authData?.user?.id || null
+
+      const { data, error } = await supabase
+        .from('opportunity_timeline')
+        .insert({
+          opportunity_id: opportunityId,
+          tipo_evento: tipoEvento,
+          conteudo: conteudo,
+          dados_adicionais: dadosAdicionais || {},
+          user_id: currentUserId,
+        })
+        .select(
+          'id, opportunity_id, tipo_evento, conteudo, dados_adicionais, user_id, created_at, profiles:user_id(id, nome, email)',
+        )
+        .single()
+
+      if (error || !data) {
+        console.warn('Erro ao registrar evento na timeline:', error?.message)
+        return null
+      }
+
+      const row = data as any
+      return {
+        id: row.id,
+        opportunity_id: row.opportunity_id,
+        action: row.tipo_evento,
+        action_type: row.tipo_evento,
+        title:
+          tipoEvento === 'nota'
+            ? 'Anotação Interna'
+            : tipoEvento === 'temperatura_alterada'
+              ? 'Temperatura Atualizada'
+              : tipoEvento === 'etapa_alterada'
+                ? 'Etapa Alterada'
+                : tipoEvento === 'responsavel_alterado'
+                  ? 'Responsável Alterado'
+                  : tipoEvento === 'tarefa_criada'
+                    ? 'Tarefa Agendada'
+                    : tipoEvento === 'tarefa_concluida'
+                      ? 'Tarefa Concluída'
+                      : tipoEvento === 'tarefa_cancelada'
+                        ? 'Tarefa Cancelada'
+                        : tipoEvento === 'venda_ganha'
+                          ? 'Venda Ganha'
+                          : tipoEvento === 'pos_venda'
+                            ? 'Encaminhado para Pós-Venda'
+                            : 'Registro de Atividade',
+        description: row.conteudo,
+        metadata: row.dados_adicionais,
+        created_by: row.user_id,
+        created: row.created_at,
+        expand: row.profiles
+          ? {
+              created_by: {
+                id: row.profiles.id,
+                name: row.profiles.nome,
+                email: row.profiles.email,
+                role: 'vendedor',
+              },
+            }
+          : undefined,
+      }
+    } catch (e: any) {
+      console.warn('Falha silenciosa ao registrar timeline:', e?.message)
+      return null
+    }
+  },
+
   async addTimelineNote(opportunityId: string, note: string): Promise<OpportunityTimeline> {
-    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
-
-    const { data: authData } = await supabase.auth.getUser()
-    const currentUserId = authData?.user?.id || null
-
-    const { data, error } = await supabase
-      .from('opportunity_timeline')
-      .insert({
-        opportunity_id: opportunityId,
-        tipo_evento: 'nota',
-        conteudo: note,
-        dados_adicionais: {},
-        user_id: currentUserId,
-      })
-      .select(
-        'id, opportunity_id, tipo_evento, conteudo, dados_adicionais, user_id, created_at, profiles:user_id(id, nome, email)',
-      )
-      .single()
-
-    if (error || !data) {
-      throw new Error(error?.message || 'Falha ao registrar anotação na timeline')
-    }
-
-    const row = data as any
-    return {
-      id: row.id,
-      opportunity_id: row.opportunity_id,
-      action: row.tipo_evento,
-      action_type: row.tipo_evento,
-      title: 'Anotação Interna',
-      description: row.conteudo,
-      metadata: row.dados_adicionais,
-      created_by: row.user_id,
-      created: row.created_at,
-      expand: row.profiles
-        ? {
-            created_by: {
-              id: row.profiles.id,
-              name: row.profiles.nome,
-              email: row.profiles.email,
-              role: 'vendedor',
-            },
-          }
-        : undefined,
-    }
+    const res = await this.addTimelineEvent(opportunityId, 'nota', note)
+    if (!res) throw new Error('Falha ao registrar anotação')
+    return res
   },
 
   /**

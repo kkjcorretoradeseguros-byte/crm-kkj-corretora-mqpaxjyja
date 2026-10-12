@@ -61,19 +61,63 @@ export const userService = {
     return mapProfileToUser(data as ProfileRow)
   },
 
-  async updateUserRole(id: string, role: UserRole): Promise<User> {
+  async updateUserRole(id: string, newRole: UserRole, motivo?: string): Promise<User> {
     if (!isSupabaseConfigured) {
       throw new Error('Supabase não configurado')
     }
+
+    const { data: authData } = await supabase.auth.getUser()
+    const currentUserId = authData?.user?.id || null
+
+    // Buscar perfil atual para registrar histórico
+    const { data: currentProf } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', id)
+      .single()
+
+    const previousRole = (currentProf?.role as UserRole) || 'vendedor'
+
     const { data, error } = await supabase
       .from('profiles')
-      .update({ role, updated_at: new Date().toISOString() })
+      .update({ role: newRole, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
       .single()
 
     if (error || !data) {
       throw new Error(error?.message || 'Falha ao atualizar papel do usuário')
+    }
+
+    // Gravar auditoria em profile_role_history
+    try {
+      await supabase.from('profile_role_history').insert({
+        profile_id: id,
+        perfil_anterior: previousRole,
+        novo_perfil: newRole,
+        alterado_por: currentUserId,
+        motivo: motivo || `Alteração dinâmica de perfil pela Central do Administrador`,
+        detalhes: { timestamp: new Date().toISOString() },
+      })
+    } catch (auditErr) {
+      console.warn('Falha silenciosa ao gravar histórico de perfil:', auditErr)
+    }
+
+    return mapProfileToUser(data as ProfileRow)
+  },
+
+  async toggleUserActive(id: string, ativo: boolean): Promise<User> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ ativo, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
+      .single()
+
+    if (error || !data) {
+      throw new Error(error?.message || 'Falha ao alterar status do usuário')
     }
     return mapProfileToUser(data as ProfileRow)
   },

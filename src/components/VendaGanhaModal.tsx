@@ -99,8 +99,10 @@ export function VendaGanhaModal({
 
   // Validações
   const validateForm = () => {
-    if (!contactName.trim()) return 'Nome do cliente é obrigatório.'
-    if (!companyName.trim()) return 'Razão Social / Nome da Empresa é obrigatório.'
+    if (!contactName.trim()) return 'Nome do cliente / titular é obrigatório.'
+    if (modalidade !== 'PF' && !companyName.trim()) {
+      return 'Razão Social / Nome da Empresa é obrigatório para esta modalidade.'
+    }
 
     // CNPJ obrigatório para PME
     const cleanCnpj = cnpj.replace(/\D/g, '')
@@ -201,24 +203,30 @@ export function VendaGanhaModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Razão Social / Nome da Empresa *</Label>
+                <Label className="text-xs">
+                  Razão Social / Nome da Empresa {modalidade === 'PF' ? '(Opcional em PF)' : '*'}
+                </Label>
                 <Input
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Ex: Jekabson Benefícios LTDA"
+                  placeholder={
+                    modalidade === 'PF' ? 'Opcional para PF' : 'Ex: Jekabson Benefícios LTDA'
+                  }
                   className="h-8 text-xs bg-white"
-                  required
+                  required={modalidade !== 'PF'}
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">CNPJ * (Obrigatório em PME)</Label>
+                <Label className="text-xs">
+                  CNPJ {modalidade === 'PME' ? '* (Obrigatório em PME)' : '(Opcional em PF/Adesão)'}
+                </Label>
                 <Input
                   value={cnpj}
                   onChange={(e) => setCnpj(e.target.value)}
                   placeholder="00.000.000/0001-00"
                   className="h-8 text-xs bg-white"
-                  required
+                  required={modalidade === 'PME'}
                 />
               </div>
             </div>

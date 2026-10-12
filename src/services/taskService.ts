@@ -314,12 +314,19 @@ export const taskService = {
 
     if (task.opportunity_id) {
       try {
+        // Schema 0001: tipo_evento, conteudo, dados_adicionais, user_id
         await supabase.from('opportunity_timeline').insert({
           opportunity_id: task.opportunity_id,
-          action: 'TASK_CREATED',
-          title: `Tarefa criada: ${task.type} - ${task.title}`,
-          description: `Vencimento: ${task.due_date}${task.due_time ? ` às ${task.due_time}` : ''}`,
-          created_by: currentUserId,
+          tipo_evento: 'tarefa_criada',
+          conteudo: `Tarefa agendada: ${task.type} - ${task.title} (Vencimento: ${task.due_date}${task.due_time ? ` às ${task.due_time}` : ''})`,
+          dados_adicionais: {
+            task_id: task.id,
+            tipo_tarefa: task.type,
+            due_date: task.due_date,
+            due_time: task.due_time,
+            assignee_id: task.assigned_to,
+          },
+          user_id: currentUserId,
         })
       } catch (tlErr) {
         console.warn('Falha ao registrar criação de tarefa na timeline:', tlErr)
@@ -366,17 +373,39 @@ export const taskService = {
 
     const mapped = mapTaskRow(updated as unknown as TaskDbRow)
 
-    if (data.status === 'Concluída' && mapped.opportunity_id) {
+    if (mapped.opportunity_id) {
       try {
-        await supabase.from('opportunity_timeline').insert({
-          opportunity_id: mapped.opportunity_id,
-          action: 'TASK_COMPLETED',
-          title: `Tarefa Concluída: ${mapped.title}`,
-          description: `Tarefa do tipo ${mapped.type} marcada como concluída.`,
-          created_by: currentUserId,
-        })
+        if (data.status === 'Concluída') {
+          await supabase.from('opportunity_timeline').insert({
+            opportunity_id: mapped.opportunity_id,
+            tipo_evento: 'tarefa_concluida',
+            conteudo: `Tarefa concluída: ${mapped.title}`,
+            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type },
+            user_id: currentUserId,
+          })
+        } else if (data.status === 'Cancelada') {
+          await supabase.from('opportunity_timeline').insert({
+            opportunity_id: mapped.opportunity_id,
+            tipo_evento: 'tarefa_cancelada',
+            conteudo: `Tarefa cancelada: ${mapped.title}`,
+            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type },
+            user_id: currentUserId,
+          })
+        } else if (data.title || data.due_date || data.assigned_to) {
+          await supabase.from('opportunity_timeline').insert({
+            opportunity_id: mapped.opportunity_id,
+            tipo_evento: 'tarefa_alterada',
+            conteudo: `Tarefa alterada: ${mapped.title}`,
+            dados_adicionais: {
+              task_id: mapped.id,
+              due_date: mapped.due_date,
+              assignee_id: mapped.assigned_to,
+            },
+            user_id: currentUserId,
+          })
+        }
       } catch (tlErr) {
-        console.warn('Falha ao registrar conclusão de tarefa na timeline:', tlErr)
+        console.warn('Falha ao registrar alteração de tarefa na timeline:', tlErr)
       }
     }
 
