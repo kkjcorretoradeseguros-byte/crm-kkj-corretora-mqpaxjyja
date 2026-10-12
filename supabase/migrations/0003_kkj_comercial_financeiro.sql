@@ -370,6 +370,16 @@ CREATE TRIGGER trg_opp_plan_suggestions_updated_at
 -- ------------------------------------------------------------------------------
 DO $$
 BEGIN
+  -- Garante unicidade de contrato por oportunidade para operação 100% idempotente
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'uq_contracts_opportunity_id'
+      AND conrelid = 'public.contracts'::regclass
+  ) THEN
+    ALTER TABLE public.contracts
+      ADD CONSTRAINT uq_contracts_opportunity_id UNIQUE (opportunity_id);
+  END IF;
+
   -- Código identificador amigável da regra
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'code') THEN
     ALTER TABLE public.commission_rules ADD COLUMN code VARCHAR(60);

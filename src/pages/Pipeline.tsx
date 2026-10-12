@@ -272,7 +272,7 @@ export default function Pipeline() {
     }
   }
 
-  // Conclusão auditada e consistente de Venda Ganha com regras completas
+  // Conclusão auditada, idempotente e transacional de Venda Ganha
   const handleConfirmVendaGanha = async (data: {
     contractedCarrierId: string
     contractedCarrierName: string
@@ -290,120 +290,174 @@ export default function Pipeline() {
   }) => {
     if (!vendaGanhaTargetOpp) return
 
-    // 1. Atualizar ou vincular Empresa e Contato com dados completos
-    let companyId = vendaGanhaTargetOpp.company_id
-    if (companyId) {
-      await companyService.updateCompany(companyId, {
-        trade_name: data.companyName,
-        legal_name: data.companyName,
-        cnpj: data.cnpj,
-      })
-    } else {
-      const newComp = await companyService.createCompany({
-        trade_name: data.companyName,
-        legal_name: data.companyName,
-        cnpj: data.cnpj,
-      })
-      companyId = newComp.id
-    }
+    try {
+      // 1. Atualizar ou vincular Empresa e Contato com dados completos
+      let companyId = vendaGanhaTargetOpp.company_id
+      if (companyId) {
+        await companyService.updateCompany(companyId, {
+          trade_name: data.companyName,
+          legal_name: data.companyName,
+          cnpj: data.cnpj,
+        })
+      } else {
+        const newComp = await companyService.createCompany({
+          trade_name: data.companyName,
+          legal_name: data.companyName,
+          cnpj: data.cnpj,
+        })
+        companyId = newComp.id
+      }
 
-    let contactId = vendaGanhaTargetOpp.contact_id
-    if (contactId) {
-      await contactService.updateContact(contactId, {
-        name: data.contactName,
-        phone: data.phone,
-        email: data.email,
-        company_id: companyId,
-      })
-    } else {
-      const newCont = await contactService.createContact({
-        name: data.contactName,
-        phone: data.phone,
-        email: data.email,
-        company_id: companyId,
-      })
-      contactId = newCont.id
-    }
+      let contactId = vendaGanhaTargetOpp.contact_id
+      if (contactId) {
+        await contactService.updateContact(contactId, {
+          name: data.contactName,
+          phone: data.phone,
+          email: data.email,
+          company_id: companyId,
+        })
+      } else {
+        const newCont = await contactService.createContact({
+          name: data.contactName,
+          phone: data.phone,
+          email: data.email,
+          company_id: companyId,
+        })
+        contactId = newCont.id
+      }
 
-    // 2. Atualizar oportunidade com status de Venda Ganha e valores contratados
-    await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
-      stage: 'Venda ganha',
-      company_id: companyId,
-      contact_id: contactId,
-      carrier_id: data.contractedCarrierId,
-      value: data.contractedValue,
-      sale_value: data.contractedValue,
-    })
-
-    // 3. Criar Contrato único e auditável
-    const contractNum = `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
-    const createdContract = await contractService.createContract({
-      contract_number: contractNum,
-      opportunity_id: vendaGanhaTargetOpp.id,
-      company_id: companyId,
-      contact_id: contactId,
-      carrier_id: data.contractedCarrierId,
-      product_id: vendaGanhaTargetOpp.product_id,
-      plano: data.contractedPlan,
-      sale_value: data.contractedValue,
-      lives_count: data.livesCount,
-      start_date: data.hiringDate,
-      status: 'Em Implantação',
-      assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
-      notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
-    })
-
-    // 4. Se for Adesão: Gerar 1º Boleto Integral KKJ (100% receita bruta da corretora)
-    if (data.modalidade === 'Adesão') {
-      await adesaoService.registrarPrimeiroBoleto({
-        contract_id: createdContract.id,
+      // 2. Atualizar oportunidade com status de Venda Ganha e valores contratados
+      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
+        stage: 'Venda ganha',
         company_id: companyId,
         contact_id: contactId,
-        vendedor_id: vendaGanhaTargetOpp.assigned_to || user?.id,
-        valor_integral: data.contractedValue,
-        data_vencimento: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
-        aliquota_imposto: 0.11, // Padrão central KKJ 11%
+        carrier_id: data.contractedCarrierId,
+        value: data.contractedValue,
+        sale_value: data.contractedValue,
       })
+
+      // 3. IDEMPOTÊNCIA: Verificar se já existe contrato para esta oportunidade
+      const existingContracts = await contractService.getContracts({
+        opportunity_id: vendaGanhaTargetOpp.id,
+      })
+
+      let activeContract = existingContracts[0]
+      const contractNum = activeContract
+        ? activeContract.contract_number
+        : `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+
+      if (activeContract) {
+        // Atualizar contrato existente em vez de duplicar
+        activeContract = await contractService.updateContract(activeContract.id, {
+          company_id: companyId,
+          contact_id: contactId,
+          carrier_id: data.contractedCarrierId,
+          plano: data.contractedPlan,
+          sale_value: data.contractedValue,
+          lives_count: data.livesCount,
+          start_date: data.hiringDate,
+          status: 'Em Implantação',
+          assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
+          notes: `Venda Ganha reprocessada em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
+        })
+      } else {
+        // Criar contrato único
+        activeContract = await contractService.createContract({
+          contract_number: contractNum,
+          opportunity_id: vendaGanhaTargetOpp.id,
+          company_id: companyId,
+          contact_id: contactId,
+          carrier_id: data.contractedCarrierId,
+          product_id: vendaGanhaTargetOpp.product_id,
+          plano: data.contractedPlan,
+          sale_value: data.contractedValue,
+          lives_count: data.livesCount,
+          start_date: data.hiringDate,
+          status: 'Em Implantação',
+          assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
+          notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
+        })
+      }
+
+      // 4. Se for Adesão: Gerar ou atualizar 1º Boleto Integral KKJ (100% receita bruta da corretora)
+      if (data.modalidade === 'Adesão') {
+        try {
+          await adesaoService.registrarPrimeiroBoleto({
+            contract_id: activeContract.id,
+            company_id: companyId,
+            contact_id: contactId,
+            vendedor_id: vendaGanhaTargetOpp.assigned_to || user?.id,
+            valor_integral: data.contractedValue,
+            data_vencimento: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+            aliquota_imposto: 0.11, // Padrão central KKJ 11%
+          })
+        } catch (err: any) {
+          console.warn('Registro de primeiro boleto Adesão (aguardando migration financeira 0003/0004):', err?.message)
+        }
+      }
+
+      // 5. Timeline de Venda Ganha e Contrato Gerado
+      await opportunityService.addTimelineEvent(
+        vendaGanhaTargetOpp.id,
+        'venda_ganha',
+        `Venda Ganha concluída com sucesso! Contrato nº ${contractNum} (${data.contractedCarrierName} - ${data.contractedPlan}) gerado com mensalidade de R$ ${data.contractedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
+        {
+          contract_id: activeContract.id,
+          contract_number: contractNum,
+          operadora_id: data.contractedCarrierId,
+          mensalidade: data.contractedValue,
+          vidas: data.livesCount,
+        },
+      )
+
+      // 6. IDEMPOTÊNCIA: Criar ou verificar fluxo de Pós-Venda
+      const existingPosVenda = opportunities.find(
+        (o) =>
+          o.pipeline_type === 'POS_VENDA' &&
+          (o.company_id === companyId || o.title.includes(data.companyName)),
+      )
+
+      if (!existingPosVenda) {
+        const posVendaOpp = await opportunityService.createOpportunity({
+          title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
+          pipeline_type: 'POS_VENDA',
+          stage: 'Documentação',
+          temperature: 'Quente',
+          company_id: companyId,
+          contact_id: contactId,
+          carrier_id: data.contractedCarrierId,
+          assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
+          sale_value: data.contractedValue,
+          origin: vendaGanhaTargetOpp.origin,
+        })
+
+        await opportunityService.addTimelineEvent(
+          vendaGanhaTargetOpp.id,
+          'pos_venda',
+          `Lead encaminhado para o Funil de Pós-Venda (${posVendaOpp.title}). Etapa inicial: Documentação.`,
+          { pos_venda_id: posVendaOpp.id },
+        )
+      }
+
+      setIsVendaGanhaOpen(false)
+      setVendaGanhaTargetOpp(null)
+      fetchData()
+    } catch (err: any) {
+      console.error('Falha ao concluir Venda Ganha:', err)
+      const msg = err?.message || ''
+      if (
+        msg.includes('relation "commission_rules"') ||
+        msg.includes('relation "financial_installments"') ||
+        msg.includes('relation "financial_obligations"') ||
+        msg.includes('does not exist')
+      ) {
+        alert(
+          'Rotina financeira ainda não implantada neste banco Supabase. Por favor, aplique as migrations pendentes 0003 e 0004.',
+        )
+      } else {
+        alert(`Erro ao concluir venda ganha: ${msg || 'Verifique a conexão ou os dados informados.'}`)
+      }
     }
-
-    // 5. Timeline de Venda Ganha e Contrato Gerado
-    await opportunityService.addTimelineEvent(
-      vendaGanhaTargetOpp.id,
-      'venda_ganha',
-      `Venda Ganha concluída com sucesso! Contrato nº ${contractNum} (${data.contractedCarrierName} - ${data.contractedPlan}) gerado com mensalidade de R$ ${data.contractedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
-      {
-        contract_id: createdContract.id,
-        contract_number: contractNum,
-        operadora_id: data.contractedCarrierId,
-        mensalidade: data.contractedValue,
-        vidas: data.livesCount,
-      },
-    )
-
-    // 6. Criar automaticamente fluxo de Pós-Venda e registrar na timeline
-    const posVendaOpp = await opportunityService.createOpportunity({
-      title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
-      pipeline_type: 'POS_VENDA',
-      stage: 'Documentação',
-      temperature: 'Quente',
-      company_id: companyId,
-      contact_id: contactId,
-      carrier_id: data.contractedCarrierId,
-      assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
-      sale_value: data.contractedValue,
-      origin: vendaGanhaTargetOpp.origin,
-    })
-
-    await opportunityService.addTimelineEvent(
-      vendaGanhaTargetOpp.id,
-      'pos_venda',
-      `Lead encaminhado para o Funil de Pós-Venda (${posVendaOpp.title}). Etapa inicial: Documentação.`,
-      { pos_venda_id: posVendaOpp.id },
-    )
-
-    setIsVendaGanhaOpen(false)
-    setVendaGanhaTargetOpp(null)
-    fetchData()
   }
 
   const handleConfirmLost = async () => {
@@ -1145,11 +1199,15 @@ export default function Pipeline() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Produto</Label>
-                <Select value={formProductId} onValueChange={setFormProductId}>
+                <Select
+                  value={formProductId || 'none_clear'}
+                  onValueChange={(val) => setFormProductId(val === 'none_clear' ? '' : val)}
+                >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none_clear">Nenhum / A definir</SelectItem>
                     {products.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name}

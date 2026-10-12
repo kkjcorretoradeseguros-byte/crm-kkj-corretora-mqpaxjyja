@@ -119,6 +119,8 @@ export function OpportunityDetailModal({
   const [quickContactName, setQuickContactName] = useState('')
   const [quickContactPhone, setQuickContactPhone] = useState('')
   const [quickContactEmail, setQuickContactEmail] = useState('')
+  const [isSubmittingQuickCompany, setIsSubmittingQuickCompany] = useState(false)
+  const [isSubmittingQuickContact, setIsSubmittingQuickContact] = useState(false)
 
   // Carregar dados da oportunidade e listas auxiliares
   const loadData = async (id: string) => {
@@ -274,9 +276,6 @@ export function OpportunityDetailModal({
       },
     )
   }
-
-  const [isSubmittingQuickCompany, setIsSubmittingQuickCompany] = useState(false)
-  const [isSubmittingQuickContact, setIsSubmittingQuickContact] = useState(false)
 
   // Cadastro rápido de Empresa
   const handleCreateQuickCompany = async () => {
@@ -485,9 +484,9 @@ export function OpportunityDetailModal({
         {/* ========================================================= */}
         <div className="bg-card border-b border-border px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
           <div className="flex items-center gap-3 min-w-0">
-            {/* ESCUDO OFICIAL KKJ: Acabamento prateado chanfrado e check azul */}
-            <div className="p-1.5 rounded-lg bg-[#0F172A] flex items-center justify-center shrink-0 border border-slate-700">
-              <KkjShield className="h-6 w-6" size={26} />
+            {/* ESCUDO OFICIAL KKJ: Acabamento prateado chanfrado e check azul sem caixa/fundo */}
+            <div className="flex items-center justify-center shrink-0">
+              <KkjShield className="h-8 w-8" size={32} />
             </div>
 
             <div className="min-w-0 flex-1">
@@ -964,14 +963,17 @@ export function OpportunityDetailModal({
             </div>
 
             {/* Bloco 3: Informações de Saúde e Observações Técnicas */}
-            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/20 space-y-2.5">
-              <span className="font-bold text-emerald-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                <Heart className="h-3.5 w-3.5 text-emerald-600" /> 3. Detalhes do Plano de Saúde
+            <div className="p-3.5 rounded-xl border border-emerald-200 dark:border-[#24324D] bg-emerald-50/20 dark:bg-[#141F36] space-y-2.5">
+              <span className="font-bold text-emerald-950 dark:text-emerald-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <Heart className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> 3. Detalhes
+                do Plano de Saúde
               </span>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-slate-500 font-semibold">Acomodação</Label>
+                  <Label className="text-[10px] text-muted-foreground dark:text-slate-300 font-semibold">
+                    Acomodação
+                  </Label>
                   <Select
                     value={health.accommodation || 'apartamento'}
                     onValueChange={(val) => {
@@ -983,10 +985,10 @@ export function OpportunityDetailModal({
                       )
                     }}
                   >
-                    <SelectTrigger className="h-7 text-xs bg-white">
+                    <SelectTrigger className="h-7 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                       <SelectItem value="apartamento">Apartamento (Individual)</SelectItem>
                       <SelectItem value="enfermaria">Enfermaria (Coletivo)</SelectItem>
                     </SelectContent>
@@ -994,7 +996,9 @@ export function OpportunityDetailModal({
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-slate-500 font-semibold">Coparticipação</Label>
+                  <Label className="text-[10px] text-muted-foreground dark:text-slate-300 font-semibold">
+                    Coparticipação
+                  </Label>
                   <Select
                     value={(health as any).coparticipation ? 'sim' : 'nao'}
                     onValueChange={(val) => {
@@ -1006,10 +1010,10 @@ export function OpportunityDetailModal({
                       )
                     }}
                   >
-                    <SelectTrigger className="h-7 text-xs bg-white">
+                    <SelectTrigger className="h-7 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                       <SelectItem value="sim">Com Coparticipação</SelectItem>
                       <SelectItem value="nao">Sem Coparticipação</SelectItem>
                     </SelectContent>
@@ -1018,7 +1022,7 @@ export function OpportunityDetailModal({
               </div>
 
               <div className="space-y-1">
-                <Label className="text-[10px] text-slate-500 font-semibold">
+                <Label className="text-[10px] text-muted-foreground dark:text-slate-300 font-semibold">
                   Hospitais / Rede Desejada
                 </Label>
                 <Input
@@ -1035,12 +1039,12 @@ export function OpportunityDetailModal({
                       )
                     }
                   }}
-                  className="h-8 text-xs bg-white"
+                  className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-[10px] text-slate-500 font-semibold">
+                <Label className="text-[10px] text-muted-foreground dark:text-slate-300 font-semibold">
                   Observações / Qualificação
                 </Label>
                 <Textarea
@@ -1057,15 +1061,15 @@ export function OpportunityDetailModal({
                       )
                     }
                   }}
-                  className="text-xs bg-white"
+                  className="text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
               </div>
             </div>
 
             {/* Bloco 4: Cotações & Planos Sugeridos (Múltiplas cotações + UMA principal) */}
-            <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/20 space-y-2.5">
+            <div className="p-3.5 rounded-xl border border-blue-200 dark:border-[#24324D] bg-blue-50/20 dark:bg-[#141F36] space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-[#1B2A4A] text-xs uppercase tracking-wider">
+                <span className="font-bold text-[#1B2A4A] dark:text-slate-100 text-xs uppercase tracking-wider">
                   4. Planos Cotados ({planSuggestions.length})
                 </span>
                 <Button
@@ -1073,7 +1077,7 @@ export function OpportunityDetailModal({
                   size="sm"
                   variant="outline"
                   onClick={() => setIsAddPlanOpen(!isAddPlanOpen)}
-                  className="h-6 px-2 text-[10px] font-semibold text-blue-700 bg-white"
+                  className="h-6 px-2 text-[10px] font-semibold text-blue-700 dark:text-blue-400 bg-background dark:bg-[#182540] dark:border-[#24324D]"
                 >
                   <Plus className="h-3 w-3 mr-1" /> Adicionar Cotação
                 </Button>
@@ -1082,13 +1086,13 @@ export function OpportunityDetailModal({
               {isAddPlanOpen && (
                 <form
                   onSubmit={handleAddPlanSuggestion}
-                  className="p-2.5 rounded-lg bg-white border border-blue-200 space-y-2"
+                  className="p-2.5 rounded-lg bg-card dark:bg-[#182540] border border-blue-200 dark:border-[#24324D] space-y-2"
                 >
                   <Select value={newPlanCarrierId} onValueChange={setNewPlanCarrierId}>
-                    <SelectTrigger className="h-7 text-xs">
+                    <SelectTrigger className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 font-medium">
                       <SelectValue placeholder="Selecione a Operadora *" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                       {carriers.map((car) => (
                         <SelectItem key={car.id} value={car.id}>
                           {car.nome}
@@ -1101,7 +1105,7 @@ export function OpportunityDetailModal({
                     placeholder="Nome do Plano (Ex: Amil S380 QP) *"
                     value={newPlanName}
                     onChange={(e) => setNewPlanName(e.target.value)}
-                    className="h-7 text-xs"
+                    className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     required
                   />
 
@@ -1112,7 +1116,7 @@ export function OpportunityDetailModal({
                       placeholder="Valor Mensal (R$) *"
                       value={newPlanValue}
                       onChange={(e) => setNewPlanValue(e.target.value)}
-                      className="h-7 text-xs font-bold"
+                      className="h-7 text-xs font-bold bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                       required
                     />
                     <Input
@@ -1120,12 +1124,12 @@ export function OpportunityDetailModal({
                       placeholder="Vidas"
                       value={newPlanLives}
                       onChange={(e) => setNewPlanLives(e.target.value)}
-                      className="h-7 text-xs"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     />
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer text-foreground dark:text-slate-200">
                       <input
                         type="checkbox"
                         checked={newPlanIsPrincipal}
@@ -1135,7 +1139,11 @@ export function OpportunityDetailModal({
                       <span>Cotação Principal</span>
                     </label>
 
-                    <Button type="submit" size="sm" className="h-7 text-xs bg-blue-700 text-white">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-7 text-xs bg-blue-700 hover:bg-blue-600 text-white"
+                    >
                       Salvar Cotação
                     </Button>
                   </div>
@@ -1143,7 +1151,7 @@ export function OpportunityDetailModal({
               )}
 
               {planSuggestions.length === 0 ? (
-                <p className="text-[11px] text-slate-500 italic text-center py-2">
+                <p className="text-[11px] text-muted-foreground dark:text-slate-400 italic text-center py-2">
                   Nenhuma cotação cadastrada ainda.
                 </p>
               ) : (
@@ -1153,8 +1161,8 @@ export function OpportunityDetailModal({
                       key={plan.id}
                       className={`p-2 rounded-lg border text-xs flex items-center justify-between ${
                         plan.is_principal
-                          ? 'bg-blue-50 border-blue-300 font-medium'
-                          : 'bg-white border-slate-200'
+                          ? 'bg-blue-50 dark:bg-[#1E2D4A] border-blue-300 dark:border-blue-600 font-medium'
+                          : 'bg-card dark:bg-[#182540] border-slate-200 dark:border-[#24324D]'
                       }`}
                     >
                       <div className="min-w-0">
@@ -1164,10 +1172,14 @@ export function OpportunityDetailModal({
                               Principal
                             </Badge>
                           )}
-                          <strong className="text-slate-900 truncate">{plan.carrier_name}</strong>
-                          <span className="text-slate-600 truncate">- {plan.product_name}</span>
+                          <strong className="text-foreground dark:text-slate-100 truncate">
+                            {plan.carrier_name}
+                          </strong>
+                          <span className="text-muted-foreground dark:text-slate-400 truncate">
+                            - {plan.product_name}
+                          </span>
                         </div>
-                        <span className="text-[11px] font-bold text-slate-800 block">
+                        <span className="text-[11px] font-bold text-foreground dark:text-slate-200 block">
                           R${' '}
                           {plan.quoted_monthly_value.toLocaleString('pt-BR', {
                             minimumFractionDigits: 2,
@@ -1182,7 +1194,7 @@ export function OpportunityDetailModal({
                             size="sm"
                             variant="ghost"
                             onClick={() => handleSetPrincipalPlan(plan.id)}
-                            className="h-6 px-1.5 text-[10px] text-blue-700 hover:bg-blue-100"
+                            className="h-6 px-1.5 text-[10px] text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-[#24324D]"
                             title="Tornar cotação principal"
                           >
                             <Star className="h-3 w-3 mr-0.5" /> Principal
@@ -1208,16 +1220,16 @@ export function OpportunityDetailModal({
           {/* ========================================================= */}
           {/* COLUNA CENTRAL (41%): HISTÓRICO & AUDITORIA CRONOLÓGICA */}
           {/* ========================================================= */}
-          <div className="lg:col-span-5 p-4 lg:p-5 overflow-y-auto flex flex-col justify-between border-r border-[#E4E7EC] bg-[#F5F7FA]">
+          <div className="lg:col-span-5 p-4 lg:p-5 overflow-y-auto flex flex-col justify-between border-r border-border bg-[#F5F7FA] dark:bg-[#0B1322]">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <History className="h-4 w-4 text-[#1B2A4A]" />
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-[#101828]">
+                  <History className="h-4 w-4 text-[#1B2A4A] dark:text-blue-400" />
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-foreground dark:text-slate-100">
                     Linha do Tempo & Atividades ({timeline.length})
                   </h3>
                 </div>
-                <span className="text-[10px] text-slate-500 font-medium">
+                <span className="text-[10px] text-muted-foreground dark:text-slate-400 font-medium">
                   Persistência auditável
                 </span>
               </div>
@@ -1225,7 +1237,7 @@ export function OpportunityDetailModal({
               {/* Lista Cronológica */}
               <div className="space-y-2.5 pr-1 max-h-[calc(94vh-180px)] overflow-y-auto">
                 {timeline.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-[#667085] bg-white rounded-xl border border-dashed border-[#E4E7EC]">
+                  <div className="p-6 text-center text-xs text-muted-foreground dark:text-slate-400 bg-card dark:bg-[#141F36] rounded-xl border border-dashed border-border">
                     Nenhum registro no histórico ainda. Todas as alterações e tarefas serão gravadas
                     aqui.
                   </div>
@@ -1243,14 +1255,14 @@ export function OpportunityDetailModal({
                     return (
                       <div
                         key={entry.id}
-                        className="p-3 rounded-xl bg-white border border-[#E4E7EC] shadow-xs text-xs space-y-1"
+                        className="p-3 rounded-xl bg-card dark:bg-[#141F36] border border-border shadow-xs text-xs space-y-1"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-[#101828] flex items-center gap-1.5">
+                          <span className="font-bold text-foreground dark:text-slate-100 flex items-center gap-1.5">
                             {entry.action === 'temperatura_alterada' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-red-50 text-red-700 border-red-200"
+                                className="text-[9px] bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
                               >
                                 Temperatura
                               </Badge>
@@ -1258,7 +1270,7 @@ export function OpportunityDetailModal({
                             {entry.action === 'etapa_alterada' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-blue-50 text-blue-700 border-blue-200"
+                                className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
                               >
                                 Etapa
                               </Badge>
@@ -1266,7 +1278,7 @@ export function OpportunityDetailModal({
                             {entry.action === 'responsavel_alterado' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-purple-50 text-purple-700 border-purple-200"
+                                className="text-[9px] bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
                               >
                                 Responsável
                               </Badge>
@@ -1276,7 +1288,7 @@ export function OpportunityDetailModal({
                               entry.action === 'tarefa_concluida') && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-amber-50 text-amber-800 border-amber-200"
+                                className="text-[9px] bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
                               >
                                 Tarefa
                               </Badge>
@@ -1284,7 +1296,7 @@ export function OpportunityDetailModal({
                             {entry.action === 'venda_ganha' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-emerald-50 text-emerald-800 border-emerald-300 font-bold"
+                                className="text-[9px] bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 font-bold"
                               >
                                 Venda Ganha
                               </Badge>
@@ -1292,7 +1304,7 @@ export function OpportunityDetailModal({
                             {entry.action === 'pos_venda' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-cyan-50 text-cyan-800 border-cyan-300"
+                                className="text-[9px] bg-cyan-50 text-cyan-800 border-cyan-300 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800"
                               >
                                 Pós-Venda
                               </Badge>
@@ -1300,23 +1312,25 @@ export function OpportunityDetailModal({
                             {entry.action === 'nota' && (
                               <Badge
                                 variant="outline"
-                                className="text-[9px] bg-slate-100 text-slate-700"
+                                className="text-[9px] bg-slate-100 text-slate-700 dark:bg-[#182540] dark:text-slate-300 dark:border-[#24324D]"
                               >
                                 Nota
                               </Badge>
                             )}
                             <span>{entry.title}</span>
                           </span>
-                          <span className="text-[10px] text-[#667085] font-mono">{formatted}</span>
+                          <span className="text-[10px] text-muted-foreground dark:text-slate-400 font-mono">
+                            {formatted}
+                          </span>
                         </div>
 
                         {entry.description && (
-                          <p className="text-[11px] text-slate-700 leading-relaxed pt-0.5">
+                          <p className="text-[11px] text-foreground dark:text-slate-300 leading-relaxed pt-0.5">
                             {entry.description}
                           </p>
                         )}
 
-                        <div className="pt-1 text-[10px] text-slate-400 flex items-center justify-end">
+                        <div className="pt-1 text-[10px] text-muted-foreground dark:text-slate-400 flex items-center justify-end">
                           Por: {entry.expand?.created_by?.name || 'Administrador / Corretor'}
                         </div>
                       </div>
@@ -1329,9 +1343,9 @@ export function OpportunityDetailModal({
             {/* Input Rápido de Nova Anotação */}
             <form
               onSubmit={handleAddNote}
-              className="mt-3 pt-3 border-t border-[#E4E7EC] bg-white p-2.5 rounded-xl shadow-xs"
+              className="mt-3 pt-3 border-t border-border bg-card dark:bg-[#141F36] p-2.5 rounded-xl shadow-xs"
             >
-              <Label className="text-xs font-bold text-[#101828] mb-1 block">
+              <Label className="text-xs font-bold text-foreground dark:text-slate-100 mb-1 block">
                 Registrar Atividade / Observação
               </Label>
               <div className="flex gap-2">
@@ -1339,12 +1353,12 @@ export function OpportunityDetailModal({
                   placeholder="Escreva uma anotação sobre esta oportunidade..."
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
                 <Button
                   type="submit"
                   disabled={isAddingNote || !noteText.trim()}
-                  className="bg-[#1B2A4A] hover:bg-[#0f172a] text-white text-xs shrink-0 h-8"
+                  className="bg-[#1B2A4A] dark:bg-blue-600 hover:bg-[#0f172a] dark:hover:bg-blue-500 text-white text-xs shrink-0 h-8"
                 >
                   <Send className="h-3 w-3 mr-1" /> Salvar
                 </Button>
@@ -1355,24 +1369,27 @@ export function OpportunityDetailModal({
           {/* ========================================================= */}
           {/* COLUNA DIREITA (26%): ETAPA, RESPONSÁVEL, TEMPERATURA & TAREFAS */}
           {/* ========================================================= */}
-          <div className="lg:col-span-3 p-4 lg:p-5 overflow-y-auto space-y-4 bg-white text-xs">
+          <div className="lg:col-span-3 p-4 lg:p-5 overflow-y-auto space-y-4 bg-card dark:bg-[#141F36] text-card-foreground text-xs">
             {/* 1. Mover Etapa */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+            <div className="p-3 rounded-xl border border-border bg-slate-50/50 dark:bg-[#182540] space-y-2">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground dark:text-slate-300 block">
                 Etapa do Pipeline
               </Label>
               <Select value={opportunity.stage} onValueChange={handleStageChange}>
-                <SelectTrigger className="h-9 text-xs font-bold text-[#1B2A4A] bg-white">
+                <SelectTrigger className="h-9 text-xs font-bold text-[#1B2A4A] dark:text-slate-100 bg-background dark:bg-[#0B1322] dark:border-[#24324D]">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                   {stagesList.map((st) => (
                     <SelectItem key={st} value={st}>
                       {st}
                     </SelectItem>
                   ))}
                   {opportunity.pipeline_type === 'VENDAS' && (
-                    <SelectItem value="Venda perdida" className="text-red-600 font-semibold">
+                    <SelectItem
+                      value="Venda perdida"
+                      className="text-red-600 dark:text-red-400 font-semibold"
+                    >
                       ✕ Venda perdida
                     </SelectItem>
                   )}
@@ -1381,15 +1398,15 @@ export function OpportunityDetailModal({
             </div>
 
             {/* 2. Responsável Comercial (Admin, Nathany e Eliana elegíveis) */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+            <div className="p-3 rounded-xl border border-border bg-slate-50/50 dark:bg-[#182540] space-y-2">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground dark:text-slate-300 block">
                 Responsável (Corretor)
               </Label>
               <Select value={opportunity.assigned_to || ''} onValueChange={handleAssignedChange}>
-                <SelectTrigger className="h-9 text-xs font-bold text-[#101828] bg-white">
+                <SelectTrigger className="h-9 text-xs font-bold text-foreground dark:text-slate-100 bg-background dark:bg-[#0B1322] dark:border-[#24324D]">
                   <SelectValue placeholder="Selecione o corretor" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                   {users.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name || u.email} ({u.role})
@@ -1400,8 +1417,8 @@ export function OpportunityDetailModal({
             </div>
 
             {/* 3. Temperatura do Lead (Destaque visual Frio / Morno / Quente) */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+            <div className="p-3 rounded-xl border border-border bg-slate-50/50 dark:bg-[#182540] space-y-2">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground dark:text-slate-300 block">
                 Temperatura do Lead
               </Label>
               <div className="grid grid-cols-3 gap-1">
@@ -1419,7 +1436,7 @@ export function OpportunityDetailModal({
                           : t === 'Morno'
                             ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs'
                             : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        : 'bg-background dark:bg-[#0B1322] text-foreground dark:text-slate-300 hover:bg-muted dark:hover:bg-[#24324D] dark:border-[#24324D]'
                     }`}
                   >
                     {t}
@@ -1429,47 +1446,50 @@ export function OpportunityDetailModal({
             </div>
 
             {/* 4. Tarefas e Próxima Atividade */}
-            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5">
+            <div className="p-3 rounded-xl border border-border bg-slate-50/50 dark:bg-[#182540] space-y-2.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground dark:text-slate-300">
                   Próxima Tarefa
                 </Label>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsTaskModalOpen(true)}
-                  className="h-6 px-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
+                  className="h-6 px-1.5 text-[11px] font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-[#24324D]"
                 >
                   <Plus className="h-3 w-3 mr-1" /> Agendar
                 </Button>
               </div>
 
               {nextPendingTask ? (
-                <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between font-bold text-slate-900">
+                <div className="p-2.5 rounded-lg bg-card dark:bg-[#0B1322] border border-border text-xs space-y-1.5">
+                  <div className="flex items-center justify-between font-bold text-foreground dark:text-slate-100">
                     <span className="truncate">{nextPendingTask.title}</span>
-                    <Badge variant="outline" className="text-[9px]">
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] dark:border-[#24324D] dark:text-slate-300"
+                    >
                       {nextPendingTask.type}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-1 text-[11px] text-slate-600">
-                    <Clock className="h-3 w-3 text-amber-600" />
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground dark:text-slate-400">
+                    <Clock className="h-3 w-3 text-amber-600 dark:text-amber-400" />
                     <span>
                       {nextPendingTask.due_date} {nextPendingTask.due_time || ''}
                     </span>
                   </div>
-                  <div className="pt-1 flex items-center justify-between border-t border-slate-100">
+                  <div className="pt-1 flex items-center justify-between border-t border-border">
                     <button
                       type="button"
                       onClick={() => handleToggleTaskStatus(nextPendingTask)}
-                      className="text-[11px] text-emerald-700 font-bold hover:underline"
+                      className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
                     >
                       ✓ Marcar Concluída
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="p-3 rounded-lg bg-white border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                <div className="p-3 rounded-lg bg-card dark:bg-[#0B1322] border border-dashed border-border text-center text-xs text-muted-foreground dark:text-slate-400">
                   Nenhuma tarefa pendente agendada
                 </div>
               )}
@@ -1477,7 +1497,7 @@ export function OpportunityDetailModal({
               {/* Lista de tarefas da oportunidade */}
               {tasks.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                  <span className="text-[10px] text-muted-foreground dark:text-slate-400 uppercase font-semibold block">
                     Histórico de Tarefas ({tasks.length})
                   </span>
                   <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
@@ -1486,15 +1506,15 @@ export function OpportunityDetailModal({
                         key={t.id}
                         className={`p-1.5 rounded border text-[11px] flex items-center justify-between ${
                           t.status === 'Concluída'
-                            ? 'bg-slate-100 border-slate-200 line-through text-slate-400'
-                            : 'bg-white border-slate-200 text-slate-700'
+                            ? 'bg-muted dark:bg-[#0B1322] border-border line-through text-muted-foreground dark:text-slate-500'
+                            : 'bg-card dark:bg-[#0B1322] border-border text-foreground dark:text-slate-300'
                         }`}
                       >
                         <span className="truncate flex-1">{t.title}</span>
                         <button
                           type="button"
                           onClick={() => handleToggleTaskStatus(t)}
-                          className="text-[10px] ml-1 font-bold text-slate-600 hover:text-emerald-700"
+                          className="text-[10px] ml-1 font-bold text-muted-foreground dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400"
                         >
                           {t.status === 'Concluída' ? 'Reabrir' : 'Concluir'}
                         </button>
@@ -1507,9 +1527,11 @@ export function OpportunityDetailModal({
 
             {/* Motivo de perda se aplicável */}
             {opportunity.stage === 'Venda perdida' && (
-              <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs space-y-1">
-                <span className="font-bold text-red-900 block">Venda Perdida</span>
-                <p className="text-red-700">
+              <div className="p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-xs space-y-1">
+                <span className="font-bold text-red-900 dark:text-red-300 block">
+                  Venda Perdida
+                </span>
+                <p className="text-red-700 dark:text-red-400">
                   Motivo: <strong>{opportunity.lost_reason || 'Outro'}</strong>
                 </p>
               </div>

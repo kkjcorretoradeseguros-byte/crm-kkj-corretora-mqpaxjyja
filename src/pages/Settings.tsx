@@ -47,6 +47,12 @@ import { tagService } from '@/services/tagService'
 import { SPECIAL_PME_RULES } from '@/services/commissionEngine'
 import { commissionImporter, type ImportReport } from '@/services/commissionImporter'
 import {
+  commissionRuleService,
+  type CommissionRule,
+  type SellerSplitSettings,
+  DEFAULT_SELLER_SPLITS,
+} from '@/services/commissionRuleService'
+import {
   systemSettingsService,
   type SystemSettingHistoryItem,
 } from '@/services/systemSettingsService'
@@ -86,9 +92,40 @@ export default function SettingsPage() {
   // Carriers state (Operadoras)
   const [carriers, setCarriers] = useState<Carrier[]>([])
   const [isCarrierModalOpen, setIsCarrierModalOpen] = useState(false)
+  const [editingCarrierId, setEditingCarrierId] = useState<string | null>(null)
   const [carrierNome, setCarrierNome] = useState('')
   const [carrierNomeCurto, setCarrierNomeCurto] = useState('')
   const [carrierObservacoes, setCarrierObservacoes] = useState('')
+
+  // Comissões & Repasses Tab State
+  const [comissoesSubTab, setComissoesSubTab] = useState<'OPERADORAS' | 'REPASSES'>('OPERADORAS')
+  const [commissionRules, setCommissionRules] = useState<CommissionRule[]>([])
+  const [sellerSplits, setSellerSplits] = useState<SellerSplitSettings>(DEFAULT_SELLER_SPLITS)
+  const [isSavingSplits, setIsSavingSplits] = useState(false)
+  const [splitsMessage, setSplitsMessage] = useState<string | null>(null)
+
+  // Modal de Regra de Comissão
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false)
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [ruleNome, setRuleNome] = useState('')
+  const [ruleCode, setRuleCode] = useState('')
+  const [ruleCarrierId, setRuleCarrierId] = useState('')
+  const [ruleProductId, setRuleProductId] = useState('')
+  const [ruleModalidade, setRuleModalidade] = useState('PME Saúde')
+  const [ruleCronograma, setRuleCronograma] = useState<string>('100, 100, 100, 50, 50')
+  const [ruleHasRecurring, setRuleHasRecurring] = useState(false)
+  const [ruleRecurringPct, setRuleRecurringPct] = useState('2')
+  const [ruleRecurringStartMonth, setRuleRecurringStartMonth] = useState('4')
+  const [ruleMinLives, setRuleMinLives] = useState('1')
+  const [ruleMaxLives, setRuleMaxLives] = useState('')
+  const [ruleRepassePct, setRuleRepassePct] = useState('50')
+  const [ruleRepasseProprioPct, setRuleRepasseProprioPct] = useState('100')
+  const [ruleImpostoPct, setRuleImpostoPct] = useState('11')
+  const [ruleDataInicio, setRuleDataInicio] = useState(new Date().toISOString().slice(0, 10))
+  const [ruleDataFim, setRuleDataFim] = useState('')
+  const [ruleObservacoes, setRuleObservacoes] = useState('')
+  const [isSavingRule, setIsSavingRule] = useState(false)
+  const [ruleModalError, setRuleModalError] = useState<string | null>(null)
 
   // Equipes e comissão de gestão
   const [teams, setTeams] = useState<CommercialTeam[]>([])
@@ -157,22 +194,35 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [prodRes, usersRes, carriersRes, teamsRes, mgmRes, currentTax, taxHist] =
-        await Promise.all([
-          productService.getAllProducts(false),
-          userService.getAllUsers(),
-          carrierService.getAllCarriers(false),
-          teamService.getTeams(),
-          teamService.getManagementRules(),
-          systemSettingsService.getDefaultTaxRate(),
-          systemSettingsService.getTaxHistory(),
-        ])
+      const [
+        prodRes,
+        usersRes,
+        carriersRes,
+        teamsRes,
+        mgmRes,
+        currentTax,
+        taxHist,
+        dbRules,
+        splits,
+      ] = await Promise.all([
+        productService.getAllProducts(false),
+        userService.getAllUsers(),
+        carrierService.getAllCarriers(false),
+        teamService.getTeams(),
+        teamService.getManagementRules(),
+        systemSettingsService.getDefaultTaxRate(),
+        systemSettingsService.getTaxHistory(),
+        commissionRuleService.getRules(false),
+        commissionRuleService.getSellerSplitSettings(),
+      ])
       setProducts(prodRes)
       setUsers(usersRes)
       setCarriers(carriersRes)
       setTeams(teamsRes)
       setManagementRules(mgmRes)
       setTagsList(tagService.getAllTags())
+      setCommissionRules(dbRules)
+      setSellerSplits(splits)
       setTaxRate(currentTax)
       setTaxRateInput(currentTax.toString())
       setTaxHistory(taxHist)
@@ -276,24 +326,179 @@ export default function SettingsPage() {
     }
   }
 
-  const handleCreateCarrier = async (e: React.FormEvent) => {
+  const handleOpenCarrierModal = (carrier?: Carrier) => {
+    if (carrier) {
+      setEditingCarrierId(carrier.id)
+      setCarrierNome(carrier.nome)
+      setCarrierNomeCurto(carrier.nome_curto || '')
+      setCarrierObservacoes(carrier.observacoes || '')
+    } else {
+      setEditingCarrierId(null)
+      setCarrierNome('')
+      setCarrierNomeCurto('')
+      setCarrierObservacoes('')
+    }
+    setIsCarrierModalOpen(true)
+  }
+
+  const handleSaveCarrier = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!carrierNome.trim()) return
 
     try {
-      await carrierService.createCarrier({
-        nome: carrierNome.trim(),
-        nome_curto: carrierNomeCurto.trim() || undefined,
-        observacoes: carrierObservacoes.trim() || undefined,
-        ativo: true,
-      })
+      if (editingCarrierId) {
+        await carrierService.updateCarrier(editingCarrierId, {
+          nome: carrierNome.trim(),
+          nome_curto: carrierNomeCurto.trim() || undefined,
+          observacoes: carrierObservacoes.trim() || undefined,
+        })
+      } else {
+        await carrierService.createCarrier({
+          nome: carrierNome.trim(),
+          nome_curto: carrierNomeCurto.trim() || undefined,
+          observacoes: carrierObservacoes.trim() || undefined,
+          ativo: true,
+        })
+      }
       setIsCarrierModalOpen(false)
+      setEditingCarrierId(null)
       setCarrierNome('')
       setCarrierNomeCurto('')
       setCarrierObservacoes('')
       loadData()
-    } catch (err) {
-      console.error(err)
+    } catch (err: any) {
+      alert(err.message || 'Erro ao salvar operadora.')
+    }
+  }
+
+  const handleOpenRuleModal = (rule?: CommissionRule) => {
+    setRuleModalError(null)
+    if (rule) {
+      setEditingRuleId(rule.id)
+      setRuleNome(rule.nome)
+      setRuleCode(rule.code || '')
+      setRuleCarrierId(rule.carrier_id || 'todas')
+      setRuleProductId(rule.product_id || 'qualquer')
+      setRuleModalidade(rule.modalidade || 'PME Saúde')
+      const pcts = (rule.cronograma_parcelas || []).map((p) => p.pct)
+      setRuleCronograma(pcts.join(', '))
+      setRuleHasRecurring(rule.has_recurring)
+      setRuleRecurringPct(rule.recurring_percentage ? String(rule.recurring_percentage) : '2')
+      setRuleRecurringStartMonth(
+        rule.recurring_start_month ? String(rule.recurring_start_month) : '4',
+      )
+      setRuleMinLives(rule.min_lives ? String(rule.min_lives) : '1')
+      setRuleMaxLives(rule.max_lives ? String(rule.max_lives) : '')
+      setRuleRepassePct(rule.repasse_vendedor_pct ? String(rule.repasse_vendedor_pct) : '50')
+      setRuleRepasseProprioPct(
+        rule.repasse_vendedor_proprio_pct ? String(rule.repasse_vendedor_proprio_pct) : '100',
+      )
+      setRuleImpostoPct(rule.aliquota_imposto_pct ? String(rule.aliquota_imposto_pct) : '11')
+      setRuleDataInicio(rule.data_inicio_vigencia || new Date().toISOString().slice(0, 10))
+      setRuleDataFim(rule.data_fim_vigencia || '')
+      setRuleObservacoes(rule.observacoes || '')
+    } else {
+      setEditingRuleId(null)
+      setRuleNome('')
+      setRuleCode('')
+      setRuleCarrierId(carriers[0]?.id || 'todas')
+      setRuleProductId('qualquer')
+      setRuleModalidade('PME Saúde')
+      setRuleCronograma('100, 100, 100, 50, 50')
+      setRuleHasRecurring(false)
+      setRuleRecurringPct('2')
+      setRuleRecurringStartMonth('4')
+      setRuleMinLives('1')
+      setRuleMaxLives('')
+      setRuleRepassePct('50')
+      setRuleRepasseProprioPct('100')
+      setRuleImpostoPct(taxRate.toString())
+      setRuleDataInicio(new Date().toISOString().slice(0, 10))
+      setRuleDataFim('')
+      setRuleObservacoes('')
+    }
+    setIsRuleModalOpen(true)
+  }
+
+  const handleSaveCommissionRule = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!ruleNome.trim()) {
+      setRuleModalError('Nome da regra é obrigatório.')
+      return
+    }
+
+    const parcelasRaw = ruleCronograma
+      .split(/[,;/]/)
+      .map((p) => parseFloat(p.trim().replace('%', '')))
+      .filter((n) => !isNaN(n))
+
+    if (parcelasRaw.length === 0) {
+      setRuleModalError('Informe ao menos uma parcela válida no cronograma (ex: 100, 50, 50).')
+      return
+    }
+
+    const cronogramaObj = parcelasRaw.map((pct, idx) => ({
+      month: idx + 1,
+      pct,
+    }))
+    const somaTotal = parcelasRaw.reduce((acc, v) => acc + v, 0)
+
+    try {
+      setIsSavingRule(true)
+      setRuleModalError(null)
+
+      await commissionRuleService.saveRule({
+        id: editingRuleId || undefined,
+        nome: ruleNome.trim(),
+        code: ruleCode.trim() || undefined,
+        carrier_id: ruleCarrierId === 'todas' ? undefined : ruleCarrierId || undefined,
+        product_id: ruleProductId === 'qualquer' ? undefined : ruleProductId || undefined,
+        modalidade: ruleModalidade.trim(),
+        cronograma_parcelas: cronogramaObj,
+        total_parcelas: cronogramaObj.length,
+        total_comissao_pct: somaTotal,
+        has_recurring: ruleHasRecurring,
+        recurring_percentage: ruleHasRecurring ? parseFloat(ruleRecurringPct) || 0 : 0,
+        recurring_start_month: ruleHasRecurring ? parseInt(ruleRecurringStartMonth, 10) || 4 : null,
+        min_lives: parseInt(ruleMinLives, 10) || 1,
+        max_lives: ruleMaxLives ? parseInt(ruleMaxLives, 10) : null,
+        repasse_vendedor_pct: parseFloat(ruleRepassePct) || 50,
+        repasse_vendedor_proprio_pct: parseFloat(ruleRepasseProprioPct) || 100,
+        aliquota_imposto_pct: parseFloat(ruleImpostoPct) || 11,
+        data_inicio_vigencia: ruleDataInicio,
+        data_fim_vigencia: ruleDataFim || null,
+        observacoes: ruleObservacoes.trim() || null,
+        ativo: true,
+      })
+
+      setIsRuleModalOpen(false)
+      loadData()
+    } catch (err: any) {
+      setRuleModalError(err.message || 'Erro ao persistir regra no Supabase.')
+    } finally {
+      setIsSavingRule(false)
+    }
+  }
+
+  const handleToggleRule = async (rule: CommissionRule) => {
+    try {
+      await commissionRuleService.toggleRuleActive(rule.id, rule.ativo)
+      loadData()
+    } catch (err: any) {
+      alert(err.message || 'Erro ao alterar status da regra.')
+    }
+  }
+
+  const handleSaveSellerSplits = async () => {
+    try {
+      setIsSavingSplits(true)
+      setSplitsMessage(null)
+      await commissionRuleService.updateSellerSplitSettings(sellerSplits)
+      setSplitsMessage('Configurações de repasse salvas com sucesso!')
+    } catch (err: any) {
+      setSplitsMessage(err.message || 'Erro ao salvar repasses.')
+    } finally {
+      setIsSavingSplits(false)
     }
   }
 
@@ -407,11 +612,11 @@ export default function SettingsPage() {
             </div>
             <Button
               size="sm"
-              onClick={() => setIsCarrierModalOpen(true)}
+              onClick={() => handleOpenCarrierModal()}
               className="bg-[#1B2A4A] dark:bg-primary text-white text-xs hover:bg-[#2A3D6B]"
             >
               <Plus className="h-4 w-4 mr-1" /> Nova Operadora
-            </Button>
+            </Button>{' '}
           </CardHeader>
           <CardContent>
             <div className="divide-y divide-[#E4E7EC] dark:divide-[#24324D]">
@@ -443,14 +648,24 @@ export default function SettingsPage() {
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleToggleCarrier(c)}
-                    className="text-xs text-[#667085] dark:text-muted-foreground hover:text-[#101828] dark:hover:text-foreground"
-                  >
-                    {c.ativo ? 'Desativar' : 'Ativar'}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenCarrierModal(c)}
+                      className="text-xs h-7 px-2"
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleToggleCarrier(c)}
+                      className="text-xs h-7 text-[#667085] dark:text-muted-foreground hover:text-[#101828] dark:hover:text-foreground"
+                    >
+                      {c.ativo ? 'Desativar' : 'Ativar'}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -458,109 +673,468 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      {/* TAB: COMISSÕES & REGRAS ESPECIAIS PME */}
+      {/* TAB: COMISSÕES & MOTOR DE REPASSES */}
       {activeTab === 'COMISSOES' && (
         <div className="space-y-6">
-          <Card className="border-[#E4E7EC] shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-bold text-[#101828]">
-                Regras Especiais Saúde PME (Ativas e Vigentes)
-              </CardTitle>
-              <CardDescription className="text-xs text-[#667085]">
-                Regras especiais prescritas que prevalecem sobre qualquer planilha para contratações
-                PME
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="divide-y divide-[#E4E7EC]">
-                {Object.entries(SPECIAL_PME_RULES)
-                  .filter(([k]) => !k.includes(' '))
-                  .map(([key, rule]) => (
-                    <div key={key} className="py-2.5 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-bold text-slate-800 text-sm">{rule.carrier}</span>
-                        <span className="ml-2 font-mono text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          {rule.parcelas.join('/')}%{' '}
-                          {rule.vitalicioPercentual
-                            ? `+ ${rule.vitalicioPercentual}% vitalício da ${rule.vitalicioAPartirDe}ª`
-                            : '(sem vitalício)'}
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-[10px] text-slate-600">
-                        Total: {rule.totalPercentual}%
-                      </Badge>
+          {/* Sub-abas: Comissões das Operadoras vs Repasses aos Vendedores */}
+          <div className="flex border-b border-border">
+            <button
+              onClick={() => setComissoesSubTab('OPERADORAS')}
+              className={`px-4 py-2 text-xs font-bold border-b-2 transition ${
+                comissoesSubTab === 'OPERADORAS'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Comissões das Operadoras ({commissionRules.length})
+            </button>
+            <button
+              onClick={() => setComissoesSubTab('REPASSES')}
+              className={`px-4 py-2 text-xs font-bold border-b-2 transition ${
+                comissoesSubTab === 'REPASSES'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Repasses aos Vendedores (Origem do Lead & Produtos)
+            </button>
+          </div>
+
+          {/* SUB-ABA 1: COMISSÕES DAS OPERADORAS */}
+          {comissoesSubTab === 'OPERADORAS' && (
+            <div className="space-y-6">
+              <Card className="border-border shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <div>
+                    <CardTitle className="text-sm font-bold text-foreground">
+                      Regras de Comissão por Operadora e Produto
+                    </CardTitle>
+                    <CardDescription className="text-xs text-muted-foreground">
+                      Parametrize percentuais por parcela, faixas de vidas, recorrências e vigências
+                      no Supabase
+                    </CardDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenRuleModal()}
+                    className="bg-primary text-primary-foreground text-xs"
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Nova Regra de Comissão
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {commissionRules.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground border border-dashed border-border rounded-xl">
+                      Nenhuma regra cadastrada na tabela commission_rules ainda. Use o botão acima
+                      para adicionar ou visualize as regras padrão KKJ abaixo.
                     </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Importador da Planilha de Comissões */}
-          <Card className="border-blue-200 bg-blue-50/20 shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold text-blue-950 flex items-center gap-2">
-                <Shield className="h-4 w-4 text-blue-600" />
-                Importação Oficial: "Grade de comissão - Saúde Bliss.xlsx"
-              </CardTitle>
-              <CardDescription className="text-xs text-blue-700">
-                Rotina idempotente com exclusão de Go Care, opção 1 da Plena Saúde PME e descarte de
-                duplicatas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-                <strong>Status da Planilha:</strong> O arquivo original ainda não foi anexado nesta
-                sessão. Insira abaixo dados formatados (CSV) para teste ou importe assim que o
-                arquivo for disponibilizado.
-              </div>
-
-              <textarea
-                rows={3}
-                placeholder="Exemplo CSV:&#10;Operadora;Modalidade;1a;2a;3a;4a;5a&#10;Amil;PME;100;100;100;0;0"
-                value={csvInput}
-                onChange={(e) => setCsvInput(e.target.value)}
-                className="w-full text-xs font-mono p-2 border border-slate-300 rounded bg-white"
-              />
-
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (!csvInput.trim()) return
-                  const rows = commissionImporter.parseCsv(csvInput)
-                  const rep = commissionImporter.processRows(rows)
-                  setImportReport(rep)
-                }}
-                className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                Processar e Validar Importação
-              </Button>
-
-              {importReport && (
-                <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1 text-xs">
-                  <h4 className="font-bold text-slate-800">Relatório de Importação:</h4>
-                  <p>
-                    Linhas processadas: <strong>{importReport.totalLinhasLidas}</strong>
-                  </p>
-                  <p className="text-emerald-700">
-                    Regras importadas: <strong>{importReport.regrasImportadas}</strong>
-                  </p>
-                  <p className="text-red-700">
-                    Regras descartadas: <strong>{importReport.regrasDescartadas}</strong>
-                  </p>
-                  <p className="text-amber-700">
-                    Regras duplicadas ignoradas: <strong>{importReport.regrasDuplicadas}</strong>
-                  </p>
-                  {importReport.detalhesDescartes.length > 0 && (
-                    <ul className="list-disc pl-4 text-[11px] text-slate-600 pt-1">
-                      {importReport.detalhesDescartes.map((d, i) => (
-                        <li key={i}>{d}</li>
-                      ))}
-                    </ul>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {commissionRules.map((rule) => {
+                        const cronoText = (rule.cronograma_parcelas || [])
+                          .map((p) => `${p.pct}%`)
+                          .join('/')
+                        return (
+                          <div
+                            key={rule.id}
+                            className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-foreground text-sm">
+                                  {rule.nome}
+                                </span>
+                                {rule.code && (
+                                  <Badge variant="outline" className="text-[10px] font-mono">
+                                    {rule.code}
+                                  </Badge>
+                                )}
+                                <Badge
+                                  className={
+                                    rule.ativo
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                      : 'bg-muted text-muted-foreground'
+                                  }
+                                >
+                                  {rule.ativo ? 'Ativa' : 'Inativa'}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground text-[11px]">
+                                <span>
+                                  Operadora: <strong>{rule.carriers?.nome || 'Todas'}</strong>
+                                </span>
+                                <span>
+                                  Modalidade: <strong>{rule.modalidade || 'PME'}</strong>
+                                </span>
+                                <span>
+                                  Cronograma:{' '}
+                                  <strong className="font-mono text-primary">
+                                    {cronoText || 'N/A'}
+                                  </strong>
+                                </span>
+                                {rule.has_recurring && (
+                                  <span className="text-blue-600 dark:text-blue-400">
+                                    Recorrência: {rule.recurring_percentage}% (mês{' '}
+                                    {rule.recurring_start_month})
+                                  </span>
+                                )}
+                                <span>
+                                  Faixa: {rule.min_lives || 1}
+                                  {rule.max_lives ? ` a ${rule.max_lives}` : '+'} vidas
+                                </span>
+                                <span>Repasse Vendedor: {rule.repasse_vendedor_pct}%</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenRuleModal(rule)}
+                                className="h-7 text-xs px-2"
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleToggleRule(rule)}
+                                className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                              >
+                                {rule.ativo ? 'Desativar' : 'Ativar'}
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* Card de Regras Especiais PME em Memória como Referência Inicial */}
+              <Card className="border-border shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-bold text-foreground">
+                    Regras Especiais Saúde PME (Prescrição Padrão KKJ)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground">
+                    Cronogramas comerciais de referência que alimentam a migração 0003 e o motor
+                    comercial
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="divide-y divide-border">
+                    {Object.entries(SPECIAL_PME_RULES)
+                      .filter(([k]) => !k.includes(' '))
+                      .map(([key, rule]) => (
+                        <div key={key} className="py-2.5 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-foreground text-sm">
+                              {rule.carrier}
+                            </span>
+                            <span className="ml-2 font-mono text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                              {rule.parcelas.join('/')}%{' '}
+                              {rule.vitalicioPercentual
+                                ? `+ ${rule.vitalicioPercentual}% vitalício da ${rule.vitalicioAPartirDe}ª`
+                                : '(sem vitalício)'}
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Total: {rule.totalPercentual}%
+                          </Badge>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Importador da Planilha de Comissões */}
+              <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-bold text-blue-950 dark:text-blue-300 flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    Importação Oficial: "Grade de comissão - Saúde Bliss.xlsx"
+                  </CardTitle>
+                  <CardDescription className="text-xs text-blue-700 dark:text-blue-400">
+                    Rotina idempotente com exclusão de Go Care, opção 1 da Plena Saúde PME e
+                    descarte de duplicatas.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-300 text-xs">
+                    <strong>Importação Segura:</strong> A importação deve ocorrer exclusivamente no
+                    banco Supabase conectado. O CRM já possui a estrutura completa em
+                    commission_rules (total_comissao_pct, total_parcelas, cronograma_parcelas JSONB,
+                    faixas de vidas, recorrência e vigência).
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    placeholder="Cole dados CSV para validar:&#10;Operadora;Modalidade;1a;2a;3a;4a;5a&#10;Amil;PME;100;100;100;0;0"
+                    value={csvInput}
+                    onChange={(e) => setCsvInput(e.target.value)}
+                    className="w-full text-xs font-mono p-2 border border-border rounded bg-background text-foreground"
+                  />
+
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!csvInput.trim()) return
+                      const rows = commissionImporter.parseCsv(csvInput)
+                      const rep = commissionImporter.processRows(rows)
+                      setImportReport(rep)
+                    }}
+                    className="text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    Processar e Validar Formato
+                  </Button>
+
+                  {importReport && (
+                    <div className="p-3 bg-card rounded-lg border border-border space-y-1 text-xs">
+                      <h4 className="font-bold text-foreground">Relatório de Validação:</h4>
+                      <p>
+                        Linhas lidas: <strong>{importReport.totalLinhasLidas}</strong>
+                      </p>
+                      <p className="text-emerald-700 dark:text-emerald-400">
+                        Regras aptas: <strong>{importReport.regrasImportadas}</strong>
+                      </p>
+                      <p className="text-red-700 dark:text-red-400">
+                        Descartadas: <strong>{importReport.regrasDescartadas}</strong>
+                      </p>
+                      <p className="text-amber-700 dark:text-amber-400">
+                        Duplicatas ignoradas: <strong>{importReport.regrasDuplicadas}</strong>
+                      </p>
+                      {importReport.detalhesDescartes.length > 0 && (
+                        <ul className="list-disc pl-4 text-[11px] text-muted-foreground pt-1">
+                          {importReport.detalhesDescartes.map((d, i) => (
+                            <li key={i}>{d}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* SUB-ABA 2: REPASSES AOS VENDEDORES */}
+          {comissoesSubTab === 'REPASSES' && (
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold text-foreground">
+                  Percentuais de Repasse por Origem do Lead e Categoria de Produto
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground">
+                  Configuração central KKJ: Nenhum percentual fixo no código. Regras comerciais
+                  aplicam: Comissão líquida = Bruta recebida menos imposto ({taxRate}%).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {splitsMessage && (
+                  <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs">
+                    {splitsMessage}
+                  </div>
+                )}
+
+                {/* 1. Origens do Lead Saúde */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-primary border-b border-border pb-1">
+                    1. Planos de Saúde (Por Origem do Lead)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">
+                        Próprio / Indicação
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.lead_proprio_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              lead_proprio_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Padrão KKJ: 100% da comissão líquida
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">KKJ - Saúde PME</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.kkj_pme_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              kkj_pme_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Padrão KKJ: 50% na 1ª parcela líquida
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">KKJ - Adesão</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.kkj_adesao_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              kkj_adesao_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        1º boleto: reconhecido apenas quando pago
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">KKJ - Saúde PF</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.kkj_pf_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              kkj_pf_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Padrão KKJ: 30% na 1ª parcela líquida
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+
+                {/* 2. Demais Produtos (Consórcio, Vida, Auto, Outros) */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-primary border-b border-border pb-1">
+                    2. Demais Ramos & Produtos (Não presumem PME/PF)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">Consórcio</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.consorcio_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              consorcio_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Independente de Saúde PME/PF
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">Seguro de Vida</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.vida_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              vida_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Independente de Saúde PME/PF
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">Seguro Auto</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.auto_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              auto_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Independente de Saúde PME/PF
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-xl border border-border bg-card space-y-1">
+                      <Label className="text-xs font-bold text-foreground">Outros Ramos</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={sellerSplits.outros_pct}
+                          onChange={(e) =>
+                            setSellerSplits({
+                              ...sellerSplits,
+                              outros_pct: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="h-8 text-xs font-bold"
+                        />
+                        <span className="text-xs font-bold">%</span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Demais apólices e benefícios
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end pt-2">
+                  <Button
+                    onClick={handleSaveSellerSplits}
+                    disabled={isSavingSplits}
+                    className="bg-primary text-primary-foreground text-xs"
+                  >
+                    {isSavingSplits ? 'Salvando...' : 'Salvar Regras de Repasse'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -1546,20 +2120,20 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* CREATE CARRIER MODAL */}
+      {/* CREATE / EDIT CARRIER MODAL */}
       <Dialog open={isCarrierModalOpen} onOpenChange={setIsCarrierModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md bg-background text-foreground border-border">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-[#101828] dark:text-foreground">
-              Nova Operadora / Seguradora
+            <DialogTitle className="text-base font-bold text-foreground">
+              {editingCarrierId ? 'Editar Operadora / Seguradora' : 'Nova Operadora / Seguradora'}
             </DialogTitle>
-            <DialogDescription className="text-xs text-[#667085]">
-              Cadastre uma nova operadora parceira da KKJ
+            <DialogDescription className="text-xs text-muted-foreground">
+              Parametrize dados da operadora parceira da KKJ
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreateCarrier} className="space-y-3 py-2 text-xs">
+          <form onSubmit={handleSaveCarrier} className="space-y-3 py-2 text-xs">
             <div className="space-y-1">
-              <Label className="text-xs">Nome da Operadora *</Label>
+              <Label className="text-xs text-muted-foreground">Nome da Operadora *</Label>
               <Input
                 placeholder="Ex: Golden Cross, Notredame Intermédica"
                 value={carrierNome}
@@ -1569,7 +2143,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Nome Curto / Sigla</Label>
+              <Label className="text-xs text-muted-foreground">Nome Curto / Sigla</Label>
               <Input
                 placeholder="Ex: GNDI"
                 value={carrierNomeCurto}
@@ -1578,7 +2152,7 @@ export default function SettingsPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Observações</Label>
+              <Label className="text-xs text-muted-foreground">Observações</Label>
               <Input
                 placeholder="Ex: Planos corporativos e adesão"
                 value={carrierObservacoes}
@@ -1599,9 +2173,248 @@ export default function SettingsPage() {
               <Button
                 type="submit"
                 size="sm"
-                className="bg-[#1B2A4A] dark:bg-primary text-white text-xs"
+                className="bg-primary text-primary-foreground text-xs"
               >
-                Salvar Operadora
+                {editingCarrierId ? 'Atualizar Operadora' : 'Salvar Operadora'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: CRIAR / EDITAR REGRA DE COMISSÃO */}
+      <Dialog open={isRuleModalOpen} onOpenChange={setIsRuleModalOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-background text-foreground border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">
+              {editingRuleId ? 'Editar Regra de Comissão' : 'Nova Regra de Comissão'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveCommissionRule} className="space-y-4 text-xs">
+            {ruleModalError && (
+              <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+                {ruleModalError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Nome da Regra *</Label>
+                <Input
+                  value={ruleNome}
+                  onChange={(e) => setRuleNome(e.target.value)}
+                  placeholder="Ex: Amil PME 300% (3 parcelas)"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Código Interno</Label>
+                <Input
+                  value={ruleCode}
+                  onChange={(e) => setRuleCode(e.target.value)}
+                  placeholder="Ex: AMIL-PME-300"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Operadora</Label>
+                <Select value={ruleCarrierId} onValueChange={setRuleCarrierId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">(Geral / Todas)</SelectItem>
+                    {carriers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Modalidade</Label>
+                <Select value={ruleModalidade} onValueChange={setRuleModalidade}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PME Saúde">PME Saúde</SelectItem>
+                    <SelectItem value="PF Saúde">PF Saúde</SelectItem>
+                    <SelectItem value="Adesão Saúde">Adesão Saúde</SelectItem>
+                    <SelectItem value="PME odonto">PME odonto</SelectItem>
+                    <SelectItem value="PF odonto">PF odonto</SelectItem>
+                    <SelectItem value="Consórcio">Consórcio</SelectItem>
+                    <SelectItem value="Vida">Vida</SelectItem>
+                    <SelectItem value="Auto">Auto</SelectItem>
+                    <SelectItem value="Outros">Outros</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Produto Vinculado</Label>
+                <Select value={ruleProductId} onValueChange={setRuleProductId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Qualquer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="qualquer">(Qualquer produto da modalidade)</SelectItem>
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg border border-border bg-card space-y-2">
+              <Label className="text-foreground font-bold">
+                Cronograma de Parcelas (% sobre a mensalidade por mês) *
+              </Label>
+              <Input
+                value={ruleCronograma}
+                onChange={(e) => setRuleCronograma(e.target.value)}
+                placeholder="Ex: 100, 100, 100 (para 3 parcelas de 100%) ou 100, 50, 50, 25"
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Separe os percentuais por vírgula. Exemplo: <code>100, 100, 100</code> = 3 parcelas
+                de 100% (total 300%).
+              </p>
+            </div>
+
+            {/* Recorrência */}
+            <div className="p-3 rounded-lg border border-border bg-card space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-foreground">
+                <input
+                  type="checkbox"
+                  checked={ruleHasRecurring}
+                  onChange={(e) => setRuleHasRecurring(e.target.checked)}
+                  className="rounded"
+                />
+                Possui comissão recorrente / vitalícia?
+              </label>
+
+              {ruleHasRecurring && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">Percentual Recorrente (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={ruleRecurringPct}
+                      onChange={(e) => setRuleRecurringPct(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-muted-foreground">A partir de qual mês?</Label>
+                    <Input
+                      type="number"
+                      value={ruleRecurringStartMonth}
+                      onChange={(e) => setRuleRecurringStartMonth(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Faixa de vidas e repasses */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Mínimo de Vidas</Label>
+                <Input
+                  type="number"
+                  value={ruleMinLives}
+                  onChange={(e) => setRuleMinLives(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Máximo de Vidas</Label>
+                <Input
+                  type="number"
+                  placeholder="Sem limite"
+                  value={ruleMaxLives}
+                  onChange={(e) => setRuleMaxLives(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Repasse Lead KKJ (%)</Label>
+                <Input
+                  type="number"
+                  value={ruleRepassePct}
+                  onChange={(e) => setRuleRepassePct(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Repasse Lead Próprio (%)</Label>
+                <Input
+                  type="number"
+                  value={ruleRepasseProprioPct}
+                  onChange={(e) => setRuleRepasseProprioPct(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Vigência e Alíquota */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Alíquota de Imposto (%)</Label>
+                <Input
+                  type="number"
+                  value={ruleImpostoPct}
+                  onChange={(e) => setRuleImpostoPct(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Início Vigência</Label>
+                <Input
+                  type="date"
+                  value={ruleDataInicio}
+                  onChange={(e) => setRuleDataInicio(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Fim Vigência (Opcional)</Label>
+                <Input
+                  type="date"
+                  value={ruleDataFim}
+                  onChange={(e) => setRuleDataFim(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-muted-foreground">Observações Técnicas</Label>
+              <Input
+                value={ruleObservacoes}
+                onChange={(e) => setRuleObservacoes(e.target.value)}
+                placeholder="Ex: Requer termo de responsabilidade assinado"
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsRuleModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSavingRule}
+                className="bg-primary text-primary-foreground"
+              >
+                {isSavingRule ? 'Salvando...' : editingRuleId ? 'Atualizar Regra' : 'Criar Regra'}
               </Button>
             </DialogFooter>
           </form>

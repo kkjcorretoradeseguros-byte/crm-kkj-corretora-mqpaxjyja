@@ -28,89 +28,124 @@ function mapProductRow(row: ProductRow): Product {
 // Lista canônica oficial KKJ dos produtos simplificados do CRM (Item 9 da especificação)
 export const KKJ_SIMPLIFIED_PRODUCT_OPTIONS = [
   {
+    id: 'none',
+    name: 'Nenhum / A definir',
+    category: 'Outros' as ProductCategory,
+    modalidade: 'A definir',
+  },
+  {
     id: 'saude-pme',
     name: 'Saúde PME',
-    category: 'SAUDE' as ProductCategory,
+    category: 'Saúde PME' as ProductCategory,
     modalidade: 'PME Saúde',
   },
   {
     id: 'saude-pf',
     name: 'Saúde PF',
-    category: 'SAUDE' as ProductCategory,
+    category: 'Saúde PF' as ProductCategory,
     modalidade: 'PF Saúde',
   },
   {
     id: 'adesao',
     name: 'Adesão',
-    category: 'SAUDE' as ProductCategory,
+    category: 'Adesão' as ProductCategory,
     modalidade: 'Adesão Saúde',
   },
   {
     id: 'odontologico',
     name: 'Odontológico',
-    category: 'ODONTO' as ProductCategory,
-    modalidade: 'Odonto PME/PF',
+    category: 'Odontológico' as ProductCategory,
+    modalidade: 'PF odonto / PME odonto',
   },
   {
     id: 'consorcio',
     name: 'Consórcio',
-    category: 'CONSORCIO' as ProductCategory,
+    category: 'Consórcio' as ProductCategory,
     modalidade: 'Consórcio',
   },
   {
     id: 'seguro-vida',
     name: 'Seguro de Vida',
-    category: 'VIDA' as ProductCategory,
+    category: 'Seguro de Vida' as ProductCategory,
     modalidade: 'Vida',
   },
   {
     id: 'seguro-auto',
     name: 'Seguro Auto',
-    category: 'AUTO' as ProductCategory,
+    category: 'Seguro Auto' as ProductCategory,
     modalidade: 'Auto',
   },
-  { id: 'outros', name: 'Outros', category: 'OUTROS' as ProductCategory, modalidade: 'Outros' },
+  {
+    id: 'outros',
+    name: 'Outros',
+    category: 'Outros' as ProductCategory,
+    modalidade: 'Outros',
+  },
 ]
 
 export function formatSimplifiedProductName(rawName?: string | null): string {
   if (!rawName) return 'Nenhum / A definir'
   const trimmed = rawName.trim()
-  // Remove sufixos como (SAUDE), (ODONTO), etc.
+  // Remove qualquer sufixo ou menção a (SAUDE), (SAÚDE), (ODONTO), etc.
   const cleaned = trimmed
-    .replace(/\s*\((SAUDE|ODONTO|BENEFICIOS|VIDA|AUTO|CONSORCIO)\)/gi, '')
+    .replace(
+      /\s*\((SAUDE|SAÚDE|ODONTO|BENEFICIOS|BENEFÍCIOS|VIDA|AUTO|CONSORCIO|CONSÓRCIO)\)/gi,
+      '',
+    )
     .trim()
 
   const lower = cleaned.toLowerCase()
-  if (lower.includes('saúde pme') || lower.includes('saude pme') || lower === 'pme saúde')
+  if (
+    lower === 'nenhum' ||
+    lower === 'a definir' ||
+    lower === 'nenhum / a definir' ||
+    lower === 'sem produto'
+  )
+    return 'Nenhum / A definir'
+  if (
+    lower.includes('saúde pme') ||
+    lower.includes('saude pme') ||
+    lower === 'pme saúde' ||
+    lower === 'pme saude'
+  )
     return 'Saúde PME'
   if (
     lower.includes('saúde pf') ||
     lower.includes('saude pf') ||
     lower === 'pf saúde' ||
-    lower === 'individual / familiar'
+    lower === 'pf saude' ||
+    lower === 'individual / familiar' ||
+    lower === 'individual'
   )
     return 'Saúde PF'
-  if (lower.includes('adesão') || lower.includes('adesao') || lower === 'adesão saúde')
+  if (
+    lower.includes('adesão') ||
+    lower.includes('adesao') ||
+    lower === 'adesão saúde' ||
+    lower === 'adesao saude'
+  )
     return 'Adesão'
   if (lower.includes('odonto') || lower.includes('odontológico') || lower.includes('odontologico'))
     return 'Odontológico'
   if (lower.includes('consórcio') || lower.includes('consorcio')) return 'Consórcio'
   if (lower.includes('vida')) return 'Seguro de Vida'
   if (lower.includes('auto')) return 'Seguro Auto'
-  if (lower === 'nenhum' || lower === 'a definir' || lower === 'nenhum / a definir')
-    return 'Nenhum / A definir'
   return cleaned || 'Outros'
 }
 
 export const productService = {
   async getAllProducts(onlyActive = true): Promise<Product[]> {
-    if (!isSupabaseConfigured) {
-      return KKJ_SIMPLIFIED_PRODUCT_OPTIONS.map((opt) => ({
+    const defaultSelectable = KKJ_SIMPLIFIED_PRODUCT_OPTIONS.filter((opt) => opt.id !== 'none').map(
+      (opt) => ({
         id: opt.id,
         name: opt.name,
         category: opt.category,
         active: true,
-      }))
+      }),
+    )
+
+    if (!isSupabaseConfigured) {
+      return defaultSelectable
     }
 
     try {
@@ -128,12 +163,7 @@ export const productService = {
             error.message,
           )
         }
-        return KKJ_SIMPLIFIED_PRODUCT_OPTIONS.map((opt) => ({
-          id: opt.id,
-          name: opt.name,
-          category: opt.category,
-          active: true,
-        }))
+        return defaultSelectable
       }
 
       const mapped = ((data || []) as ProductRow[]).map(mapProductRow)
@@ -143,12 +173,7 @@ export const productService = {
         name: formatSimplifiedProductName(p.name),
       }))
     } catch {
-      return KKJ_SIMPLIFIED_PRODUCT_OPTIONS.map((opt) => ({
-        id: opt.id,
-        name: opt.name,
-        category: opt.category,
-        active: true,
-      }))
+      return defaultSelectable
     }
   },
 

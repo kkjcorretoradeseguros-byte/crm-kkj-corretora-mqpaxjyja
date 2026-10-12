@@ -168,8 +168,8 @@ export default function Layout() {
       <aside className="hidden lg:flex w-[260px] flex-col fixed inset-y-0 z-30 border-r border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#0B1322]">
         {/* Brand Header */}
         <div className="flex h-16 items-center gap-3 px-6 border-b border-[#E4E7EC] dark:border-[#24324D]">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0F172A] p-1 shadow-sm border border-slate-700/60 shrink-0">
-            <KkjOfficialShield className="h-6 w-6 object-contain" size={24} />
+          <div className="flex items-center justify-center shrink-0">
+            <KkjOfficialShield className="h-9 w-9 object-contain" size={36} />
           </div>
           <div className="flex flex-col">
             <span className="font-extrabold text-base tracking-tight text-[#1B2A4A] dark:text-foreground">
@@ -271,8 +271,8 @@ export default function Layout() {
           <div className="relative flex w-full max-w-xs flex-1 flex-col bg-white dark:bg-[#0B1322] border-r border-[#E4E7EC] dark:border-[#24324D]">
             <div className="flex h-16 items-center justify-between px-6 border-b border-[#E4E7EC] dark:border-[#24324D]">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0F172A] p-1 border border-slate-700/60 shrink-0">
-                  <KkjOfficialShield className="h-5 w-5 object-contain" size={20} />
+                <div className="flex items-center justify-center shrink-0">
+                  <KkjOfficialShield className="h-8 w-8 object-contain" size={32} />
                 </div>
                 <div className="flex flex-col">
                   <span className="font-bold text-base text-[#1B2A4A] dark:text-foreground">
@@ -654,7 +654,7 @@ export default function Layout() {
         <footer className="border-t border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-[#141F36] py-4 px-6 text-center text-xs text-[#667085] dark:text-[#94A3B8]">
           <div className="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
             <span className="flex items-center gap-1.5">
-              <KkjOfficialShield className="h-4 w-4 inline object-contain" size={16} />
+              <KkjOfficialShield className="h-5 w-5 inline object-contain" size={20} />
               <span>
                 © {new Date().getFullYear()} KK JEKABSON Corretora de Seguros (KKJ) — CRM de Seguros
                 & Benefícios.
