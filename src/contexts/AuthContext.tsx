@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { supabase, isSupabaseConfigured } from '@/lib/supabase/client'
+import {
+  supabase,
+  isSupabaseConfigured as isSupabaseConfiguredStatic,
+  ensureSupabaseConfigured,
+  onSupabaseConfigChange,
+} from '@/lib/supabase/client'
 import type { User, UserRole } from '@/types/crm'
 
 interface AuthContextType {
@@ -56,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(() => getStoredProfile())
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [configured, setConfigured] = useState<boolean>(() => isSupabaseConfiguredStatic)
 
   const fetchProfileForAuthUser = useCallback(
     async (authUserId: string, authEmail: string, metaName?: string): Promise<User> => {
@@ -114,10 +120,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [fetchProfileForAuthUser])
 
   useEffect(() => {
-    // 1. Carrega sessão inicial do Supabase Auth
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
+    let isMounted = true
+    let authSub: { unsubscribe: () => void } | null = null
+
+    const setupAuthListeners = () => {
+      if (authSub) {
+        authSub.unsubscribe()
+        authSub = null
+      }
+
+      // 1. Carrega sessão inicial do Supabase Auth
+      supabase.auth
+        .getSession()
+        .then(async ({ data: { session } }) => {
+          if (!isMounted) return
+          if (session?.user) {
+            setToken(session.access_token)
+            const profile = await fetchProfileForAuthUser(
+              session.user.id,
+              session.user.email || '',
+              (session.user.user_metadata?.nome as string) ||
+                (session.user.user_metadata?.name as string),
+            )
+            if (isMounted) {
+              setUser(profile)
+              persistProfile(profile)
+            }
+          } else {
+            setToken(null)
+            setUser(null)
+            persistProfile(null)
+          }
+          if (isMounted) setIsLoading(false)
+        })
+        .catch(() => {
+          if (isMounted) setIsLoading(false)
+        })
+
+      // 2. Ouvinte de mudanças de estado de autenticação (onAuthStateChange)
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (!isMounted) return
         if (session?.user) {
           setToken(session.access_token)
           const profile = await fetchProfileForAuthUser(
@@ -126,48 +170,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             (session.user.user_metadata?.nome as string) ||
               (session.user.user_metadata?.name as string),
           )
-          setUser(profile)
-          persistProfile(profile)
+          if (isMounted) {
+            setUser(profile)
+            persistProfile(profile)
+          }
         } else {
           setToken(null)
           setUser(null)
           persistProfile(null)
         }
-        setIsLoading(false)
-      })
-      .catch(() => {
-        setIsLoading(false)
+        if (isMounted) setIsLoading(false)
       })
 
-    // 2. Ouvinte de mudanças de estado de autenticação (onAuthStateChange)
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setToken(session.access_token)
-        const profile = await fetchProfileForAuthUser(
-          session.user.id,
-          session.user.email || '',
-          (session.user.user_metadata?.nome as string) ||
-            (session.user.user_metadata?.name as string),
-        )
-        setUser(profile)
-        persistProfile(profile)
-      } else {
-        setToken(null)
-        setUser(null)
-        persistProfile(null)
+      authSub = subscription
+    }
+
+    // Inicializa auth com a configuração atual
+    setupAuthListeners()
+
+    // Se ainda não estiver configurado estaticamente, busca assincronamente a configuração
+    if (!configured) {
+      ensureSupabaseConfigured().then((isNowConfigured) => {
+        if (!isMounted) return
+        if (isNowConfigured) {
+          setConfigured(true)
+          setupAuthListeners()
+        }
+      })
+    }
+
+    // Ouvinte caso o cliente Supabase mude dinamicamente
+    const unregisterConfigListener = onSupabaseConfigChange((isConfigured) => {
+      if (!isMounted) return
+      setConfigured(isConfigured)
+      if (isConfigured) {
+        setupAuthListeners()
       }
-      setIsLoading(false)
     })
 
     return () => {
-      subscription.unsubscribe()
+      isMounted = false
+      if (authSub) {
+        authSub.unsubscribe()
+      }
+      unregisterConfigListener()
     }
-  }, [fetchProfileForAuthUser])
+  }, [fetchProfileForAuthUser, configured])
 
   const login = async (email: string, password: string) => {
-    if (!isSupabaseConfigured) {
+    // Garante resolução de configuração antes de falhar
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error(
         'Supabase não configurado no ambiente. Defina as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para autenticar.',
       )
@@ -197,7 +250,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const signup = async (email: string, password: string, name: string) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error(
         'Supabase não configurado no ambiente. Defina as variáveis VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para cadastrar.',
       )
@@ -252,7 +306,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const requestPasswordReset = async (email: string) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error('Supabase não configurado no ambiente.')
     }
     const redirectTo =
@@ -270,7 +325,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     _passwordConfirm?: string,
   ) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error('Supabase não configurado no ambiente.')
     }
     // No Supabase, ao acessar via link de recuperação, a sessão de recovery é iniciada automaticamente pelo client.
@@ -284,7 +340,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const confirmVerification = async (tokenParam: string) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error('Supabase não configurado no ambiente.')
     }
     // Supabase suporta verifyOtp com tipo signup/email
@@ -305,7 +362,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const requestEmailChange = async (newEmail: string) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error('Supabase não configurado no ambiente.')
     }
     const { error } = await supabase.auth.updateUser({
@@ -317,7 +375,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const confirmEmailChange = async (tokenParam: string, _password?: string) => {
-    if (!isSupabaseConfigured) {
+    const hasConfig = configured || (await ensureSupabaseConfigured())
+    if (!hasConfig) {
       throw new Error('Supabase não configurado no ambiente.')
     }
     const { error } = await supabase.auth.verifyOtp({
@@ -360,7 +419,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isLoading,
         isAuthenticated: !!user,
-        isSupabaseConfigured,
+        isSupabaseConfigured: configured,
         login,
         signup,
         logout,
