@@ -275,16 +275,24 @@ export function OpportunityDetailModal({
     )
   }
 
+  const [isSubmittingQuickCompany, setIsSubmittingQuickCompany] = useState(false)
+  const [isSubmittingQuickContact, setIsSubmittingQuickContact] = useState(false)
+
   // Cadastro rápido de Empresa
   const handleCreateQuickCompany = async () => {
     if (!quickCompanyName.trim()) return
+    setIsSubmittingQuickCompany(true)
+    setSaveError(null)
     try {
       const created = await companyService.createCompany({
         trade_name: quickCompanyName.trim(),
         legal_name: quickCompanyName.trim(),
         cnpj: quickCompanyCnpj.trim() || undefined,
       })
-      setCompanies((prev) => [created, ...prev])
+      setCompanies((prev) => {
+        const exists = prev.some((c) => c.id === created.id)
+        return exists ? prev : [created, ...prev]
+      })
       setShowQuickCompany(false)
       setQuickCompanyName('')
       setQuickCompanyCnpj('')
@@ -296,14 +304,21 @@ export function OpportunityDetailModal({
           expand: { ...opportunity.expand, company_id: created },
         },
       )
+      // Atualizar lista de contatos caso tenha alterado vínculo
+      const contRes = await contactService.getContacts()
+      setContacts(contRes.items)
     } catch (err: any) {
-      setSaveError(err.message || 'Erro ao criar empresa rápida')
+      setSaveError(err.message || 'Erro ao cadastrar e vincular nova empresa')
+    } finally {
+      setIsSubmittingQuickCompany(false)
     }
   }
 
   // Cadastro rápido de Contato
   const handleCreateQuickContact = async () => {
     if (!quickContactName.trim()) return
+    setIsSubmittingQuickContact(true)
+    setSaveError(null)
     try {
       const created = await contactService.createContact({
         name: quickContactName.trim(),
@@ -311,7 +326,10 @@ export function OpportunityDetailModal({
         email: quickContactEmail.trim() || undefined,
         company_id: opportunity.company_id || undefined,
       })
-      setContacts((prev) => [created, ...prev])
+      setContacts((prev) => {
+        const exists = prev.some((c) => c.id === created.id)
+        return exists ? prev : [created, ...prev]
+      })
       setShowQuickContact(false)
       setQuickContactName('')
       setQuickContactPhone('')
@@ -325,7 +343,9 @@ export function OpportunityDetailModal({
         },
       )
     } catch (err: any) {
-      setSaveError(err.message || 'Erro ao criar contato rápido')
+      setSaveError(err.message || 'Erro ao cadastrar e vincular novo contato')
+    } finally {
+      setIsSubmittingQuickContact(false)
     }
   }
 
@@ -567,14 +587,16 @@ export function OpportunityDetailModal({
           {/* ========================================================= */}
           <div className="lg:col-span-4 p-4 lg:p-5 overflow-y-auto space-y-4 border-r border-border bg-card text-card-foreground text-xs">
             {/* Bloco 1: Dados Comerciais & Produto */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
-              <span className="font-bold text-[#101828] text-xs uppercase tracking-wider block">
+            <div className="p-3.5 rounded-xl border border-border bg-card dark:bg-[#141F36] space-y-3">
+              <span className="font-bold text-foreground dark:text-slate-100 text-xs uppercase tracking-wider block">
                 1. Condições Comerciais (Edição Inline)
               </span>
 
               {/* Produto (NÃO selecionar automaticamente Adesão se indefinido) */}
               <div className="space-y-1">
-                <Label className="text-[11px] text-slate-500 font-semibold">Produto</Label>
+                <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
+                  Produto
+                </Label>
                 <Select
                   value={opportunity.product_id || 'none'}
                   onValueChange={(val) => {
@@ -586,14 +608,14 @@ export function OpportunityDetailModal({
                     )
                   }}
                 >
-                  <SelectTrigger className="h-8 text-xs bg-white font-medium">
-                    <SelectValue placeholder="Selecione o produto (ou deixe a definir)" />
+                  <SelectTrigger className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
+                    <SelectValue placeholder="Nenhum / A definir" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Nenhum / A Definir</SelectItem>
+                  <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
+                    <SelectItem value="none">Nenhum / A definir</SelectItem>
                     {products.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} ({p.category})
+                        {p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -603,7 +625,7 @@ export function OpportunityDetailModal({
               {/* Operadora Atual vs Operadora Cotada */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-slate-500 font-semibold">
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                     Operadora Atual
                   </Label>
                   <Input
@@ -620,12 +642,12 @@ export function OpportunityDetailModal({
                         )
                       }
                     }}
-                    className="h-8 text-xs bg-white"
+                    className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-slate-500 font-semibold">
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                     Operadora Cotada
                   </Label>
                   <Select
@@ -639,10 +661,10 @@ export function OpportunityDetailModal({
                       )
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs bg-white font-medium">
+                    <SelectTrigger className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
                       <SelectValue placeholder="Selecione a operadora" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                       <SelectItem value="none">A Definir</SelectItem>
                       {carriers.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
@@ -657,7 +679,9 @@ export function OpportunityDetailModal({
               {/* Qtd Vidas e Mensalidade Cotada */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-slate-500 font-semibold">Qtd. de Vidas</Label>
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
+                    Qtd. de Vidas
+                  </Label>
                   <Input
                     type="number"
                     min="1"
@@ -674,12 +698,12 @@ export function OpportunityDetailModal({
                         )
                       }
                     }}
-                    className="h-8 text-xs bg-white font-semibold"
+                    className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-semibold"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-[11px] text-slate-500 font-semibold">
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                     Mensalidade Cotada (R$)
                   </Label>
                   <Input
@@ -697,14 +721,16 @@ export function OpportunityDetailModal({
                         )
                       }
                     }}
-                    className="h-8 text-xs bg-white font-bold text-slate-900"
+                    className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-bold"
                   />
                 </div>
               </div>
 
               {/* Origem do Lead */}
               <div className="space-y-1">
-                <Label className="text-[11px] text-slate-500 font-semibold">Origem do Lead</Label>
+                <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
+                  Origem do Lead
+                </Label>
                 <Select
                   value={opportunity.origin || 'none'}
                   onValueChange={(val) => {
@@ -712,10 +738,10 @@ export function OpportunityDetailModal({
                     saveInlineField('origin', { origin: finalVal }, { origin: finalVal })
                   }}
                 >
-                  <SelectTrigger className="h-8 text-xs bg-white">
+                  <SelectTrigger className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                     <SelectValue placeholder="Selecione a origem" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
                     <SelectItem value="none">Não informada</SelectItem>
                     <SelectItem value="Meta Ads (Tráfego)">Meta Ads (Tráfego Pago)</SelectItem>
                     <SelectItem value="Google Ads">Google Ads</SelectItem>
@@ -729,7 +755,7 @@ export function OpportunityDetailModal({
 
               {/* Seleção Múltipla de Tags Oficiais KKJ */}
               <div className="space-y-1.5 pt-1">
-                <Label className="text-[11px] text-slate-500 font-semibold">
+                <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                   Tags Oficiais da Oportunidade
                 </Label>
                 <div className="flex flex-wrap gap-1.5">
@@ -743,7 +769,7 @@ export function OpportunityDetailModal({
                         className={`text-[11px] px-2.5 py-0.5 rounded-full border transition font-medium ${
                           isSelected
                             ? 'shadow-sm ring-1 ring-offset-1 font-bold'
-                            : 'opacity-60 hover:opacity-100'
+                            : 'opacity-70 hover:opacity-100'
                         }`}
                         style={{
                           backgroundColor: tag.bg_color || '#F1F5F9',
@@ -760,24 +786,26 @@ export function OpportunityDetailModal({
             </div>
 
             {/* Bloco 2: Empresa & Contato (Pesquisar / Vincular / Criar Rápido / Pode ficar sem) */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/40 space-y-3">
+            <div className="p-3.5 rounded-xl border border-border bg-card dark:bg-[#141F36] space-y-3">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-[#101828] text-xs uppercase tracking-wider">
+                <span className="font-bold text-foreground dark:text-slate-100 text-xs uppercase tracking-wider">
                   2. Empresa & Interlocutor
                 </span>
-                <span className="text-[10px] text-slate-500">Vínculo flexível</span>
+                <span className="text-[10px] text-muted-foreground dark:text-slate-400">
+                  Vínculo flexível
+                </span>
               </div>
 
               {/* Vínculo de Empresa */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label className="text-[11px] text-slate-500 font-semibold">
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                     Empresa / Razão Social
                   </Label>
                   <button
                     type="button"
                     onClick={() => setShowQuickCompany(!showQuickCompany)}
-                    className="text-[10px] text-blue-600 hover:underline font-semibold"
+                    className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
                   >
                     {showQuickCompany ? 'Cancelar' : '+ Nova Empresa'}
                   </button>
@@ -799,10 +827,10 @@ export function OpportunityDetailModal({
                       )
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs bg-white font-medium">
-                      <SelectValue placeholder="Selecione empresa cadastrada (opcional)" />
+                    <SelectTrigger className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
+                      <SelectValue placeholder="Sem empresa (Pessoa Física)" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 max-h-60">
                       <SelectItem value="none">Sem empresa (Pessoa Física)</SelectItem>
                       {companies.map((comp) => (
                         <SelectItem key={comp.id} value={comp.id}>
@@ -812,26 +840,27 @@ export function OpportunityDetailModal({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <div className="p-2.5 rounded-lg bg-blue-50/50 border border-blue-200 space-y-2">
+                  <div className="p-2.5 rounded-lg bg-blue-50/20 dark:bg-[#182540] border border-blue-200 dark:border-[#24324D] space-y-2">
                     <Input
-                      placeholder="Nome Fantasia / Razão Social"
+                      placeholder="Nome Fantasia / Razão Social *"
                       value={quickCompanyName}
                       onChange={(e) => setQuickCompanyName(e.target.value)}
-                      className="h-7 text-xs bg-white"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     />
                     <Input
-                      placeholder="CNPJ (opcional)"
+                      placeholder="CNPJ (opcional para PF)"
                       value={quickCompanyCnpj}
                       onChange={(e) => setQuickCompanyCnpj(e.target.value)}
-                      className="h-7 text-xs bg-white font-mono"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 font-mono dark:placeholder:text-slate-400"
                     />
                     <Button
                       type="button"
                       size="sm"
+                      disabled={isSubmittingQuickCompany || !quickCompanyName.trim()}
                       onClick={handleCreateQuickCompany}
                       className="h-7 w-full bg-blue-600 hover:bg-blue-700 text-white text-xs"
                     >
-                      Salvar e Vincular Empresa
+                      {isSubmittingQuickCompany ? 'Salvando...' : 'Salvar e Vincular Empresa'}
                     </Button>
                   </div>
                 )}
@@ -840,13 +869,13 @@ export function OpportunityDetailModal({
               {/* Vínculo de Contato */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <Label className="text-[11px] text-slate-500 font-semibold">
+                  <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
                     Contato Principal
                   </Label>
                   <button
                     type="button"
                     onClick={() => setShowQuickContact(!showQuickContact)}
-                    className="text-[10px] text-blue-600 hover:underline font-semibold"
+                    className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
                   >
                     {showQuickContact ? 'Cancelar' : '+ Novo Contato'}
                   </button>
@@ -868,10 +897,10 @@ export function OpportunityDetailModal({
                       )
                     }}
                   >
-                    <SelectTrigger className="h-8 text-xs bg-white font-medium">
-                      <SelectValue placeholder="Selecione contato cadastrado (opcional)" />
+                    <SelectTrigger className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 font-medium">
+                      <SelectValue placeholder="Sem contato vinculado" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 max-h-60">
                       <SelectItem value="none">Sem contato vinculado</SelectItem>
                       {contacts.map((cont) => (
                         <SelectItem key={cont.id} value={cont.id}>
@@ -881,32 +910,33 @@ export function OpportunityDetailModal({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <div className="p-2.5 rounded-lg bg-blue-50/50 border border-blue-200 space-y-2">
+                  <div className="p-2.5 rounded-lg bg-blue-50/20 dark:bg-[#182540] border border-blue-200 dark:border-[#24324D] space-y-2">
                     <Input
                       placeholder="Nome do Contato *"
                       value={quickContactName}
                       onChange={(e) => setQuickContactName(e.target.value)}
-                      className="h-7 text-xs bg-white"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     />
                     <Input
                       placeholder="WhatsApp / Telefone"
                       value={quickContactPhone}
                       onChange={(e) => setQuickContactPhone(e.target.value)}
-                      className="h-7 text-xs bg-white"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     />
                     <Input
                       placeholder="E-mail (opcional)"
                       value={quickContactEmail}
                       onChange={(e) => setQuickContactEmail(e.target.value)}
-                      className="h-7 text-xs bg-white"
+                      className="h-7 text-xs bg-background dark:bg-[#0B1322] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                     />
                     <Button
                       type="button"
                       size="sm"
+                      disabled={isSubmittingQuickContact || !quickContactName.trim()}
                       onClick={handleCreateQuickContact}
                       className="h-7 w-full bg-blue-600 hover:bg-blue-700 text-white text-xs"
                     >
-                      Salvar e Vincular Contato
+                      {isSubmittingQuickContact ? 'Salvando...' : 'Salvar e Vincular Contato'}
                     </Button>
                   </div>
                 )}
@@ -914,7 +944,9 @@ export function OpportunityDetailModal({
 
               {/* Cidade / UF inline */}
               <div className="space-y-1">
-                <Label className="text-[11px] text-slate-500 font-semibold">Cidade / Região</Label>
+                <Label className="text-[11px] text-muted-foreground dark:text-slate-300 font-semibold">
+                  Cidade / Região
+                </Label>
                 <Input
                   defaultValue={opportunity.expand?.company_id?.city || ''}
                   placeholder="Ex: São Paulo - SP"
@@ -926,7 +958,7 @@ export function OpportunityDetailModal({
                       setTimeout(() => setSaveSuccessField(null), 1500)
                     }
                   }}
-                  className="h-8 text-xs bg-white"
+                  className="h-8 text-xs bg-background dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
               </div>
             </div>

@@ -269,14 +269,14 @@ BEGIN
         IF NEW.owner_id IS NOT NULL AND NEW.owner_id IS DISTINCT FROM auth.uid() THEN
           v_has_teams_table := (to_regclass('public.teams') IS NOT NULL AND to_regclass('public.team_members') IS NOT NULL);
           IF v_has_teams_table THEN
-            SELECT EXISTS (
+            EXECUTE 'SELECT EXISTS (
               SELECT 1
               FROM public.teams t
               JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-              WHERE t.gestor_id = auth.uid()
-                AND tm.vendedor_id = NEW.owner_id
+              WHERE t.gestor_id = $1
+                AND tm.vendedor_id = $2
                 AND t.ativo = true
-            ) INTO v_is_subordinate;
+            )' INTO v_is_subordinate USING auth.uid(), NEW.owner_id;
 
             IF NOT v_is_subordinate THEN
               RAISE EXCEPTION 'Gestor só pode atribuir oportunidades a corretores integrantes de sua equipe ativa.';
@@ -368,14 +368,14 @@ BEGIN
         IF v_has_teams_table THEN
           -- 1. O gestor só pode redistribuir leads de sua própria equipe (origem: de si ou de subordinado de equipe ativa)
           IF OLD.owner_id IS NOT NULL AND OLD.owner_id IS DISTINCT FROM auth.uid() THEN
-            SELECT EXISTS (
+            EXECUTE 'SELECT EXISTS (
               SELECT 1
               FROM public.teams t
               JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-              WHERE t.gestor_id = auth.uid()
-                AND tm.vendedor_id = OLD.owner_id
+              WHERE t.gestor_id = $1
+                AND tm.vendedor_id = $2
                 AND t.ativo = true
-            ) INTO v_is_subordinate;
+            )' INTO v_is_subordinate USING auth.uid(), OLD.owner_id;
 
             IF NOT v_is_subordinate THEN
               RAISE EXCEPTION 'Gestor não possui permissão para redistribuir leads de corretores fora de sua equipe ativa.';
@@ -384,14 +384,14 @@ BEGIN
 
           -- 2. O novo responsável deve ser o próprio gestor ou membro ativo de sua equipe (destino)
           IF NEW.owner_id IS NOT NULL AND NEW.owner_id IS DISTINCT FROM auth.uid() THEN
-            SELECT EXISTS (
+            EXECUTE 'SELECT EXISTS (
               SELECT 1
               FROM public.teams t
               JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
-              WHERE t.gestor_id = auth.uid()
-                AND tm.vendedor_id = NEW.owner_id
+              WHERE t.gestor_id = $1
+                AND tm.vendedor_id = $2
                 AND t.ativo = true
-            ) INTO v_is_subordinate;
+            )' INTO v_is_subordinate USING auth.uid(), NEW.owner_id;
 
             IF NOT v_is_subordinate THEN
               RAISE EXCEPTION 'Gestor só pode redistribuir leads para corretores integrantes de sua própria equipe ativa.';

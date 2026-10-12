@@ -353,8 +353,17 @@ DROP POLICY IF EXISTS "mgm_settlements_gestor_select" ON public.management_commi
 DROP POLICY IF EXISTS "management_settlements_admin_all" ON public.management_commission_settlements;
 DROP POLICY IF EXISTS "management_settlements_gestor_select" ON public.management_commission_settlements;
 
--- Snapshots da 0003 (reforço de segurança: restrito exclusivamente a admin)
-DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
+-- Opportunity plan suggestions (atualização para uso direto de is_manager_of_seller)
+DROP POLICY IF EXISTS "opp_plan_suggestions_select" ON public.opportunity_plan_suggestions;
+DROP POLICY IF EXISTS "opp_plan_suggestions_insert" ON public.opportunity_plan_suggestions;
+DROP POLICY IF EXISTS "opp_plan_suggestions_update" ON public.opportunity_plan_suggestions;
+DROP POLICY IF EXISTS "opp_plan_suggestions_delete" ON public.opportunity_plan_suggestions;
+
+-- Adesao boletos e meta ads leads
+DROP POLICY IF EXISTS "adesao_boletos_admin_select" ON public.adesao_boletos;
+DROP POLICY IF EXISTS "meta_ads_leads_vendedor_select" ON public.meta_ads_leads;
+
+-- Snapshots da 0003 (reforço de segurança: restrito exclusivamente a admin)DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
 DROP POLICY IF EXISTS "snapshots_admin_all" ON public.contract_commission_snapshots;
 
 CREATE POLICY "snapshots_admin_select"
@@ -798,7 +807,111 @@ CREATE POLICY "role_history_admin_write"
   USING (public.is_admin())
   WITH CHECK (public.is_admin());
 
--- 9.10 MANAGEMENT RULES & SETTLEMENTS
+-- 9.10 OPPORTUNITY PLAN SUGGESTIONS, ADESAO BOLETOS & META ADS LEADS
+CREATE POLICY "opp_plan_suggestions_select"
+  ON public.opportunity_plan_suggestions FOR SELECT
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND (
+          o.owner_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+        )
+    )
+  );
+
+CREATE POLICY "opp_plan_suggestions_insert"
+  ON public.opportunity_plan_suggestions FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND (
+          o.owner_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+        )
+    )
+  );
+
+CREATE POLICY "opp_plan_suggestions_update"
+  ON public.opportunity_plan_suggestions FOR UPDATE
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND (
+          o.owner_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+        )
+    )
+  )
+  WITH CHECK (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND (
+          o.owner_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+        )
+    )
+  );
+
+CREATE POLICY "opp_plan_suggestions_delete"
+  ON public.opportunity_plan_suggestions FOR DELETE
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND (
+          o.owner_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+        )
+    )
+  );
+
+CREATE POLICY "adesao_boletos_admin_select"
+  ON public.adesao_boletos FOR SELECT
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.contracts c
+      WHERE c.id = adesao_boletos.contract_id
+        AND (
+          c.responsavel_id = auth.uid()
+          OR (public.is_gestor() AND public.is_manager_of_seller(c.responsavel_id))
+        )
+    )
+  );
+
+CREATE POLICY "meta_ads_leads_vendedor_select"
+  ON public.meta_ads_leads FOR SELECT
+  TO authenticated
+  USING (
+    public.is_admin()
+    OR (
+      opportunity_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.opportunities o
+        WHERE o.id = meta_ads_leads.opportunity_id
+          AND (
+            o.owner_id = auth.uid()
+            OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          )
+      )
+    )
+  );
+
+-- 9.11 MANAGEMENT RULES & SETTLEMENTS
 ALTER TABLE public.management_commission_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.management_commission_settlements ENABLE ROW LEVEL SECURITY;
 
@@ -840,6 +953,15 @@ DROP FUNCTION IF EXISTS public.get_minhas_parcelas();
 DROP FUNCTION IF EXISTS public.get_meu_financeiro();
 
 -- 10.1 get_minhas_parcelas(p_mes, p_ano) e get_minhas_parcelas()
+-- Assinatura única com valores default nos dois parâmetros.
+-- Em PostgreSQL, ter simultaneamente get_minhas_parcelas(p_mes, p_ano) com DEFAULT NULL
+-- e get_minhas_parcelas() causa ambiguidade (function call is not unique) ao chamar get_minhas_parcelas().
+-- Esta função única atende a TODAS as invocações:
+--   get_minhas_parcelas()
+--   get_minhas_parcelas(p_mes)
+--   get_minhas_parcelas(p_mes, p_ano)
+--   supabase.rpc('get_minhas_parcelas', { p_mes: 5, p_ano: 2025 })
+--   supabase.rpc('get_minhas_parcelas', {})
 CREATE OR REPLACE FUNCTION public.get_minhas_parcelas(p_mes INTEGER DEFAULT NULL, p_ano INTEGER DEFAULT NULL)
 RETURNS TABLE (
   parcela_id UUID,
@@ -898,36 +1020,6 @@ $$;
 REVOKE ALL ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) FROM anon;
 GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas(INTEGER, INTEGER) TO authenticated;
-
--- Sobrecarga sem parâmetros para compatibilidade com chamadas legado
-CREATE OR REPLACE FUNCTION public.get_minhas_parcelas()
-RETURNS TABLE (
-  parcela_id UUID,
-  contract_id UUID,
-  numero_contrato TEXT,
-  cliente_nome TEXT,
-  operadora_nome TEXT,
-  numero_parcela INTEGER,
-  total_parcelas INTEGER,
-  tipo_parcela TEXT,
-  data_vencimento DATE,
-  repasse_previsto_vendedor NUMERIC(14, 2),
-  repasse_pago_vendedor NUMERIC(14, 2),
-  data_repasse DATE,
-  status TEXT
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-  RETURN QUERY SELECT * FROM public.get_minhas_parcelas(NULL, NULL);
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM anon;
-GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas() TO authenticated;
 
 -- 10.2 get_meu_financeiro()
 CREATE OR REPLACE FUNCTION public.get_meu_financeiro()

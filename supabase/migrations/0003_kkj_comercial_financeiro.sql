@@ -234,7 +234,19 @@ CREATE POLICY "opp_plan_suggestions_select"
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
         AND (
           o.owner_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = o.owner_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   );
@@ -250,7 +262,19 @@ CREATE POLICY "opp_plan_suggestions_insert"
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
         AND (
           o.owner_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = o.owner_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   );
@@ -266,7 +290,19 @@ CREATE POLICY "opp_plan_suggestions_update"
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
         AND (
           o.owner_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = o.owner_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   )
@@ -277,7 +313,19 @@ CREATE POLICY "opp_plan_suggestions_update"
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
         AND (
           o.owner_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = o.owner_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   );
@@ -293,7 +341,19 @@ CREATE POLICY "opp_plan_suggestions_delete"
       WHERE o.id = opportunity_plan_suggestions.opportunity_id
         AND (
           o.owner_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = o.owner_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   );
@@ -359,6 +419,16 @@ BEGIN
     ALTER TABLE public.commission_rules ADD COLUMN aliquota_imposto_pct NUMERIC(6, 2) DEFAULT 11.00;
   ELSE
     ALTER TABLE public.commission_rules ALTER COLUMN aliquota_imposto_pct SET DEFAULT 11.00;
+  END IF;
+
+  -- Percentual total previsto da comissão (soma das parcelas ou percentual total da grade)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'total_comissao_pct') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN total_comissao_pct NUMERIC(6, 2);
+  END IF;
+
+  -- Quantidade de parcelas previstas na grade comercial (ex: 3, 5, 14)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'total_parcelas') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN total_parcelas INTEGER DEFAULT 1;
   END IF;
 END $$;
 
@@ -570,7 +640,19 @@ CREATE POLICY "adesao_boletos_admin_select"
       WHERE c.id = adesao_boletos.contract_id
         AND (
           c.responsavel_id = auth.uid()
-          OR (public.is_gestor() AND public.is_manager_of_seller(c.responsavel_id))
+          OR (
+            public.is_gestor() AND (
+              to_regclass('public.teams') IS NOT NULL
+              AND to_regclass('public.team_members') IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM public.teams t
+                JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                WHERE t.gestor_id = auth.uid()
+                  AND tm.vendedor_id = c.responsavel_id
+                  AND t.ativo = true
+              )
+            )
+          )
         )
     )
   );
@@ -639,7 +721,19 @@ CREATE POLICY "meta_ads_leads_vendedor_select"
         WHERE o.id = meta_ads_leads.opportunity_id
           AND (
             o.owner_id = auth.uid()
-            OR (public.is_gestor() AND public.is_manager_of_seller(o.owner_id))
+            OR (
+              public.is_gestor() AND (
+                to_regclass('public.teams') IS NOT NULL
+                AND to_regclass('public.team_members') IS NOT NULL
+                AND EXISTS (
+                  SELECT 1 FROM public.teams t
+                  JOIN public.team_members tm ON tm.team_id = t.id AND tm.ativo = true
+                  WHERE t.gestor_id = auth.uid()
+                    AND tm.vendedor_id = o.owner_id
+                    AND t.ativo = true
+                )
+              )
+            )
           )
       )
     )
@@ -670,10 +764,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Bradesco Saúde', 'BRADESCO_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
+      400.00, 5,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}, {"month": 5, "pct": 50}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -684,10 +780,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Amil', 'AMIL_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
+      300.00, 3,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -698,10 +796,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - SulAmérica', 'SULAMERICA_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
+      300.00, 3,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -712,10 +812,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Porto Seguro', 'PORTO_PME', v_carrier_id, 'pme', 'percentual', true,
       2.00, 4, 50.00, 11.00,
+      300.00, 3,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -726,10 +828,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Alice', 'ALICE_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
+      300.00, 3,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -740,10 +844,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - MedSênior', 'MEDSENIOR_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 4, 50.00, 11.00,
+      200.00, 3,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 50}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -754,10 +860,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Hapvida', 'HAPVIDA_PME', v_carrier_id, 'pme', 'percentual', false,
       0.00, 5, 50.00, 11.00,
+      350.00, 4,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
@@ -768,10 +876,12 @@ BEGIN
     INSERT INTO public.commission_rules (
       nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
       recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      total_comissao_pct, total_parcelas,
       cronograma_parcelas, ativo
     ) VALUES (
       'Regra PME KKJ - Plena Saúde (Opção 1)', 'PLENA_OP1', v_carrier_id, 'pme', 'percentual', false,
       0.00, 6, 50.00, 11.00,
+      230.00, 5,
       '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 40}, {"month": 4, "pct": 20}, {"month": 5, "pct": 20}]'::jsonb, true
     ) ON CONFLICT (code) DO NOTHING;
   END IF;
