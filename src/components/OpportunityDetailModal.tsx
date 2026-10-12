@@ -124,7 +124,7 @@ export function OpportunityDetailModal({
   const loadData = async (id: string) => {
     setLoading(true)
     try {
-      const [oppRes, tlRes, tasksRes, plansRes, compList, contList, carList, prodList] =
+      const [oppRes, tlRes, tasksRes, plansRes, compRes, contRes, carList, prodList] =
         await Promise.all([
           opportunityService.getOpportunityById(id),
           opportunityService.getTimeline(id),
@@ -139,8 +139,8 @@ export function OpportunityDetailModal({
       setTimeline(tlRes)
       setTasks(tasksRes)
       setPlanSuggestions(plansRes)
-      setCompanies(compList)
-      setContacts(contList)
+      setCompanies(compRes.items)
+      setContacts(contRes.items)
       setCarriers(carList)
       setProducts(prodList)
     } catch (err: any) {

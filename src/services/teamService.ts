@@ -116,20 +116,21 @@ export const teamService = {
       throw new Error(error?.message || 'Falha ao criar equipe comercial')
     }
 
+    const t: any = data
     return {
-      id: data.id,
-      nome: data.nome,
-      descricao: data.descricao || undefined,
-      gestor_id: data.gestor_id,
-      ativo: Boolean(data.ativo),
-      gestor: Array.isArray(data.gestor)
-        ? data.gestor[0]
-          ? { id: data.gestor[0].id, nome: data.gestor[0].nome, email: data.gestor[0].email }
+      id: t.id,
+      nome: t.nome,
+      descricao: t.descricao || undefined,
+      gestor_id: t.gestor_id,
+      ativo: Boolean(t.ativo),
+      gestor: Array.isArray(t.gestor)
+        ? t.gestor[0]
+          ? { id: t.gestor[0].id, nome: t.gestor[0].nome, email: t.gestor[0].email }
           : null
-        : data.gestor
-          ? { id: data.gestor.id, nome: data.gestor.nome, email: data.gestor.email }
+        : t.gestor
+          ? { id: t.gestor.id, nome: t.gestor.nome, email: t.gestor.email }
           : null,
-      created_at: data.created_at,
+      created_at: t.created_at,
     }
   },
 
