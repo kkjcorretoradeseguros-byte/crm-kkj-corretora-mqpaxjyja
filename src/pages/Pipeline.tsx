@@ -993,10 +993,10 @@ export default function Pipeline() {
       <Dialog open={isNewOppOpen} onOpenChange={setIsNewOppOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg font-bold text-[#101828]">
+            <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
               Nova Oportunidade ({pipelineType === 'VENDAS' ? 'Funil de Vendas' : 'Pós-Venda'})
             </DialogTitle>
-            <DialogDescription className="text-xs text-[#667085]">
+            <DialogDescription className="text-xs text-muted-foreground">
               Preencha os dados do cliente, produto cotado e condições do plano
             </DialogDescription>
           </DialogHeader>
