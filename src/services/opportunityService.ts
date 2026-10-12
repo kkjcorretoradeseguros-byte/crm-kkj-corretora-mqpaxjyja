@@ -753,4 +753,183 @@ export const opportunityService = {
         : undefined,
     }
   },
+
+  /**
+   * Cotações / Sugestões de Planos (opportunity_plan_suggestions)
+   * Suporta múltiplas cotações por oportunidade e estritamente UMA principal
+   */
+  async getPlanSuggestions(opportunityId: string): Promise<PlanSuggestion[]> {
+    if (!isSupabaseConfigured) return []
+
+    try {
+      const { data, error } = await supabase
+        .from('opportunity_plan_suggestions')
+        .select(`
+          id,
+          opportunity_id,
+          carrier_id,
+          product_id,
+          nome_plano,
+          valor_mensal,
+          coparticipacao,
+          acomodacao,
+          vidas,
+          is_principal,
+          observacoes,
+          created_at,
+          carriers:carrier_id(id, nome, nome_curto),
+          products:product_id(id, nome, categoria)
+        `)
+        .eq('opportunity_id', opportunityId)
+        .order('is_principal', { ascending: false })
+        .order('valor_mensal', { ascending: true })
+
+      if (error) {
+        console.warn('Erro ao carregar sugestões de plano:', error.message)
+        return []
+      }
+
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        opportunity_id: row.opportunity_id,
+        carrier_id: row.carrier_id,
+        carrier_name: row.carriers?.nome || 'Operadora',
+        product_name: row.nome_plano || row.products?.nome || 'Plano Cotado',
+        categoria: row.products?.categoria || 'SAUDE',
+        quoted_monthly_value: Number(row.valor_mensal ?? 0),
+        is_principal: Boolean(row.is_principal),
+        quotation_date: row.created_at,
+        notes: row.observacoes || undefined,
+      }))
+    } catch {
+      return []
+    }
+  },
+
+  async addPlanSuggestion(
+    opportunityId: string,
+    suggestion: {
+      carrier_id: string
+      product_id?: string
+      nome_plano: string
+      valor_mensal: number
+      is_principal?: boolean
+      vidas?: number
+      coparticipacao?: boolean
+      acomodacao?: string
+      observacoes?: string
+    },
+  ): Promise<PlanSuggestion> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+
+    // Se a nova cotação for marcada como principal, desmarcar qualquer principal existente antes
+    if (suggestion.is_principal) {
+      await supabase
+        .from('opportunity_plan_suggestions')
+        .update({ is_principal: false })
+        .eq('opportunity_id', opportunityId)
+    }
+
+    const { data, error } = await supabase
+      .from('opportunity_plan_suggestions')
+      .insert({
+        opportunity_id: opportunityId,
+        carrier_id: suggestion.carrier_id,
+        product_id: suggestion.product_id || null,
+        nome_plano: suggestion.nome_plano.trim(),
+        valor_mensal: Math.max(0, Number(suggestion.valor_mensal || 0)),
+        is_principal: Boolean(suggestion.is_principal),
+        vidas: Math.max(1, Number(suggestion.vidas || 1)),
+        coparticipacao: Boolean(suggestion.coparticipacao),
+        acomodacao: suggestion.acomodacao || 'apartamento',
+        observacoes: suggestion.observacoes || null,
+      })
+      .select(`
+        id,
+        opportunity_id,
+        carrier_id,
+        product_id,
+        nome_plano,
+        valor_mensal,
+        is_principal,
+        created_at,
+        carriers:carrier_id(id, nome)
+      `)
+      .single()
+
+    if (error || !data) {
+      throw new Error(error?.message || 'Falha ao cadastrar cotação de plano')
+    }
+
+    // Se tornou-se principal, sincronizar valor_venda e carrier_id na oportunidade
+    if (suggestion.is_principal) {
+      await supabase
+        .from('opportunities')
+        .update({
+          carrier_id: suggestion.carrier_id,
+          valor_venda: Math.max(0, Number(suggestion.valor_mensal || 0)),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', opportunityId)
+    }
+
+    const row = data as any
+    return {
+      id: row.id,
+      opportunity_id: row.opportunity_id,
+      carrier_id: row.carrier_id,
+      carrier_name: row.carriers?.nome || 'Operadora',
+      product_name: row.nome_plano,
+      quoted_monthly_value: Number(row.valor_mensal ?? 0),
+      is_principal: Boolean(row.is_principal),
+      quotation_date: row.created_at,
+    }
+  },
+
+  async setPrincipalPlanSuggestion(opportunityId: string, suggestionId: string): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+
+    // 1. Desmarcar todas as cotações como principal
+    await supabase
+      .from('opportunity_plan_suggestions')
+      .update({ is_principal: false })
+      .eq('opportunity_id', opportunityId)
+
+    // 2. Marcar a cotação escolhida como principal
+    const { data: updatedSug, error } = await supabase
+      .from('opportunity_plan_suggestions')
+      .update({ is_principal: true })
+      .eq('id', suggestionId)
+      .eq('opportunity_id', opportunityId)
+      .select('carrier_id, valor_mensal')
+      .single()
+
+    if (error || !updatedSug) {
+      throw new Error(error?.message || 'Falha ao definir cotação principal')
+    }
+
+    // 3. Sincronizar oportunidade com a nova cotação principal
+    await supabase
+      .from('opportunities')
+      .update({
+        carrier_id: updatedSug.carrier_id,
+        valor_venda: Number(updatedSug.valor_mensal || 0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', opportunityId)
+  },
+
+  async deletePlanSuggestion(opportunityId: string, suggestionId: string): Promise<void> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+
+    const { error } = await supabase
+      .from('opportunity_plan_suggestions')
+      .delete()
+      .eq('id', suggestionId)
+      .eq('opportunity_id', opportunityId)
+
+    if (error) {
+      throw new Error(error.message || 'Falha ao excluir sugestão de cotação')
+    }
+  },
 }

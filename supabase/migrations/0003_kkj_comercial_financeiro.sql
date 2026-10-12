@@ -1,200 +1,711 @@
--- ============================================================================
--- CRM KK JEKABSON CORRETORA DE SEGUROS (KKJ)
--- MIGRATION 0003: COMERCIAL, FINANCEIRO, ADESÃO 100% KKJ, TAGS & META ADS
--- Incremental, idempotente e segura (compatível com as 32 tabelas da 0001)
--- NÃO EXECUTAR AUTOMATICAMENTE: o cliente aplica via SQL Editor do Supabase
--- ============================================================================
+-- ==============================================================================
+-- MIGRAÇÃO 0003: AMPLIAÇÃO INCREMENTAL DO MOTOR COMERCIAL E FINANCEIRO DA KKJ
+-- Compatível 100% com as Migrações 0001 e 0002.1 já existentes no banco Supabase.
+-- REGRAS ESTRITAS DO PROJETO:
+-- 1. Proibido recriar commission_rules e commission_installments (usar ALTER TABLE incremental).
+-- 2. Preserva UNIQUE(contract_id, numero_parcela) e a FK composta uq_contract_financials_contract_id_id.
+-- 3. Segurança estrita com public.user_role ('administrador', 'gestor', 'vendedor').
+-- 4. Vendedores e Gestores NUNCA acessam diretamente contract_financials e commission_installments.
+-- 5. RPCs get_meu_financeiro() e get_minhas_parcelas() protegidas como SECURITY DEFINER com search_path = ''.
+-- ==============================================================================
 
--- 1. TABELA DE TAGS DO SISTEMA E CUSTOMIZADAS
+-- ------------------------------------------------------------------------------
+-- 1. TABELA DE TAGS DO CRM (crm_tags) COM AS 8 PADRÃO DA KKJ
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.crm_tags (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome TEXT NOT NULL UNIQUE,
-  cor TEXT NOT NULL DEFAULT '#2563EB',
-  cor_fundo TEXT NOT NULL DEFAULT '#EFF6FF',
-  cor_texto TEXT NOT NULL DEFAULT '#1D4ED8',
-  is_system BOOLEAN NOT NULL DEFAULT false,
-  ativo BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#0284c7',
+  description TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+COMMENT ON TABLE public.crm_tags IS 'Tags para segmentação comercial e automações (Saúde, PME, PF, Adesão, Tráfego pago, BNI, Indicação, Renovação).';
 
--- Seed das 8 tags padrão solicitadas
-INSERT INTO public.crm_tags (nome, cor, cor_fundo, cor_texto, is_system, ativo)
+-- Seed idempotente das 8 tags padrão da KKJ
+INSERT INTO public.crm_tags (name, color, description, active)
 VALUES
-  ('Saúde', '#2563EB', '#EFF6FF', '#1D4ED8', true, true),
-  ('PME', '#16A34A', '#F0FDF4', '#15803D', true, true),
-  ('PF', '#9333EA', '#FAF5FF', '#7E22CE', true, true),
-  ('Adesão', '#EA580C', '#FFF7ED', '#C2410C', true, true),
-  ('Tráfego pago', '#DB2777', '#FDF2F8', '#BE185D', true, true),
-  ('BNI', '#CA8A04', '#FEFCE8', '#A16207', true, true),
-  ('Indicação', '#0891B2', '#ECFEFF', '#0E7490', true, true),
-  ('Renovação', '#4B5563', '#F3F4F6', '#374151', true, true)
-ON CONFLICT (nome) DO NOTHING;
+  ('Saúde', '#0284c7', 'Oportunidades e clientes do ramo de planos de saúde', true),
+  ('PME', '#16a34a', 'Planos de saúde e benefícios para pequenas e médias empresas', true),
+  ('PF', '#9333ea', 'Planos de saúde individuais e familiares pessoa física', true),
+  ('Adesão', '#ea580c', 'Planos coletivos por adesão via entidades de classe', true),
+  ('Tráfego pago', '#ec4899', 'Leads originados de campanhas pagas (Meta Ads / Google)', true),
+  ('BNI', '#ca8a04', 'Oportunidades de referências da rede de negócios BNI', true),
+  ('Indicação', '#06b6d4', 'Leads indicados por clientes ativos ou parceiros', true),
+  ('Renovação', '#64748b', 'Contratos e apólices em ciclo anual de renovação', true)
+ON CONFLICT (name) DO UPDATE
+  SET color = EXCLUDED.color,
+      description = EXCLUDED.description,
+      active = EXCLUDED.active,
+      updated_at = timezone('utc'::text, now());
 
--- 2. TABELA DE SUGESTÕES DE PLANO E COTAÇÕES DA OPORTUNIDADE
+-- RLS de crm_tags
+ALTER TABLE public.crm_tags ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "crm_tags_select" ON public.crm_tags;
+CREATE POLICY "crm_tags_select"
+  ON public.crm_tags FOR SELECT
+  TO authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "crm_tags_admin_write" ON public.crm_tags;
+CREATE POLICY "crm_tags_admin_write"
+  ON public.crm_tags FOR ALL
+  TO authenticated
+  USING (public.is_manager_or_admin())
+  WITH CHECK (public.is_manager_or_admin());
+
+-- ------------------------------------------------------------------------------
+-- 2. TABELA DE SUGESTÕES / COTAÇÕES DE PLANOS (opportunity_plan_suggestions)
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.opportunity_plan_suggestions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   opportunity_id UUID NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
-  carrier_id UUID REFERENCES public.carriers(id) ON DELETE SET NULL,
-  carrier_name TEXT NOT NULL,
-  product_name TEXT,
-  categoria TEXT,
-  quoted_monthly_value NUMERIC(12,2) NOT NULL DEFAULT 0,
+  carrier_id UUID NOT NULL REFERENCES public.carriers(id) ON DELETE RESTRICT,
+  product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
+  nome_plano TEXT NOT NULL,
+  valor_mensal NUMERIC(14, 2) NOT NULL DEFAULT 0.00 CONSTRAINT chk_opp_sug_valor_mensal CHECK (valor_mensal >= 0),
+  coparticipacao BOOLEAN NOT NULL DEFAULT false,
+  acomodacao TEXT DEFAULT 'apartamento' CONSTRAINT chk_opp_sug_acomodacao CHECK (acomodacao IN ('enfermaria', 'apartamento', 'vip', 'nao_se_aplica')),
+  vidas INTEGER NOT NULL DEFAULT 1 CONSTRAINT chk_opp_sug_vidas CHECK (vidas > 0),
   is_principal BOOLEAN NOT NULL DEFAULT false,
-  quotation_date DATE DEFAULT CURRENT_DATE,
   observacoes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+COMMENT ON TABLE public.opportunity_plan_suggestions IS 'Múltiplas cotações e sugestões de plano com no máximo UMA cotação principal por oportunidade.';
 
-CREATE INDEX IF NOT EXISTS idx_opp_plan_suggestions_opp ON public.opportunity_plan_suggestions(opportunity_id);
+-- Índice único parcial garantindo que apenas 1 cotação seja principal por oportunidade
+CREATE UNIQUE INDEX IF NOT EXISTS uq_opp_plan_suggestions_principal
+  ON public.opportunity_plan_suggestions (opportunity_id)
+  WHERE is_principal = true;
 
--- 3. TABELA DE BOLETOS DE ADESÃO (1ª MENSALIDADE 100% KKJ)
--- Regra definitiva: 1ª mensalidade de adesão é receita bruta integral da KKJ sem repasse à operadora
+CREATE INDEX IF NOT EXISTS idx_opp_plan_suggestions_opp
+  ON public.opportunity_plan_suggestions (opportunity_id);
+
+CREATE INDEX IF NOT EXISTS idx_opp_plan_suggestions_carrier
+  ON public.opportunity_plan_suggestions (carrier_id);
+
+-- RLS de opportunity_plan_suggestions
+ALTER TABLE public.opportunity_plan_suggestions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "opp_plan_suggestions_select" ON public.opportunity_plan_suggestions;
+CREATE POLICY "opp_plan_suggestions_select"
+  ON public.opportunity_plan_suggestions FOR SELECT
+  TO authenticated
+  USING (
+    public.is_manager_or_admin()
+    OR public.has_permission('visualizar_todos_leads')
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "opp_plan_suggestions_insert" ON public.opportunity_plan_suggestions;
+CREATE POLICY "opp_plan_suggestions_insert"
+  ON public.opportunity_plan_suggestions FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "opp_plan_suggestions_update" ON public.opportunity_plan_suggestions;
+CREATE POLICY "opp_plan_suggestions_update"
+  ON public.opportunity_plan_suggestions FOR UPDATE
+  TO authenticated
+  USING (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "opp_plan_suggestions_delete" ON public.opportunity_plan_suggestions;
+CREATE POLICY "opp_plan_suggestions_delete"
+  ON public.opportunity_plan_suggestions FOR DELETE
+  TO authenticated
+  USING (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = opportunity_plan_suggestions.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  );
+
+-- Trigger de updated_at para sugestões
+DROP TRIGGER IF EXISTS trg_opp_plan_suggestions_updated_at ON public.opportunity_plan_suggestions;
+CREATE TRIGGER trg_opp_plan_suggestions_updated_at
+  BEFORE UPDATE ON public.opportunity_plan_suggestions
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------------------------
+-- 3. AMPLIAÇÃO INCREMENTAL DE commission_rules (0001 JÁ CRIOU ESSA TABELA)
+-- Adiciona colunas requeridas pelo novo motor sem recriar nem apagar colunas existentes.
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+  -- Código identificador amigável da regra
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'code') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN code TEXT;
+  END IF;
+
+  -- Tipo de contrato (pme, pf, adesao, vida, odonto)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'contract_type') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN contract_type TEXT DEFAULT 'pme';
+  END IF;
+
+  -- Indicador de existência de recorrência
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'has_recurring') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN has_recurring BOOLEAN NOT NULL DEFAULT false;
+  END IF;
+
+  -- Percentual de recorrência
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'recurring_percentage') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN recurring_percentage NUMERIC(6, 2) DEFAULT 0.00;
+  END IF;
+
+  -- Mês de início da recorrência
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'recurring_start_month') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN recurring_start_month INTEGER DEFAULT 4;
+  END IF;
+
+  -- Faixa mínima e máxima de vidas para aplicação da regra
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'min_lives') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN min_lives INTEGER DEFAULT 1;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'max_lives') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN max_lives INTEGER;
+  END IF;
+
+  -- Alíquota de repasse padrão ao vendedor na 1ª parcela
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'repasse_vendedor_pct') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN repasse_vendedor_pct NUMERIC(6, 2) DEFAULT 50.00;
+  END IF;
+
+  -- Alíquota de repasse em caso de indicação própria do vendedor
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'repasse_vendedor_proprio_pct') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN repasse_vendedor_proprio_pct NUMERIC(6, 2) DEFAULT 100.00;
+  END IF;
+
+  -- Alíquota padrão de imposto/retenção KKJ para cálculo líquido
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_rules' AND column_name = 'aliquota_imposto_pct') THEN
+    ALTER TABLE public.commission_rules ADD COLUMN aliquota_imposto_pct NUMERIC(6, 2) DEFAULT 8.00;
+  END IF;
+END $$;
+
+-- RLS de commission_rules (estrita por perfil)
+ALTER TABLE public.commission_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "commission_rules_admin_select" ON public.commission_rules;
+CREATE POLICY "commission_rules_admin_select"
+  ON public.commission_rules FOR SELECT
+  TO authenticated
+  USING (public.is_manager_or_admin());
+
+DROP POLICY IF EXISTS "commission_rules_admin_all" ON public.commission_rules;
+CREATE POLICY "commission_rules_admin_all"
+  ON public.commission_rules FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- ------------------------------------------------------------------------------
+-- 4. TABELA DE SNAPSHOTS DE COMISSÃO POR CONTRATO (contract_commission_snapshots)
+-- Garante que alterações globais em commission_rules nunca afetem contratos históricos.
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.contract_commission_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID NOT NULL UNIQUE REFERENCES public.contracts(id) ON DELETE CASCADE,
+  carrier_id UUID NOT NULL REFERENCES public.carriers(id) ON DELETE RESTRICT,
+  carrier_name TEXT NOT NULL,
+  contract_type TEXT NOT NULL DEFAULT 'pme',
+  mensalidade_base NUMERIC(14, 2) NOT NULL CONSTRAINT chk_snap_mensalidade CHECK (mensalidade_base >= 0),
+  qtd_vidas INTEGER NOT NULL DEFAULT 1 CONSTRAINT chk_snap_vidas CHECK (qtd_vidas > 0),
+  rule_id UUID REFERENCES public.commission_rules(id) ON DELETE SET NULL,
+  schedule JSONB NOT NULL DEFAULT '[]'::jsonb,
+  has_recurring BOOLEAN NOT NULL DEFAULT false,
+  recurring_percentage NUMERIC(6, 2) DEFAULT 0.00,
+  recurring_start_month INTEGER DEFAULT 4,
+  aliquota_imposto_pct NUMERIC(6, 2) NOT NULL DEFAULT 8.00,
+  repasse_vendedor_pct NUMERIC(6, 2) NOT NULL DEFAULT 50.00,
+  total_comissao_prevista NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  total_repasse_previsto NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  data_snapshot TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+COMMENT ON TABLE public.contract_commission_snapshots IS 'Fotografia imutável das regras de comissão vigentes na contratação.';
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_contract ON public.contract_commission_snapshots(contract_id);
+
+-- RLS de contract_commission_snapshots
+ALTER TABLE public.contract_commission_snapshots ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "snapshots_admin_select" ON public.contract_commission_snapshots;
+CREATE POLICY "snapshots_admin_select"
+  ON public.contract_commission_snapshots FOR SELECT
+  TO authenticated
+  USING (public.is_manager_or_admin());
+
+DROP POLICY IF EXISTS "snapshots_admin_all" ON public.contract_commission_snapshots;
+CREATE POLICY "snapshots_admin_all"
+  ON public.contract_commission_snapshots FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+-- ------------------------------------------------------------------------------
+-- 5. AMPLIAÇÃO INCREMENTAL DE commission_installments (0001 JÁ CRIOU ESSA TABELA)
+-- Preserva uq_contract_installment UNIQUE(contract_id, numero_parcela) e a FK composta.
+-- Adiciona colunas para identificar tipo de lançamento, retenção e conciliação.
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+  -- Tipo de parcela ('vitalicia' | 'recorrencia' | 'bonificacao' | 'adesao' | 'ajuste')
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'tipo_parcela') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN tipo_parcela TEXT NOT NULL DEFAULT 'vitalicia';
+  END IF;
+
+  -- Percentual aplicado sobre a mensalidade base nesta parcela
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'percentual_aplicado') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN percentual_aplicado NUMERIC(6, 2) DEFAULT 0.00;
+  END IF;
+
+  -- Valor da mensalidade base do contrato tomada como referência para esta parcela
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'valor_base_mensalidade') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN valor_base_mensalidade NUMERIC(14, 2) DEFAULT 0.00;
+  END IF;
+
+  -- Imposto descontado / retido da KKJ nesta parcela
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'imposto_retido') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN imposto_retido NUMERIC(14, 2) NOT NULL DEFAULT 0.00;
+  END IF;
+
+  -- Comissão líquida KKJ nesta parcela
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'valor_liquido') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN valor_liquido NUMERIC(14, 2) NOT NULL DEFAULT 0.00;
+  END IF;
+
+  -- Referência ou ID de conciliação bancária / extrato de operadora
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'conciliacao_ref') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN conciliacao_ref TEXT;
+  END IF;
+
+  -- Informações de estorno quando houver
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'estornado') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN estornado BOOLEAN NOT NULL DEFAULT false;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'motivo_estorno') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN motivo_estorno TEXT;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'commission_installments' AND column_name = 'data_estorno') THEN
+    ALTER TABLE public.commission_installments ADD COLUMN data_estorno TIMESTAMPTZ;
+  END IF;
+END $$;
+
+-- Alarga a CHECK constraint de status de commission_installments se necessário
+-- (0001 limitava a 'previsto', 'recebido', 'repassado', 'cancelado' — adicionamos 'liberado', 'atrasado', 'estornado')
+DO $$
+BEGIN
+  ALTER TABLE public.commission_installments DROP CONSTRAINT IF EXISTS chk_commission_installments_status;
+  ALTER TABLE public.commission_installments ADD CONSTRAINT chk_commission_installments_status
+    CHECK (status IN ('previsto', 'liberado', 'recebido', 'repassado', 'atrasado', 'cancelado', 'estornado'));
+EXCEPTION
+  WHEN OTHERS THEN
+    NULL;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 6. TABELA DE BOLETOS DE ADESÃO (adesao_boletos)
+-- Regra de negócio: A KKJ emite e recebe o 1º boleto de taxa/mensalidade integralmente.
+-- Receita bruta de 100% retida pela KKJ; repasse à operadora é R$ 0,00 na 1ª mensalidade.
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.adesao_boletos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
-  company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
-  contact_id UUID REFERENCES public.contacts(id) ON DELETE SET NULL,
-  vendedor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  valor_integral NUMERIC(12,2) NOT NULL,
+  opportunity_id UUID REFERENCES public.opportunities(id) ON DELETE SET NULL,
+  numero_boleto TEXT NOT NULL,
+  linha_digitavel TEXT,
+  codigo_barras TEXT,
+  valor_mensalidade NUMERIC(14, 2) NOT NULL CONSTRAINT chk_adesao_valor_mensalidade CHECK (valor_mensalidade > 0),
+  taxa_adesao NUMERIC(14, 2) NOT NULL DEFAULT 0.00 CONSTRAINT chk_adesao_taxa CHECK (taxa_adesao >= 0),
+  valor_total_boleto NUMERIC(14, 2) NOT NULL CONSTRAINT chk_adesao_valor_total CHECK (valor_total_boleto > 0),
+  receita_bruta_kkj NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  repasse_operadora NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  aliquota_imposto_pct NUMERIC(6, 2) NOT NULL DEFAULT 8.00,
+  valor_imposto_retido NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  repasse_vendedor_pct NUMERIC(6, 2) NOT NULL DEFAULT 30.00,
+  repasse_vendedor_valor NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  receita_liquida_kkj NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
+  data_emissao DATE NOT NULL DEFAULT CURRENT_DATE,
   data_vencimento DATE NOT NULL,
   data_pagamento DATE,
-  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'pago', 'atrasado', 'estornado', 'cancelado')),
-  receita_bruta_kkj NUMERIC(12,2) NOT NULL,
-  aliquota_imposto NUMERIC(5,4) NOT NULL DEFAULT 0.0800,
-  valor_imposto NUMERIC(12,2) NOT NULL DEFAULT 0,
-  receita_liquida_kkj NUMERIC(12,2) NOT NULL DEFAULT 0,
-  comissao_vendedor_percentual NUMERIC(5,2) NOT NULL DEFAULT 30.00,
-  comissao_vendedor_valor NUMERIC(12,2) NOT NULL DEFAULT 0,
-  resultado_liquido_corretora NUMERIC(12,2) NOT NULL DEFAULT 0,
+  data_repasse_vendedor DATE,
+  status TEXT NOT NULL DEFAULT 'pendente'
+    CONSTRAINT chk_adesao_boletos_status CHECK (status IN ('pendente', 'pago', 'repassado', 'vencido', 'cancelado', 'estornado')),
+  comprovante_url TEXT,
   observacoes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT uq_adesao_contract UNIQUE (contract_id)
 );
+COMMENT ON TABLE public.adesao_boletos IS 'Controle do 1º boleto da modalidade Adesão emitido e recolhido integralmente pela KKJ.';
 
 CREATE INDEX IF NOT EXISTS idx_adesao_boletos_contract ON public.adesao_boletos(contract_id);
 CREATE INDEX IF NOT EXISTS idx_adesao_boletos_status ON public.adesao_boletos(status);
+CREATE INDEX IF NOT EXISTS idx_adesao_boletos_vencimento ON public.adesao_boletos(data_vencimento);
 
--- 4. TABELA DE CAPTURAS E WEBHOOKS DO META ADS (FACEBOOK / INSTAGRAM)
+-- RLS de adesao_boletos (restrito: vendedor não altera nem visualiza margem bruta integral)
+ALTER TABLE public.adesao_boletos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "adesao_boletos_admin_select" ON public.adesao_boletos;
+CREATE POLICY "adesao_boletos_admin_select"
+  ON public.adesao_boletos FOR SELECT
+  TO authenticated
+  USING (
+    public.is_manager_or_admin()
+    OR EXISTS (
+      SELECT 1 FROM public.contracts c
+      WHERE c.id = adesao_boletos.contract_id
+        AND c.responsavel_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "adesao_boletos_admin_write" ON public.adesao_boletos;
+CREATE POLICY "adesao_boletos_admin_write"
+  ON public.adesao_boletos FOR ALL
+  TO authenticated
+  USING (public.is_manager_or_admin())
+  WITH CHECK (public.is_manager_or_admin());
+
+-- ------------------------------------------------------------------------------
+-- 7. TABELA DE LEADS META ADS (meta_ads_leads) — DESACOPLADA SEM INTEGRACAO ATIVA
+-- Armazenamento íntegro com lead_id único, campanha, conjunto, formulário e status.
+-- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.meta_ads_leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id TEXT NOT NULL UNIQUE,
-  platform TEXT NOT NULL DEFAULT 'Meta',
   form_id TEXT,
   form_name TEXT,
-  campaign_id TEXT,
-  campaign_name TEXT,
-  adset_id TEXT,
-  adset_name TEXT,
   ad_id TEXT,
   ad_name TEXT,
-  payload_raw JSONB NOT NULL DEFAULT '{}'::jsonb,
-  contact_id UUID REFERENCES public.contacts(id) ON DELETE SET NULL,
+  adset_id TEXT,
+  adset_name TEXT,
+  campaign_id TEXT,
+  campaign_name TEXT,
+  platform TEXT DEFAULT 'fb',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  nome TEXT,
+  email TEXT,
+  telefone TEXT,
+  cidade TEXT,
+  estado TEXT,
+  dados_saude JSONB DEFAULT '{}'::jsonb,
+  status_processamento TEXT NOT NULL DEFAULT 'pendente'
+    CONSTRAINT chk_meta_status CHECK (status_processamento IN ('pendente', 'processado', 'duplicado', 'erro', 'ignorado')),
+  erro_detalhes TEXT,
   opportunity_id UUID REFERENCES public.opportunities(id) ON DELETE SET NULL,
-  status_processamento TEXT NOT NULL DEFAULT 'recebido' CHECK (status_processamento IN ('recebido', 'vinculado', 'duplicado', 'erro')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  processed_at TIMESTAMPTZ
 );
+COMMENT ON TABLE public.meta_ads_leads IS 'Histórico e fila de processamento de leads capturados de campanhas do Meta Ads.';
 
--- 5. REGRAS GLOBAIS DE COMISSÃO & CONFIGURAÇÕES FINANCEIRAS
-CREATE TABLE IF NOT EXISTS public.commission_rules (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  carrier_id UUID REFERENCES public.carriers(id) ON DELETE CASCADE,
-  carrier_name TEXT NOT NULL,
-  modalidade TEXT NOT NULL,
-  produto_nome TEXT,
-  schedule_parcelas NUMERIC[] NOT NULL DEFAULT '{}',
-  vitalicio_percentual NUMERIC(5,2) DEFAULT 0,
-  vitalicio_a_partir_de INT DEFAULT NULL,
-  aliquota_imposto_padrao NUMERIC(5,4) DEFAULT 0.0800,
-  repasse_vendedor_1a_kkj NUMERIC(5,2) DEFAULT 50.00,
-  repasse_vendedor_1a_proprio NUMERIC(5,2) DEFAULT 100.00,
-  is_special_pme BOOLEAN DEFAULT false,
-  ativo BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+CREATE INDEX IF NOT EXISTS idx_meta_leads_status ON public.meta_ads_leads(status_processamento);
+CREATE INDEX IF NOT EXISTS idx_meta_leads_created ON public.meta_ads_leads(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_meta_leads_opp ON public.meta_ads_leads(opportunity_id);
 
--- 6. SNAPSHOT DE COMISSÕES DO CONTRATO
-CREATE TABLE IF NOT EXISTS public.contract_commission_snapshots (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
-  rule_id UUID REFERENCES public.commission_rules(id) ON DELETE SET NULL,
-  carrier_name TEXT NOT NULL,
-  modalidade TEXT NOT NULL,
-  mensalidade_base NUMERIC(12,2) NOT NULL,
-  snapshot_data JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- 7. PROGRAMAÇÃO E RECEBIMENTO DE COMISSÕES POR PARCELA
-CREATE TABLE IF NOT EXISTS public.commission_installments (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  contract_id UUID NOT NULL REFERENCES public.contracts(id) ON DELETE CASCADE,
-  numero_parcela INT NOT NULL,
-  percentual_comissao NUMERIC(5,2) NOT NULL,
-  valor_previsto NUMERIC(12,2) NOT NULL,
-  valor_recebido NUMERIC(12,2) DEFAULT 0,
-  data_prevista DATE,
-  data_recebimento DATE,
-  status TEXT NOT NULL DEFAULT 'prevista' CHECK (status IN ('prevista', 'liberada', 'recebida', 'atrasada', 'estornada', 'cancelada')),
-  repasse_vendedor_previsto NUMERIC(12,2) DEFAULT 0,
-  repasse_vendedor_pago NUMERIC(12,2) DEFAULT 0,
-  data_repasse_vendedor DATE,
-  observacoes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_commission_installments_contract ON public.commission_installments(contract_id);
-CREATE INDEX IF NOT EXISTS idx_commission_installments_status ON public.commission_installments(status);
-
--- 8. POLÍTICAS RLS (SEGURANÇA POR PERFIL SUPABASE)
-ALTER TABLE public.crm_tags ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.opportunity_plan_suggestions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.adesao_boletos ENABLE ROW LEVEL SECURITY;
+-- RLS de meta_ads_leads
 ALTER TABLE public.meta_ads_leads ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.commission_rules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.contract_commission_snapshots ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "meta_ads_leads_admin_all" ON public.meta_ads_leads;
+CREATE POLICY "meta_ads_leads_admin_all"
+  ON public.meta_ads_leads FOR ALL
+  TO authenticated
+  USING (public.is_manager_or_admin())
+  WITH CHECK (public.is_manager_or_admin());
+
+DROP POLICY IF EXISTS "meta_ads_leads_vendedor_select" ON public.meta_ads_leads;
+CREATE POLICY "meta_ads_leads_vendedor_select"
+  ON public.meta_ads_leads FOR SELECT
+  TO authenticated
+  USING (
+    opportunity_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM public.opportunities o
+      WHERE o.id = meta_ads_leads.opportunity_id
+        AND o.owner_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------------------------
+-- 8. REVISÃO DAS POLÍTICAS DE RLS DE contract_financials E commission_installments
+-- VENDEDORES E GESTORES NÃO ACESSAM DIRETAMENTE.
+-- Apenas administrador tem SELECT/INSERT/UPDATE/DELETE direto.
+-- ------------------------------------------------------------------------------
+ALTER TABLE public.contract_financials ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "contract_financials_admin_only" ON public.contract_financials;
+CREATE POLICY "contract_financials_admin_only"
+  ON public.contract_financials FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
 ALTER TABLE public.commission_installments ENABLE ROW LEVEL SECURITY;
 
--- Tags: leitura aberta a todos autenticados; edição por admin/gestor
-DROP POLICY IF EXISTS "Tags visíveis para autenticados" ON public.crm_tags;
-CREATE POLICY "Tags visíveis para autenticados" ON public.crm_tags
-  FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "commission_installments_admin_only" ON public.commission_installments;
+CREATE POLICY "commission_installments_admin_only"
+  ON public.commission_installments FOR ALL
+  TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
 
-DROP POLICY IF EXISTS "Tags gerenciáveis por admin" ON public.crm_tags;
-CREATE POLICY "Tags gerenciáveis por admin" ON public.crm_tags
-  FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'gestor'))
+-- ------------------------------------------------------------------------------
+-- 9. RPCS SEGURAS PARA VENDEDOR CONSULTAR SEUS REPASSES (SECURITY DEFINER)
+-- Vendedor só enxerga o que lhe compete: número de parcelas, data de vencimento,
+-- repasse previsto, repasse pago e data de repasse. Nunca faturamento bruto ou comissão KKJ.
+-- ------------------------------------------------------------------------------
+
+-- 9.1 get_minhas_parcelas()
+CREATE OR REPLACE FUNCTION public.get_minhas_parcelas()
+RETURNS TABLE (
+  parcela_id UUID,
+  contract_id UUID,
+  numero_contrato TEXT,
+  cliente_nome TEXT,
+  operadora_nome TEXT,
+  numero_parcela INTEGER,
+  total_parcelas INTEGER,
+  tipo_parcela TEXT,
+  data_vencimento DATE,
+  repasse_previsto_vendedor NUMERIC(14, 2),
+  repasse_pago_vendedor NUMERIC(14, 2),
+  data_repasse DATE,
+  status TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    ci.id AS parcela_id,
+    c.id AS contract_id,
+    c.numero_contrato,
+    COALESCE(ct.nome, comp.razao_social, comp.nome_fantasia, 'Cliente') AS cliente_nome,
+    car.nome AS operadora_nome,
+    ci.numero_parcela,
+    ci.total_parcelas,
+    COALESCE(ci.tipo_parcela, 'vitalicia') AS tipo_parcela,
+    ci.data_vencimento,
+    ci.repasse_previsto_vendedor,
+    ci.repasse_pago_vendedor,
+    ci.data_repasse,
+    ci.status
+  FROM public.commission_installments ci
+  INNER JOIN public.contracts c ON c.id = ci.contract_id
+  LEFT JOIN public.contacts ct ON ct.id = c.contact_id
+  LEFT JOIN public.companies comp ON comp.id = c.company_id
+  LEFT JOIN public.carriers car ON car.id = c.carrier_id
+  WHERE (
+    -- Administrador ou gestor vê de todos os contratos
+    public.is_manager_or_admin()
+    -- Vendedor vê exclusivamente parcelas de seus contratos
+    OR c.responsavel_id = auth.uid()
+  )
+  ORDER BY ci.data_vencimento ASC, ci.numero_parcela ASC;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_minhas_parcelas() FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_minhas_parcelas() TO authenticated;
+
+-- 9.2 get_meu_financeiro()
+CREATE OR REPLACE FUNCTION public.get_meu_financeiro()
+RETURNS TABLE (
+  total_contratos BIGINT,
+  total_repasse_previsto NUMERIC(14, 2),
+  total_repasse_pago NUMERIC(14, 2),
+  total_repasse_pendente NUMERIC(14, 2),
+  parcelas_a_vencer BIGINT,
+  parcelas_vencidas BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  RETURN QUERY
+  SELECT
+    COUNT(DISTINCT c.id)::BIGINT AS total_contratos,
+    COALESCE(SUM(ci.repasse_previsto_vendedor), 0.00) AS total_repasse_previsto,
+    COALESCE(SUM(ci.repasse_pago_vendedor), 0.00) AS total_repasse_pago,
+    COALESCE(SUM(CASE WHEN ci.status IN ('previsto', 'liberado', 'recebido') AND ci.data_repasse IS NULL THEN ci.repasse_previsto_vendedor ELSE 0.00 END), 0.00) AS total_repasse_pendente,
+    COUNT(CASE WHEN ci.status = 'previsto' AND ci.data_vencimento >= CURRENT_DATE THEN 1 END)::BIGINT AS parcelas_a_vencer,
+    COUNT(CASE WHEN ci.status = 'previsto' AND ci.data_vencimento < CURRENT_DATE THEN 1 END)::BIGINT AS parcelas_vencidas
+  FROM public.contracts c
+  INNER JOIN public.commission_installments ci ON ci.contract_id = c.id
+  WHERE (
+    public.is_manager_or_admin()
+    OR c.responsavel_id = v_user_id
   );
+END;
+$$;
 
--- Sugestões de plano: leitura e escrita para autenticados vinculados
-DROP POLICY IF EXISTS "Plan suggestions acessíveis" ON public.opportunity_plan_suggestions;
-CREATE POLICY "Plan suggestions acessíveis" ON public.opportunity_plan_suggestions
-  FOR ALL TO authenticated USING (true);
+REVOKE ALL ON FUNCTION public.get_meu_financeiro() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_meu_financeiro() FROM anon;
+GRANT EXECUTE ON FUNCTION public.get_meu_financeiro() TO authenticated;
 
--- Boletos de adesão: vendedor vê somente suas vendas; admin/gestor vê tudo
-DROP POLICY IF EXISTS "Adesao boletos RLS" ON public.adesao_boletos;
-CREATE POLICY "Adesao boletos RLS" ON public.adesao_boletos
-  FOR SELECT TO authenticated USING (
-    vendedor_id = auth.uid() OR
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'gestor'))
-  );
+-- ------------------------------------------------------------------------------
+-- 10. REGRAS ESPECIAIS KKJ SEED EM commission_rules (IDEMPOTENTE)
+-- - Bradesco Saúde: 100/100/100/50/50 sem recorrência
+-- - Amil: 100/100/100 + 2% recorrente a partir da 4ª
+-- - SulAmérica: 100/100/100 + 2% recorrente a partir da 4ª
+-- - Porto Seguro: 100/100/100 + 2% recorrente a partir da 4ª
+-- - Alice: 100/100/100 sem recorrência
+-- - MedSênior: 100/50/50
+-- - Hapvida: 100/100/100/50
+-- - Plena Saúde: EXCLUSIVAMENTE Opção 1 (100/50/40/20/20)
+-- ------------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_carrier_id UUID;
+BEGIN
+  -- 1. BRADESCO SAÚDE (100/100/100/50/50, sem recorrência)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%bradesco%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Bradesco Saúde', 'BRADESCO_PME', v_carrier_id, 'pme', 'percentual', false,
+      0.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}, {"month": 5, "pct": 50}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
 
-DROP POLICY IF EXISTS "Adesao boletos mutação por admin" ON public.adesao_boletos;
-CREATE POLICY "Adesao boletos mutação por admin" ON public.adesao_boletos
-  FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'gestor'))
-  );
+  -- 2. AMIL (100/100/100 + 2% recorrente a partir da 4ª)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%amil%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Amil', 'AMIL_PME', v_carrier_id, 'pme', 'percentual', true,
+      2.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
 
--- Regras de comissão: VENDEDOR NUNCA PODE MODIFICAR REGRAS GLOBAIS
-DROP POLICY IF EXISTS "Commission rules leitura geral" ON public.commission_rules;
-CREATE POLICY "Commission rules leitura geral" ON public.commission_rules
-  FOR SELECT TO authenticated USING (true);
+  -- 3. SULAMÉRICA (100/100/100 + 2% recorrente a partir da 4ª)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%sulamerica%' OR lower(nome) LIKE '%sul américa%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - SulAmérica', 'SULAMERICA_PME', v_carrier_id, 'pme', 'percentual', true,
+      2.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
 
-DROP POLICY IF EXISTS "Commission rules alteração apenas admin" ON public.commission_rules;
-CREATE POLICY "Commission rules alteração apenas admin" ON public.commission_rules
-  FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-  );
+  -- 4. PORTO SEGURO (100/100/100 + 2% recorrente a partir da 4ª)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%porto%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Porto Seguro', 'PORTO_PME', v_carrier_id, 'pme', 'percentual', true,
+      2.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- 5. ALICE (100/100/100 sem recorrência)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%alice%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Alice', 'ALICE_PME', v_carrier_id, 'pme', 'percentual', false,
+      0.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- 6. MEDSÊNIOR (100/50/50)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%senior%' OR lower(nome) LIKE '%sênior%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - MedSênior', 'MEDSENIOR_PME', v_carrier_id, 'pme', 'percentual', false,
+      0.00, 4, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 50}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- 7. HAPVIDA (100/100/100/50)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%hapvida%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Hapvida', 'HAPVIDA_PME', v_carrier_id, 'pme', 'percentual', false,
+      0.00, 5, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 100}, {"month": 3, "pct": 100}, {"month": 4, "pct": 50}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- 8. PLENA SAÚDE (EXCLUSIVAMENTE OPÇÃO 1: 100/50/40/20/20)
+  SELECT id INTO v_carrier_id FROM public.carriers WHERE lower(nome) LIKE '%plena%' LIMIT 1;
+  IF v_carrier_id IS NOT NULL THEN
+    INSERT INTO public.commission_rules (
+      nome, code, carrier_id, contract_type, tipo_regra, has_recurring,
+      recurring_percentage, recurring_start_month, repasse_vendedor_pct, aliquota_imposto_pct,
+      cronograma_parcelas, ativo
+    ) VALUES (
+      'Regra PME KKJ - Plena Saúde (Opção 1)', 'PLENA_OP1', v_carrier_id, 'pme', 'percentual', false,
+      0.00, 6, 50.00, 8.00,
+      '[{"month": 1, "pct": 100}, {"month": 2, "pct": 50}, {"month": 3, "pct": 40}, {"month": 4, "pct": 20}, {"month": 5, "pct": 20}]'::jsonb, true
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
