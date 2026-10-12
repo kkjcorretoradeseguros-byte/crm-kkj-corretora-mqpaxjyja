@@ -9,6 +9,7 @@ import type {
   Product,
   Carrier,
   User,
+  PlanSuggestion,
 } from '@/types/crm'
 
 export interface OpportunityFilterOptions {
