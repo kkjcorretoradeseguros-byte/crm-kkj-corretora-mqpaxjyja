@@ -41,7 +41,6 @@ declare
   v_due_date date;
   v_first_due date;
   v_expected_due date;
-  v_first_due date;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
