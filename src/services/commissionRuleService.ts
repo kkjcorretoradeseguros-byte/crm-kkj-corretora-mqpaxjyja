@@ -93,9 +93,11 @@ export async function getApplicableCommissionRule(params: {
   const today = new Date().toISOString().slice(0, 10)
   const candidates = (data ?? []).filter(rule => {
     if (rule.product_id && rule.product_id !== params.productId) return false
-    if (rule.modalidade && params.modality && rule.modalidade.toLowerCase() !== params.modality.toLowerCase()) return false
+    if (rule.modalidade && (!params.modality || rule.modalidade.toLowerCase() !== params.modality.toLowerCase())) return false
     if (rule.data_inicio_vigencia && rule.data_inicio_vigencia > today) return false
     if (rule.data_fim_vigencia && rule.data_fim_vigencia < today) return false
+    if (rule.min_lives != null && params.livesCount == null) return false
+    if (rule.max_lives != null && params.livesCount == null) return false
     if (params.livesCount != null && (params.livesCount < (rule.min_lives ?? 0) || params.livesCount > (rule.max_lives ?? Infinity))) return false
     return true
   })
