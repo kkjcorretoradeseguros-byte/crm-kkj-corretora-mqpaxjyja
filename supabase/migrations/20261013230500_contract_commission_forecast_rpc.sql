@@ -94,7 +94,7 @@ begin
     where jsonb_typeof(x) is distinct from 'object'
       or (x->>'month') is null or (x->>'pct') is null
       or (x->>'month')::integer < 1 or (x->>'month')::integer > 1200
-      or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 1000) then
+      or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 100) then
     raise exception 'Cronograma da regra inválido';
   end if;
   select count(distinct (x->>'month')::integer) into v_schedule_distinct
