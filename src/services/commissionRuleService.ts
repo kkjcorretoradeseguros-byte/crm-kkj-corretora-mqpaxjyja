@@ -68,7 +68,7 @@ export interface SellerSplitSettings {
 export const DEFAULT_SELLER_SPLITS: SellerSplitSettings = {
   lead_proprio_pct: 100, // Próprio/Indicação do vendedor: 100% da comissão líquida
   kkj_pme_pct: 50, // KKJ-PME: 50%
-  kkj_adesao_pct: 50, // KKJ-Adesão: 50% (com regra do primeiro boleto pago)
+  kkj_adesao_pct: 30, // KKJ-Adesão: 30% da comissão líquida, conforme PF
   kkj_pf_pct: 30, // KKJ-PF: 30%
   consorcio_pct: 50, // Consórcio configurável (não presume PME/PF)
   vida_pct: 50, // Seguro de Vida configurável (não presume PME/PF)
@@ -140,7 +140,7 @@ export const commissionRuleService = {
       max_lives: rule.max_lives ?? null,
       repasse_vendedor_pct: rule.repasse_vendedor_pct ?? 50,
       repasse_vendedor_proprio_pct: rule.repasse_vendedor_proprio_pct ?? 100,
-      aliquota_imposto_pct: rule.aliquota_imposto_pct ?? 11,
+      aliquota_imposto_pct: rule.aliquota_imposto_pct ?? 15,
       data_inicio_vigencia: rule.data_inicio_vigencia || new Date().toISOString().slice(0, 10),
       data_fim_vigencia: rule.data_fim_vigencia || null,
       ativo: rule.ativo ?? true,
