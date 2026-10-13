@@ -153,14 +153,14 @@ export const commissionEngine = {
     modalidade?: string
     mensalidade: number
     leadOrigin?: 'kkj' | 'vendedor' // Para repasse do vendedor
-    impostoAliquota?: number // Default configurável (ex: 11% = 0.11 ou 11)
+    impostoAliquota?: number // Default 15%; aceita decimal ou percentual
   }): CommissionCalculationResult {
     const {
       carrierName,
       modalidade = 'PME',
       mensalidade,
       leadOrigin = 'kkj',
-      impostoAliquota = 0.11, // Padrão 11% KKJ
+      impostoAliquota = 0.15, // Padrão 15% KKJ
     } = params
 
     // Normaliza para decimal (se vier 11, converte para 0.11)
