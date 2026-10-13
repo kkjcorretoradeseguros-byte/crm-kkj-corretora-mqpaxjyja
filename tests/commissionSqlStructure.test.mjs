@@ -45,3 +45,11 @@ test('forecast RPC remains invoker scoped and admin gated', () => {
   assert.ok(sql.includes('from public.contract_financials where contract_id = p_contract_id'))
   assert.ok(sql.includes('revoke all on function public.persist_contract_commission_forecast'))
 })
+
+test('migration has one complete function and no trailing SQL fragments', () => {
+  assert.equal((sql.match(/create or replace function public\.persist_contract_commission_forecast\(/g) ?? []).length, 1)
+  assert.equal((sql.match(/\$\$;/g) ?? []).length, 1)
+  assert.match(sql.trimEnd(), /grant execute on function public\.persist_contract_commission_forecast\(uuid,uuid,text,jsonb\) to authenticated;$/)
+  assert.match(sql, /\(x->>'numero_parcela'\) !~ '\^\[0-9\]\+\$'\) then/)
+  assert.match(sql, /\(x->>'month'\) !~ '\^\[0-9\]\+\$'/)
+})
