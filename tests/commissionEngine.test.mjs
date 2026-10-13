@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../src/services/commissionEngine.ts', impor
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText
-const { commissionEngine, calculateFromDatabaseRule } = await import('data:text/javascript,' + encodeURIComponent(compiled))
+const { commissionEngine, calculateFromDatabaseRule, buildFinancialInstallmentDrafts } = await import('data:text/javascript,' + encodeURIComponent(compiled))
 
 test('Bradesco PME: 400% over five installments and 15% tax on seller payout', () => {
   const result = commissionEngine.calculate({ carrierName: 'Bradesco Saúde', mensalidade: 1000 })
@@ -129,4 +129,18 @@ test('Recurring schedule cannot overlap fixed installments', () => {
   assert.throws(() => calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }))
   rule.recurring_start_month = 5
   assert.equal(calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }).length, 2)
+})
+
+test('Financial installment drafts preserve month-end due dates and net amounts', () => {
+  const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 2, pct: 50 }, { month: 3, pct: 50 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100 }
+  const drafts = buildFinancialInstallmentDrafts({ rule, mensalidade: 1000, leadOrigin: 'kkj', firstDueDate: '2026-01-31' })
+  assert.deepEqual(drafts.map(x => x.data_vencimento), ['2026-01-31', '2026-02-28', '2026-03-31'])
+  assert.deepEqual(drafts.map(x => x.valor_liquido), [850, 425, 425])
+  assert.deepEqual(drafts.map(x => x.tipo_parcela), ['inicial', 'inicial', 'inicial'])
+  assert.equal(drafts[0].repasse_previsto_vendedor, 425)
+})
+
+test('Financial installment drafts reject impossible calendar dates', () => {
+  const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100 }
+  assert.throws(() => buildFinancialInstallmentDrafts({ rule, mensalidade: 1000, leadOrigin: 'kkj', firstDueDate: '2026-02-30' }))
 })
