@@ -91,6 +91,7 @@ export async function getApplicableCommissionRule(params: {
     .eq('carrier_id', params.carrierId)
   if (error) throw new Error('Erro ao consultar regras: ' + error.message)
   const today = new Date().toISOString().slice(0, 10)
+  if (params.livesCount != null && (!Number.isInteger(params.livesCount) || params.livesCount < 1)) throw new Error('Quantidade de vidas inválida')
   const candidates = (data ?? []).filter(rule => {
     if (rule.product_id && rule.product_id !== params.productId) return false
     if (rule.modalidade && (!params.modality || rule.modalidade.toLowerCase() !== params.modality.toLowerCase())) return false
