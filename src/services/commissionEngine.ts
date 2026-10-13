@@ -190,7 +190,7 @@ export function calculateFromDatabaseRule(params: {
   if (rule.has_recurring) {
     if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100 ||
         !Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 1 ||
-        seen.has(rule.recurring_start_month!)) {
+        [...seen].some(month => month >= rule.recurring_start_month!)) {
       throw new Error('Configuração de vitalício inválida')
     }
     // A recorrência é indefinida: não gerar parcelas fictícias sem competência confirmada.
