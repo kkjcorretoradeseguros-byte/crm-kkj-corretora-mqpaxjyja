@@ -170,13 +170,14 @@ export const commissionEngine = {
       impostoAliquota = 0.15, // Padrão 15% KKJ
     } = params
 
-    // Normaliza para decimal (se vier 11, converte para 0.11)
+    // Normaliza para decimal (por exemplo, 15 vira 0.15)
     if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
     if (!Number.isFinite(impostoAliquota) || impostoAliquota < 0 || impostoAliquota > 100) throw new Error('Alíquota inválida')
     const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
 
     if (typeof carrierName !== 'string' || !carrierName.trim()) throw new Error('Operadora obrigatória')
     if (typeof modalidade !== 'string' || !modalidade.trim()) throw new Error('Modalidade obrigatória')
+    if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') throw new Error('Origem do lead inválida')
     const normCarrier = carrierName.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const normMod = modalidade.trim().toLocaleUpperCase('pt-BR')
 
