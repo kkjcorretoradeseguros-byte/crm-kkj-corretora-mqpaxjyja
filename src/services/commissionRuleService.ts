@@ -300,8 +300,8 @@ export const commissionRuleService = {
         ...DEFAULT_SELLER_SPLITS,
         ...(typeof data.value === 'object' ? data.value : JSON.parse(data.value)),
       }
-    } catch {
-      return DEFAULT_SELLER_SPLITS
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Falha ao consultar repasses')
     }
   },
 
