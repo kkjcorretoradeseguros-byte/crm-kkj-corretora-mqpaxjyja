@@ -3,6 +3,7 @@
 create or replace function public.persist_contract_commission_forecast(
   p_contract_id uuid,
   p_rule_id uuid,
+  p_lead_origin text,
   p_installments jsonb
 ) returns uuid
 language plpgsql security invoker set search_path = public
@@ -28,7 +29,12 @@ declare
   v_schedule_count integer;
   v_rule_start date;
   v_rule_end date;
+  v_split_rate numeric;
+  v_lead_origin text;
 begin
+  if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
+    raise exception 'Origem do lead inválida';
+  end if;
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
   end if;
@@ -37,8 +43,9 @@ begin
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
   select carrier_id, aliquota_imposto_pct, cronograma_parcelas,
-    data_inicio_vigencia, data_fim_vigencia
-    into v_rule_carrier, v_rule_tax, v_rule_schedule, v_rule_start, v_rule_end
+    data_inicio_vigencia, data_fim_vigencia,
+    case when p_lead_origin = 'vendedor' then repasse_vendedor_proprio_pct else repasse_vendedor_pct end
+    into v_rule_carrier, v_rule_tax, v_rule_schedule, v_rule_start, v_rule_end, v_split_rate
     from public.commission_rules where id = p_rule_id and ativo;
   if not found or v_rule_carrier is distinct from v_contract_carrier then
     raise exception 'Regra de comissão incompatível com contrato';
@@ -92,6 +99,11 @@ begin
     if (v_row->>'imposto_retido')::numeric <> round((v_row->>'valor_previsto')::numeric * v_rule_tax / 100, 2) then
       raise exception 'Alíquota de imposto divergente';
     end if;
+    if v_split_rate is null or v_split_rate < 0 or v_split_rate > 100
+       or (v_row->>'repasse_previsto_vendedor')::numeric <>
+          case when v_month = 1 then round((v_row->>'valor_liquido')::numeric * v_split_rate / 100, 2) else 0 end then
+      raise exception 'Repasse ao vendedor divergente';
+    end if;
     v_total := v_total + (v_row->>'valor_previsto')::numeric;
     v_tax := v_tax + (v_row->>'imposto_retido')::numeric;
     v_net := v_net + (v_row->>'valor_liquido')::numeric;
@@ -121,5 +133,5 @@ begin
   return v_financial_id;
 end;
 $$;
-revoke all on function public.persist_contract_commission_forecast(uuid,uuid,jsonb) from public, anon;
+revoke all on function public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) from public, anon;
 grant execute on function public.persist_contract_commission_forecast(uuid,uuid,jsonb) to authenticated;
