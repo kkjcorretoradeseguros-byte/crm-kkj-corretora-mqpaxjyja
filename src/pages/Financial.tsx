@@ -148,7 +148,7 @@ export default function Financial() {
       `"${c.expand?.company_id?.trade_name || ''}"`,
       `"${c.operator || c.expand?.product_id?.name || ''}"`,
       c.sale_value,
-      c.commission_value || 0,
+      c.commission_value == null ? 'A conciliar' : c.commission_value,
       c.lives_count || 1,
       `"${c.status}"`,
     ])
