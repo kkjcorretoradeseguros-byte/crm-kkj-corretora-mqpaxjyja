@@ -169,7 +169,7 @@ export const commissionEngine = {
     const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
 
     const normCarrier = carrierName.trim().toLocaleLowerCase('pt-BR')
-    const normMod = modalidade.trim().toUpperCase()
+    const normMod = modalidade.trim().toLocaleUpperCase('pt-BR')
 
     // Caso especial Adesão: Primeira mensalidade é 100% KKJ via boleto próprio!
     if (normMod === 'ADESÃO' || normMod === 'ADESAO') {
