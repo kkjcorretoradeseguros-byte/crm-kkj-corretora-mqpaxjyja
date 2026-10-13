@@ -116,7 +116,7 @@ export const commissionRuleService = {
    * Lista todas as regras de comissão do banco Supabase
    */
   async getRules(onlyActive = false): Promise<CommissionRule[]> {
-    if (!isSupabaseConfigured) return []
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     try {
       let query = supabase
