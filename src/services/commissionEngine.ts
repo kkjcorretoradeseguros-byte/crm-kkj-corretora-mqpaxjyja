@@ -198,6 +198,56 @@ export function calculateFromDatabaseRule(params: {
   return installments.sort((a, b) => a.numero_parcela - b.numero_parcela)
 }
 
+export interface FinancialInstallmentDraft {
+  numero_parcela: number
+  total_parcelas: number
+  data_vencimento: string
+  tipo_parcela: 'inicial'
+  percentual_aplicado: number
+  valor_base_mensalidade: number
+  valor_previsto: number
+  repasse_previsto_vendedor: number
+  imposto_retido: number
+  valor_liquido: number
+  status: 'previsto'
+}
+
+export function buildFinancialInstallmentDrafts(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  leadOrigin: 'kkj' | 'vendedor'
+  firstDueDate: string
+}): FinancialInstallmentDraft[] {
+  const { rule, mensalidade, leadOrigin, firstDueDate } = params
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(firstDueDate)) throw new Error('Data de vencimento inválida')
+  const [year, month, day] = firstDueDate.split('-').map(Number)
+  const first = new Date(Date.UTC(year, month - 1, day))
+  if (first.getUTCFullYear() !== year || first.getUTCMonth() !== month - 1 || first.getUTCDate() !== day) {
+    throw new Error('Data de vencimento inválida')
+  }
+  const installments = calculateFromDatabaseRule({ rule, mensalidade, leadOrigin })
+  return installments.map(item => {
+    const target = new Date(Date.UTC(year, month - 1 + item.numero_parcela - 1, 1))
+    const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+    target.setUTCDate(Math.min(day, lastDay))
+    const date = target.toISOString().slice(0, 10)
+    const tax = Math.round(item.valor_previsto * rule.aliquota_imposto_pct) / 100
+    return {
+      numero_parcela: item.numero_parcela,
+      total_parcelas: installments.length,
+      data_vencimento: date,
+      tipo_parcela: 'inicial' as const,
+      percentual_aplicado: item.percentual,
+      valor_base_mensalidade: mensalidade,
+      valor_previsto: item.valor_previsto,
+      repasse_previsto_vendedor: item.repasse_vendedor,
+      imposto_retido: tax,
+      valor_liquido: Math.round((item.valor_previsto - tax) * 100) / 100,
+      status: 'previsto' as const,
+    }
+  })
+}
+
 export const commissionEngine = {
   /**
    * Calcula o cronograma de comissões conforme operadora, modalidade e mensalidade
