@@ -50,3 +50,21 @@ test('Accented carrier names resolve the same commercial schedule', () => {
     assert.ok(result.parcelas.length > 0, carrierName)
   }
 })
+
+test('Carrier aliases preserve each negotiated PME schedule', () => {
+  const cases = [
+    ['Bradesco', [100, 100, 100, 50, 50]],
+    ['Bradesco Saúde', [100, 100, 100, 50, 50]],
+    ['Amil', [100, 100, 100]],
+    ['SulAmérica', [100, 100, 100]],
+    ['Porto Seguro', [100, 100, 100]],
+    ['Alice', [100, 100, 100]],
+    ['MedSênior', [100, 50, 50]],
+    ['Hapvida', [100, 100, 100, 50]],
+    ['Plena Saúde', [100, 50, 40, 20, 20]],
+  ]
+  for (const [carrierName, percentages] of cases) {
+    const result = commissionEngine.calculate({ carrierName, mensalidade: 1000 })
+    assert.deepEqual(result.parcelas.map(p => p.percentual), percentages, carrierName)
+  }
+})
