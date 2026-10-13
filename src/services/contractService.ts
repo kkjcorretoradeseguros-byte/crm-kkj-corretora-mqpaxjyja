@@ -121,6 +121,12 @@ function mapContractRow(r: ContractDbRow): Contract {
     status: uiStatus,
     start_date: r.data_inicio_vigencia || new Date().toISOString().slice(0, 10),
     renewal_date: r.data_renovacao || undefined,
+    data_vencimento_primeiro_pagamento: (r as any).data_vencimento_primeiro_pagamento || undefined,
+    data_confirmacao_pagamento: (r as any).data_confirmacao_pagamento || undefined,
+    usuario_confirmou_pagamento_id: (r as any).usuario_confirmou_pagamento_id || undefined,
+    usuario_implantacao_id: (r as any).usuario_implantacao_id || undefined,
+    primeira_competencia: (r as any).primeira_competencia || undefined,
+    first_installment_reference: (r as any).primeira_competencia || undefined,
     sale_value: val,
     commission_value: undefined,
     lives_count: r.qtd_vidas || undefined,
@@ -277,25 +283,43 @@ export const contractService = {
     }
     const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
 
+    const insertPayload: Record<string, unknown> = {
+      opportunity_id: data.opportunity_id || null,
+      company_id: data.company_id || null,
+      contact_id: data.contact_id || null,
+      carrier_id: data.carrier_id!,
+      product_id: data.product_id || null,
+      plano: data.plano || null,
+      numero_contrato: data.contract_number || null,
+      status: dbStatus,
+      data_inicio_vigencia: data.start_date || new Date().toISOString().split('T')[0],
+      data_renovacao: data.renewal_date || null,
+      valor_mensal: data.sale_value || 0,
+      valor_venda: data.sale_value || 0,
+      qtd_vidas: data.lives_count || 1,
+      observacoes: data.notes || null,
+      responsavel_id: assignedTo,
+    }
+    if (data.data_vencimento_primeiro_pagamento) {
+      insertPayload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento
+    }
+    if (data.data_confirmacao_pagamento) {
+      insertPayload.data_confirmacao_pagamento = data.data_confirmacao_pagamento
+    }
+    if (data.usuario_confirmou_pagamento_id) {
+      insertPayload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id
+    }
+    if (data.usuario_implantacao_id) {
+      insertPayload.usuario_implantacao_id = data.usuario_implantacao_id
+    }
+    if (data.primeira_competencia || data.first_installment_reference) {
+      insertPayload.primeira_competencia =
+        data.primeira_competencia || data.first_installment_reference
+    }
+
     const { data: created, error } = await supabase
       .from('contracts')
-      .insert({
-        opportunity_id: data.opportunity_id || null,
-        company_id: data.company_id || null,
-        contact_id: data.contact_id || null,
-        carrier_id: data.carrier_id!,
-        product_id: data.product_id || null,
-        plano: data.plano || null,
-        numero_contrato: data.contract_number || null,
-        status: dbStatus,
-        data_inicio_vigencia: data.start_date || new Date().toISOString().split('T')[0],
-        data_renovacao: data.renewal_date || null,
-        valor_mensal: data.sale_value || 0,
-        valor_venda: data.sale_value || 0,
-        qtd_vidas: data.lives_count || 1,
-        observacoes: data.notes || null,
-        responsavel_id: assignedTo,
-      })
+      .insert(insertPayload)
       .select(SELECT_EXPAND)
       .single()
 
@@ -353,6 +377,22 @@ export const contractService = {
     if (data.lives_count !== undefined) payload.qtd_vidas = data.lives_count || null
     if (data.notes !== undefined) payload.observacoes = data.notes || null
     if (data.assigned_to !== undefined) payload.responsavel_id = data.assigned_to || null
+    if (data.data_vencimento_primeiro_pagamento !== undefined) {
+      payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
+    }
+    if (data.data_confirmacao_pagamento !== undefined) {
+      payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
+    }
+    if (data.usuario_confirmou_pagamento_id !== undefined) {
+      payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
+    }
+    if (data.usuario_implantacao_id !== undefined) {
+      payload.usuario_implantacao_id = data.usuario_implantacao_id || null
+    }
+    if (data.primeira_competencia !== undefined || data.first_installment_reference !== undefined) {
+      payload.primeira_competencia =
+        data.primeira_competencia || data.first_installment_reference || null
+    }
 
     const { data: updated, error } = await supabase
       .from('contracts')

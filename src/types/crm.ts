@@ -149,11 +149,17 @@ export type Temperature = 'Frio' | 'Morno' | 'Quente'
 
 export type LostReason =
   | 'Preço'
+  | 'Carência'
+  | 'Rede hospitalar'
+  | 'Concorrência'
+  | 'Falta de retorno'
+  | 'Decisão adiada'
+  | 'Sem interesse'
+  | 'Outros'
   | 'Sem retorno'
   | 'Fechou com concorrente'
   | 'Sem CNPJ elegível'
   | 'Quantidade de vidas'
-  | 'Carência'
   | 'Rede inadequada'
   | 'Desistiu'
   | 'Outro'
@@ -347,6 +353,18 @@ export type TimelineActionType =
   | 'TAREFA'
   | 'VENDA_CONTRATO'
   | 'SISTEMA'
+  | 'nota'
+  | 'mudanca_etapa'
+  | 'mudanca_responsavel'
+  | 'tarefa'
+  | 'venda_contrato'
+  | 'sistema'
+  | 'repescagem'
+  | 'reabertura'
+  | 'pagamento_confirmado'
+  | 'implantado'
+  | 'cancelamento_admin'
+  | 'pos_venda'
 
 export interface OpportunityTimeline {
   id: string
@@ -413,6 +431,11 @@ export interface Contract {
   end_date?: string
   first_installment_reference?: string // Referência da 1ª mensalidade
   hiring_date?: string // Data de contratação
+  data_vencimento_primeiro_pagamento?: string // Vencimento do 1º boleto / pagamento
+  data_confirmacao_pagamento?: string // Data efetiva da confirmação de pagamento
+  usuario_confirmou_pagamento_id?: string
+  usuario_implantacao_id?: string
+  primeira_competencia?: string
   billing_day?: number
   notes?: string
   renewal_date?: string

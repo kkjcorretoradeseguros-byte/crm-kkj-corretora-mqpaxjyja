@@ -315,9 +315,10 @@ export const taskService = {
     if (task.opportunity_id) {
       try {
         // Schema 0001: tipo_evento, conteudo, dados_adicionais, user_id
-        await supabase.from('opportunity_timeline').insert({
+        // Tenta inserir com enum da 0005 ('tarefa_criada') ou com fallback seguro do enum 0001 ('tarefa')
+        const { error: tlInsertErr } = await supabase.from('opportunity_timeline').insert({
           opportunity_id: task.opportunity_id,
-          tipo_evento: 'tarefa_criada',
+          tipo_evento: 'tarefa',
           conteudo: `Tarefa agendada: ${task.type} - ${task.title} (Vencimento: ${task.due_date}${task.due_time ? ` às ${task.due_time}` : ''})`,
           dados_adicionais: {
             task_id: task.id,
@@ -328,6 +329,9 @@ export const taskService = {
           },
           user_id: currentUserId,
         })
+        if (tlInsertErr) {
+          console.warn('Registro de tarefa na timeline (verificando RLS):', tlInsertErr.message)
+        }
       } catch (tlErr) {
         console.warn('Falha ao registrar criação de tarefa na timeline:', tlErr)
       }
@@ -378,23 +382,23 @@ export const taskService = {
         if (data.status === 'Concluída') {
           await supabase.from('opportunity_timeline').insert({
             opportunity_id: mapped.opportunity_id,
-            tipo_evento: 'tarefa_concluida',
+            tipo_evento: 'tarefa',
             conteudo: `Tarefa concluída: ${mapped.title}`,
-            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type },
+            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type, status: 'concluida' },
             user_id: currentUserId,
           })
         } else if (data.status === 'Cancelada') {
           await supabase.from('opportunity_timeline').insert({
             opportunity_id: mapped.opportunity_id,
-            tipo_evento: 'tarefa_cancelada',
+            tipo_evento: 'tarefa',
             conteudo: `Tarefa cancelada: ${mapped.title}`,
-            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type },
+            dados_adicionais: { task_id: mapped.id, tipo_tarefa: mapped.type, status: 'cancelada' },
             user_id: currentUserId,
           })
         } else if (data.title || data.due_date || data.assigned_to) {
           await supabase.from('opportunity_timeline').insert({
             opportunity_id: mapped.opportunity_id,
-            tipo_evento: 'tarefa_alterada',
+            tipo_evento: 'tarefa',
             conteudo: `Tarefa alterada: ${mapped.title}`,
             dados_adicionais: {
               task_id: mapped.id,

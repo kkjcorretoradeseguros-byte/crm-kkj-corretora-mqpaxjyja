@@ -74,7 +74,9 @@ const SALES_STAGES = [
   'Cotação',
   'Follow-up',
   'Negociação',
+  'Repescagem',
   'Venda ganha',
+  'Perdido',
 ]
 
 const POST_SALES_STAGES = [
@@ -87,14 +89,13 @@ const POST_SALES_STAGES = [
 
 const LOST_REASONS: LostReason[] = [
   'Preço',
-  'Sem retorno',
-  'Fechou com concorrente',
-  'Sem CNPJ elegível',
-  'Quantidade de vidas',
   'Carência',
-  'Rede inadequada',
-  'Desistiu',
-  'Outro',
+  'Rede hospitalar',
+  'Concorrência',
+  'Falta de retorno',
+  'Decisão adiada',
+  'Sem interesse',
+  'Outros',
 ]
 
 export default function Pipeline() {
@@ -211,6 +212,14 @@ export default function Pipeline() {
   const totalSaleValue = opportunities.reduce((sum, o) => sum + (o.sale_value || 0), 0)
   const totalCommissionValue = opportunities.reduce((sum, o) => sum + (o.commission_value || 0), 0)
 
+  // Modais de Repescagem e Validações
+  const [isRepescagemModalOpen, setIsRepescagemModalOpen] = useState(false)
+  const [pendingRepescagemOpp, setPendingRepescagemOpp] = useState<Opportunity | null>(null)
+  const [repescagemReason, setRepescagemReason] = useState('')
+  const [repescagemContactDate, setRepescagemContactDate] = useState(
+    new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+  )
+
   // Drag and Drop
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData('text/plain', id)
@@ -219,6 +228,52 @@ export default function Pipeline() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
+  }
+
+  // Validação de Implantação no Pós-Venda: documentação + 1º pagamento confirmado
+  const validateImplantacaoPostSales = async (opp: Opportunity): Promise<boolean> => {
+    try {
+      const contractsRes = await contractService.getContracts({ opportunity_id: opp.id })
+      const ct = contractsRes.items[0]
+
+      if (!ct) {
+        alert('Não é possível implantar este contrato. Nenhum contrato vinculado foi localizado.')
+        return false
+      }
+
+      // Validação do primeiro pagamento confirmado
+      const isConfirmed = !!ct.data_confirmacao_pagamento || ct.status === 'Ativo'
+      if (!isConfirmed) {
+        alert(
+          'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
+        )
+        return false
+      }
+
+      // Ao implantar, persistir data e usuário da implantação
+      await contractService.updateContract(ct.id, {
+        status: 'Ativo',
+        usuario_implantacao_id: user?.id,
+        notes: `${ct.notes || ''} [Implantado em ${new Date().toLocaleDateString('pt-BR')} por ${user?.name || 'Administração'}]`,
+      })
+
+      await opportunityService.addTimelineEvent(
+        opp.id,
+        'implantado',
+        `Contrato ${ct.contract_number || ''} implantado e ativado por ${user?.name || 'Usuário'}. Primeiro pagamento auditado.`,
+        {
+          contract_id: ct.id,
+          implantado_por: user?.id,
+          data_implantacao: new Date().toISOString(),
+        },
+      )
+
+      return true
+    } catch (err: any) {
+      console.error('Erro na validação de implantação:', err)
+      alert(`Falha ao validar requisitos de implantação: ${err?.message || 'Erro inesperado'}`)
+      return false
+    }
   }
 
   const handleDrop = async (e: React.DragEvent, targetStage: string) => {
@@ -234,6 +289,32 @@ export default function Pipeline() {
       setVendaGanhaTargetOpp(opp)
       setIsVendaGanhaOpen(true)
       return
+    }
+
+    // Se for Venda Perdida ou Perdido no Funil de Vendas: EXIGIR motivo obrigatório
+    if (
+      pipelineType === 'VENDAS' &&
+      (targetStage === 'Venda perdida' || targetStage === 'Perdido')
+    ) {
+      setPendingLostOpp(opp)
+      setIsLostModalOpen(true)
+      return
+    }
+
+    // Se for Repescagem no Funil de Vendas: EXIGIR motivo + data de contato + criar tarefa
+    if (pipelineType === 'VENDAS' && targetStage === 'Repescagem') {
+      setPendingRepescagemOpp(opp)
+      setIsRepescagemModalOpen(true)
+      return
+    }
+
+    // Se for Implantado no Pós-Venda: VALIDAR antes de mover
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Implantado') {
+      const canProceed = await validateImplantacaoPostSales(opp)
+      if (!canProceed) {
+        setDraggedOppId(null)
+        return
+      }
     }
 
     // Optimistic UI update
@@ -253,15 +334,24 @@ export default function Pipeline() {
 
   // Quick move via select dropdown
   const handleQuickMove = async (opp: Opportunity, targetStage: string) => {
-    if (targetStage === 'Venda perdida') {
+    if (targetStage === 'Venda perdida' || targetStage === 'Perdido') {
       setPendingLostOpp(opp)
       setIsLostModalOpen(true)
+      return
+    }
+    if (targetStage === 'Repescagem' && pipelineType === 'VENDAS') {
+      setPendingRepescagemOpp(opp)
+      setIsRepescagemModalOpen(true)
       return
     }
     if (targetStage === 'Venda ganha' && pipelineType === 'VENDAS') {
       setVendaGanhaTargetOpp(opp)
       setIsVendaGanhaOpen(true)
       return
+    }
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Implantado') {
+      const canProceed = await validateImplantacaoPostSales(opp)
+      if (!canProceed) return
     }
 
     try {
@@ -282,6 +372,9 @@ export default function Pipeline() {
     livesCount: number
     hiringDate: string
     firstInstallmentRef: string
+    firstPaymentDueDate: string
+    paymentConfirmedDate?: string
+    isPaymentConfirmed?: boolean
     companyName: string
     cnpj: string
     contactName: string
@@ -356,12 +449,21 @@ export default function Pipeline() {
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
           start_date: data.hiringDate,
+          data_vencimento_primeiro_pagamento: data.firstPaymentDueDate,
+          data_confirmacao_pagamento: data.isPaymentConfirmed
+            ? data.paymentConfirmedDate
+            : undefined,
+          usuario_confirmou_pagamento_id: data.isPaymentConfirmed
+            ? user?.id || undefined
+            : undefined,
+          primeira_competencia: data.firstInstallmentRef,
+          first_installment_reference: data.firstInstallmentRef,
           status: 'Em Implantação',
           assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
-          notes: `Venda Ganha reprocessada em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
+          notes: `Venda Ganha reprocessada em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef} | 1º Vencimento: ${data.firstPaymentDueDate}`,
         })
       } else {
-        // Criar contrato único
+        // Criar contrato único com 4 marcos temporais auditáveis
         activeContract = await contractService.createContract({
           contract_number: contractNum,
           opportunity_id: vendaGanhaTargetOpp.id,
@@ -373,9 +475,18 @@ export default function Pipeline() {
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
           start_date: data.hiringDate,
+          data_vencimento_primeiro_pagamento: data.firstPaymentDueDate,
+          data_confirmacao_pagamento: data.isPaymentConfirmed
+            ? data.paymentConfirmedDate
+            : undefined,
+          usuario_confirmou_pagamento_id: data.isPaymentConfirmed
+            ? user?.id || undefined
+            : undefined,
+          primeira_competencia: data.firstInstallmentRef,
+          first_installment_reference: data.firstInstallmentRef,
           status: 'Em Implantação',
           assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
-          notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef}`,
+          notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef} | 1º Vencimento: ${data.firstPaymentDueDate}`,
         })
       }
 
@@ -388,7 +499,9 @@ export default function Pipeline() {
             contact_id: contactId,
             vendedor_id: vendaGanhaTargetOpp.assigned_to || user?.id,
             valor_integral: data.contractedValue,
-            data_vencimento: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+            data_vencimento:
+              data.firstPaymentDueDate ||
+              new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
             aliquota_imposto: 0.11, // Padrão central KKJ 11%
           })
         } catch (err: any) {
@@ -402,14 +515,16 @@ export default function Pipeline() {
       // 5. Timeline de Venda Ganha e Contrato Gerado
       await opportunityService.addTimelineEvent(
         vendaGanhaTargetOpp.id,
-        'venda_ganha',
-        `Venda Ganha concluída com sucesso! Contrato nº ${contractNum} (${data.contractedCarrierName} - ${data.contractedPlan}) gerado com mensalidade de R$ ${data.contractedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.`,
+        'venda_contrato',
+        `Venda Ganha concluída com sucesso! Contrato nº ${contractNum} (${data.contractedCarrierName} - ${data.contractedPlan}) gerado com mensalidade de R$ ${data.contractedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}. Vencimento 1º pagamento: ${data.firstPaymentDueDate}.`,
         {
           contract_id: activeContract.id,
           contract_number: contractNum,
           operadora_id: data.contractedCarrierId,
           mensalidade: data.contractedValue,
           vidas: data.livesCount,
+          primeiro_vencimento: data.firstPaymentDueDate,
+          primeiro_pagamento_confirmado: !!data.isPaymentConfirmed,
         },
       )
 
@@ -436,7 +551,7 @@ export default function Pipeline() {
 
         await opportunityService.addTimelineEvent(
           vendaGanhaTargetOpp.id,
-          'pos_venda',
+          'mudanca_etapa',
           `Lead encaminhado para o Funil de Pós-Venda (${posVendaOpp.title}). Etapa inicial: Documentação.`,
           { pos_venda_id: posVendaOpp.id },
         )

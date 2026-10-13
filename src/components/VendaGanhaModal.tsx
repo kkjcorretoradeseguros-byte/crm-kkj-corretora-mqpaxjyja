@@ -36,6 +36,9 @@ interface VendaGanhaModalProps {
     livesCount: number
     hiringDate: string
     firstInstallmentRef: string
+    firstPaymentDueDate: string
+    paymentConfirmedDate?: string
+    isPaymentConfirmed?: boolean
     companyName: string
     cnpj: string
     contactName: string
@@ -61,6 +64,15 @@ export function VendaGanhaModal({
   const [hiringDate, setHiringDate] = useState(new Date().toISOString().slice(0, 10))
   const [firstInstallmentRef, setFirstInstallmentRef] = useState(
     new Date().toISOString().slice(0, 7),
+  )
+  // Marco 3: Vencimento do Primeiro Pagamento (editável)
+  const [firstPaymentDueDate, setFirstPaymentDueDate] = useState(
+    new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+  )
+  // Marco 4: Confirmação efetiva do pagamento
+  const [isPaymentConfirmed, setIsPaymentConfirmed] = useState(false)
+  const [paymentConfirmedDate, setPaymentConfirmedDate] = useState(
+    new Date().toISOString().slice(0, 10),
   )
 
   // Dados cadastrais obrigatórios
@@ -93,6 +105,9 @@ export function VendaGanhaModal({
       setLivesCount(
         opportunity.health_data?.lives_count ? String(opportunity.health_data.lives_count) : '1',
       )
+      setFirstPaymentDueDate(new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10))
+      setIsPaymentConfirmed(false)
+      setPaymentConfirmedDate(new Date().toISOString().slice(0, 10))
       setErrorMsg(null)
     }
   }, [opportunity, companies, contacts, carriers])
@@ -132,6 +147,14 @@ export function VendaGanhaModal({
       return 'Nome do plano contratado é obrigatório.'
     }
 
+    if (!firstPaymentDueDate) {
+      return 'Vencimento do primeiro pagamento é obrigatório.'
+    }
+
+    if (isPaymentConfirmed && !paymentConfirmedDate) {
+      return 'Data de confirmação do pagamento é obrigatória quando marcada como confirmada.'
+    }
+
     return null
   }
 
@@ -159,6 +182,9 @@ export function VendaGanhaModal({
         livesCount: parseInt(livesCount, 10) || 1,
         hiringDate,
         firstInstallmentRef,
+        firstPaymentDueDate,
+        paymentConfirmedDate: isPaymentConfirmed ? paymentConfirmedDate : undefined,
+        isPaymentConfirmed,
         companyName: companyName.trim(),
         cnpj: cnpj.trim(),
         contactName: contactName.trim(),
@@ -364,6 +390,62 @@ export function VendaGanhaModal({
                   required
                 />
               </div>
+            </div>
+
+            {/* 4 Marcos Independentes: Vencimento e Confirmação */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-200/60">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-emerald-950 flex items-center justify-between">
+                  <span>Vencimento do 1º Pagamento *</span>
+                  <span className="text-[10px] font-normal text-emerald-700">
+                    (Boleto / Mensalidade)
+                  </span>
+                </Label>
+                <Input
+                  type="date"
+                  value={firstPaymentDueDate}
+                  onChange={(e) => setFirstPaymentDueDate(e.target.value)}
+                  className="h-8 text-xs bg-white font-medium"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5 p-2 rounded-lg bg-white/70 border border-emerald-200">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-800 cursor-pointer flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={isPaymentConfirmed}
+                      onChange={(e) => setIsPaymentConfirmed(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>1º Pagamento Já Confirmado?</span>
+                  </Label>
+                  <span className="text-[10px] text-muted-foreground">
+                    {isPaymentConfirmed ? 'Confirmado' : 'Pendente'}
+                  </span>
+                </div>
+                {isPaymentConfirmed && (
+                  <div className="space-y-1 pt-1">
+                    <Label className="text-[11px] text-slate-700">
+                      Data Efetiva da Confirmação:
+                    </Label>
+                    <Input
+                      type="date"
+                      value={paymentConfirmedDate}
+                      onChange={(e) => setPaymentConfirmedDate(e.target.value)}
+                      className="h-7 text-xs bg-white"
+                      required={isPaymentConfirmed}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800">
+              <strong>Atenção às regras financeiras:</strong> A simples vitória da oportunidade{' '}
+              <em>NÃO</em> marca a comissão como recebida e nem antecipa repasses. Apenas registra
+              os lançamentos previstos.
             </div>
 
             {modalidade === 'Adesão' && (
