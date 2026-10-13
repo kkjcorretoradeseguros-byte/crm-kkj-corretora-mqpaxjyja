@@ -316,22 +316,6 @@ export const contractService = {
       observacoes: data.notes || null,
       responsavel_id: assignedTo,
     }
-    if (data.data_vencimento_primeiro_pagamento) {
-      insertPayload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento
-    }
-    if (data.data_confirmacao_pagamento) {
-      insertPayload.data_confirmacao_pagamento = data.data_confirmacao_pagamento
-    }
-    if (data.usuario_confirmou_pagamento_id) {
-      insertPayload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id
-    }
-    if (data.usuario_implantacao_id) {
-      insertPayload.usuario_implantacao_id = data.usuario_implantacao_id
-    }
-    if (data.primeira_competencia || data.first_installment_reference) {
-      insertPayload.primeira_competencia =
-        data.primeira_competencia || data.first_installment_reference
-    }
 
     const { data: created, error } = await supabase
       .from('contracts')
@@ -403,22 +387,6 @@ export const contractService = {
     if (data.lives_count !== undefined) payload.qtd_vidas = data.lives_count || null
     if (data.notes !== undefined) payload.observacoes = data.notes || null
     if (data.assigned_to !== undefined) payload.responsavel_id = data.assigned_to || null
-    if (data.data_vencimento_primeiro_pagamento !== undefined) {
-      payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
-    }
-    if (data.data_confirmacao_pagamento !== undefined) {
-      payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
-    }
-    if (data.usuario_confirmou_pagamento_id !== undefined) {
-      payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
-    }
-    if (data.usuario_implantacao_id !== undefined) {
-      payload.usuario_implantacao_id = data.usuario_implantacao_id || null
-    }
-    if (data.primeira_competencia !== undefined || data.first_installment_reference !== undefined) {
-      payload.primeira_competencia =
-        data.primeira_competencia || data.first_installment_reference || null
-    }
 
     const { data: updated, error } = await supabase
       .from('contracts')
