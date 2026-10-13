@@ -43,3 +43,10 @@ test('Unknown carrier does not invent a commission schedule', () => {
   const result = commissionEngine.calculate({ carrierName: 'Operadora sem regra', mensalidade: 1000 })
   assert.deepEqual(result.parcelas, [])
 })
+
+test('Accented carrier names resolve the same commercial schedule', () => {
+  for (const carrierName of ['SulAmérica', 'Sulamerica', 'MedSênior', 'Medsenior', 'Plena Saúde', 'Plena Saude']) {
+    const result = commissionEngine.calculate({ carrierName, mensalidade: 1000 })
+    assert.ok(result.parcelas.length > 0, carrierName)
+  }
+})
