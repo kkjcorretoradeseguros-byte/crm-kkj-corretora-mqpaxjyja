@@ -131,6 +131,9 @@ begin
       end if;
     end loop;
     if (v_row->>'numero_parcela')::integer < 1
+      or (v_row->>'percentual_aplicado')::numeric < 0
+      or (v_row->>'percentual_aplicado')::numeric > 100
+      or (v_row->>'valor_base_mensalidade')::numeric <= 0
       or (v_row->>'valor_previsto')::numeric < 0
       or (v_row->>'imposto_retido')::numeric < 0
       or (v_row->>'valor_liquido')::numeric < 0
