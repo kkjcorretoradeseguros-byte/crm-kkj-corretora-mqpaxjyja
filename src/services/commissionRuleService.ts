@@ -94,8 +94,7 @@ export async function getApplicableCommissionRule(params: {
   if (params.livesCount != null && (!Number.isInteger(params.livesCount) || params.livesCount < 1)) throw new Error('Quantidade de vidas inválida')
   const candidates = (data ?? []).filter(rule => {
     if (rule.product_id && rule.product_id !== params.productId) return false
-    if (!rule.product_id && params.productId && rule.contract_type && rule.contract_type !== 'pme') return false
-    if (rule.modalidade && (!params.modality || rule.modalidade.toLowerCase() !== params.modality.toLowerCase())) return false
+    if (!params.modality || !rule.modalidade || rule.modalidade.toLowerCase() !== params.modality.toLowerCase()) return false
     if (rule.data_inicio_vigencia && rule.data_inicio_vigencia > today) return false
     if (rule.data_fim_vigencia && rule.data_fim_vigencia < today) return false
     if (rule.min_lives != null && params.livesCount == null) return false
