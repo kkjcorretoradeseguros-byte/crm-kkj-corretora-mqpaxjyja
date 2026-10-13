@@ -155,3 +155,8 @@ test('Database rules reject missing rule and excessive month', () => {
  const rule={cronograma_parcelas:[{month:1201,pct:100}],aliquota_imposto_pct:15,repasse_vendedor_pct:50,repasse_vendedor_proprio_pct:100}
  assert.throws(() => calculateFromDatabaseRule({rule,mensalidade:1000,leadOrigin:'kkj'}))
 })
+
+test('Recurring rule cannot silently generate only initial financial drafts', () => {
+  const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 2, pct: 100 }, { month: 3, pct: 100 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100, has_recurring: true, recurring_percentage: 2, recurring_start_month: 4 }
+  assert.throws(() => buildFinancialInstallmentDrafts({ rule, mensalidade: 1000, leadOrigin: 'kkj', firstDueDate: '2026-11-01' }), /recorrente/)
+})
