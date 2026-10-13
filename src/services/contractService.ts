@@ -419,44 +419,15 @@ export const contractService = {
     return mapContractRow(updated as unknown as ContractDbRow)
   },
 
-  async deleteContract(id: string, motivo?: string): Promise<boolean> {
-    if (!isSupabaseConfigured) return false
+  async deleteContract(id: string, _motivo?: string): Promise<boolean> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+    if (!id.trim()) throw new Error('Contrato inválido')
 
-    // Verificar se há boletos de adesão pagos ou repasses
-    const { data: boletosPagos } = await supabase
-      .from('boletos_adesao')
-      .select('id, status')
-      .eq('contract_id', id)
-      .eq('status', 'pago')
-
-    if (boletosPagos && boletosPagos.length > 0) {
-      throw new Error(
-        'Exclusão bloqueada: Contrato possui boletos de adesão com pagamento confirmado. Utilize o cancelamento auditável do contrato.',
-      )
-    }
-
-    const { data: repassesPagos } = await supabase
-      .from('commission_installments')
-      .select('id, status')
-      .eq('contract_id', id)
-      .eq('status', 'repassado')
-
-    if (repassesPagos && repassesPagos.length > 0) {
-      throw new Error(
-        'Exclusão bloqueada: Contrato possui parcelas com repasse de comissão já executado. Utilize o cancelamento auditável.',
-      )
-    }
-
-    // Remove registros secundários vinculados de teste sem movimentação financeira
-    await supabase.from('commission_installments').delete().eq('contract_id', id)
-    await supabase.from('boletos_adesao').delete().eq('contract_id', id)
-    await supabase.from('post_sales_requests').delete().eq('contract_id', id)
-
-    const { error } = await supabase.from('contracts').delete().eq('id', id)
-    if (error) {
-      throw new Error(error.message || 'Falha ao excluir contrato')
-    }
-    return true
+    // Exclusão física pode apagar histórico financeiro e deixar registros órfãos.
+    // Até existir uma operação transacional auditável no banco, usar cancelamento.
+    throw new Error(
+      'Exclusão definitiva de contratos desabilitada para proteger o histórico financeiro. Utilize o cancelamento auditável.',
+    )
   },
 
   async cancelContract(id: string, motivo: string): Promise<Contract> {
