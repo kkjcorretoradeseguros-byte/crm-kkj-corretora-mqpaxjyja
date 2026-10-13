@@ -75,3 +75,17 @@ test('Reject empty carrier and modality', () => {
   }
   assert.throws(() => commissionEngine.calculate({ carrierName: 'Amil', modalidade: ' ', mensalidade: 1000 }))
 })
+
+test('Tax accepts decimal and percentage representations consistently', () => {
+  const decimal = commissionEngine.calculate({ carrierName: 'Amil', mensalidade: 1000, impostoAliquota: 0.15 })
+  const percentage = commissionEngine.calculate({ carrierName: 'Amil', mensalidade: 1000, impostoAliquota: 15 })
+  assert.deepEqual(decimal.parcelas, percentage.parcelas)
+})
+
+test('Different PME lead origins change only first installment seller payout', () => {
+  const kkj = commissionEngine.calculate({ carrierName: 'Bradesco', mensalidade: 1000, leadOrigin: 'kkj' })
+  const own = commissionEngine.calculate({ carrierName: 'Bradesco', mensalidade: 1000, leadOrigin: 'vendedor' })
+  assert.equal(kkj.parcelas[0].repasse_vendedor, 425)
+  assert.equal(own.parcelas[0].repasse_vendedor, 850)
+  assert.deepEqual(kkj.parcelas.slice(1), own.parcelas.slice(1))
+})
