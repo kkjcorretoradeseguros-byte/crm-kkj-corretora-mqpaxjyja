@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../src/services/commissionEngine.ts', impor
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText
-const { commissionEngine } = await import('data:text/javascript,' + encodeURIComponent(compiled))
+const { commissionEngine, calculateFromDatabaseRule } = await import('data:text/javascript,' + encodeURIComponent(compiled))
 
 test('Bradesco PME: 400% over five installments and 15% tax on seller payout', () => {
   const result = commissionEngine.calculate({ carrierName: 'Bradesco Saúde', mensalidade: 1000 })
@@ -93,4 +93,33 @@ test('Different PME lead origins change only first installment seller payout', (
 
 test('Reject unsupported lead origin instead of silently paying the KKJ rate', () => {
   assert.throws(() => commissionEngine.calculate({ carrierName: 'Amil', mensalidade: 1000, leadOrigin: 'unknown' }))
+})
+
+test('Editable database rule drives commission and seller payout', () => {
+  const rule = {
+    cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 2, pct: 50 }],
+    aliquota_imposto_pct: 15,
+    repasse_vendedor_pct: 50,
+    repasse_vendedor_proprio_pct: 100,
+    has_recurring: false,
+  }
+  const kkj = calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' })
+  const own = calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'vendedor' })
+  assert.deepEqual(kkj.map(p => p.valor_previsto), [1000, 500])
+  assert.equal(kkj[0].repasse_vendedor, 425)
+  assert.equal(own[0].repasse_vendedor, 850)
+  assert.equal(kkj[1].repasse_vendedor, 0)
+})
+
+test('Database rule rejects duplicate months and invalid financial percentages', () => {
+  const rule = {
+    cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 1, pct: 50 }],
+    aliquota_imposto_pct: 15,
+    repasse_vendedor_pct: 50,
+    repasse_vendedor_proprio_pct: 100,
+  }
+  assert.throws(() => calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }))
+  rule.cronograma_parcelas = [{ month: 1, pct: 100 }]
+  rule.aliquota_imposto_pct = 150
+  assert.throws(() => calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }))
 })
