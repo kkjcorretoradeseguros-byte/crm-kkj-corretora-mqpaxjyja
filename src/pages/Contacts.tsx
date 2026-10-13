@@ -43,9 +43,11 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { contactService } from '@/services/contactService'
 import { companyService } from '@/services/companyService'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Contact, Company } from '@/types/crm'
 
 export default function Contacts() {
+  const { user } = useAuth()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -162,8 +164,9 @@ export default function Contacts() {
     try {
       await contactService.deleteContact(id)
       loadData()
-    } catch (err: any) {
-      alert(err?.message || 'Erro ao excluir contato.')
+    } catch (err: unknown) {
+      const errObj = err as { message?: string }
+      alert(errObj?.message || 'Erro ao excluir contato.')
     }
   }
 

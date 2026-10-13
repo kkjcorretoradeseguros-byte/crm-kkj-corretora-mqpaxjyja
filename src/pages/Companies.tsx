@@ -39,9 +39,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { companyService } from '@/services/companyService'
 import { opportunityService } from '@/services/opportunityService'
 import { contractService } from '@/services/contractService'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Company, Opportunity, Contract } from '@/types/crm'
 
 export default function Companies() {
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -163,8 +165,9 @@ export default function Companies() {
     try {
       await companyService.deleteCompany(id)
       loadData()
-    } catch (err: any) {
-      alert(err?.message || 'Erro ao excluir empresa.')
+    } catch (err: unknown) {
+      const errObj = err as { message?: string }
+      alert(errObj?.message || 'Erro ao excluir empresa.')
     }
   }
 

@@ -134,6 +134,20 @@ export const teamService = {
     }
   },
 
+  async getMyTeams(): Promise<CommercialTeam[]> {
+    if (!isSupabaseConfigured) return []
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const currentUserId = authData?.user?.id
+      if (!currentUserId) return []
+
+      const all = await this.getTeams()
+      return all.filter((t) => t.gestor_id === currentUserId)
+    } catch {
+      return []
+    }
+  },
+
   async updateTeam(
     id: string,
     updates: { nome?: string; gestor_id?: string | null; ativo?: boolean; descricao?: string },

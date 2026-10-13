@@ -73,7 +73,7 @@ export default function Financial() {
           const teams = await teamService.getMyTeams()
           const minhaEquipe = teams[0]
           const members = minhaEquipe ? await teamService.getTeamMembers(minhaEquipe.id) : []
-          const memberIds = Array.from(new Set([user.id, ...members.map((m) => m.user_id)]))
+          const memberIds = Array.from(new Set([user.id, ...members.map((m) => m.vendedor_id)]))
           setTeamMemberIds(memberIds)
           setTeamName(minhaEquipe?.nome || null)
           setContracts(contractsRes.filter((c) => memberIds.includes(c.assigned_to || '')))
