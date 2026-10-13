@@ -189,6 +189,16 @@ export const commissionRuleService = {
       throw new Error('Vitalício incompatível com o cronograma')
     }
 
+    for (const date of [rule.data_inicio_vigencia, rule.data_fim_vigencia]) {
+      if (!date) continue
+      const [year, month, day] = date.split('-').map(Number)
+      const parsed = new Date(Date.UTC(year, month - 1, day))
+      if (year < 1900 || year > 9999 || parsed.getUTCFullYear() !== year ||
+          parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+        throw new Error('Data de vigência inexistente')
+      }
+    }
+
     if (rule.data_inicio_vigencia && rule.data_fim_vigencia &&
         rule.data_fim_vigencia < rule.data_inicio_vigencia) {
       throw new Error('Vigência final anterior à inicial')
