@@ -25,6 +25,7 @@ declare
   v_pct numeric;
   v_premium numeric;
   v_contract_premium numeric;
+  v_schedule_count integer;
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
@@ -44,9 +45,17 @@ begin
   end if;
   v_count := jsonb_array_length(p_installments);
   if v_count < 1 or v_count > 1200 then raise exception 'Quantidade de parcelas inválida'; end if;
+  if jsonb_typeof(v_rule_schedule) is distinct from 'array' then raise exception 'Cronograma inválido'; end if;
+  v_schedule_count := jsonb_array_length(v_rule_schedule);
+  if v_count <> v_schedule_count then raise exception 'Cronograma incompleto'; end if;
   select count(distinct (x->>'numero_parcela')::integer) into v_unique_count
     from jsonb_array_elements(p_installments) x;
   if v_unique_count <> v_count then raise exception 'Parcelas duplicadas'; end if;
+  if exists (select 1 from jsonb_array_elements(p_installments) x
+    where (x->>'numero_parcela')::integer not in
+      (select (y->>'month')::integer from jsonb_array_elements(v_rule_schedule) y)) then
+    raise exception 'Mês de comissão não previsto';
+  end if;
   if exists (select 1 from public.contract_financials where contract_id = p_contract_id) then
     raise exception 'Previsão já existente: operação não pode sobrescrever histórico financeiro';
   end if;
