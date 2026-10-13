@@ -164,6 +164,8 @@ export const commissionEngine = {
     } = params
 
     // Normaliza para decimal (se vier 11, converte para 0.11)
+    if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+    if (!Number.isFinite(impostoAliquota) || impostoAliquota < 0 || impostoAliquota > 100) throw new Error('Alíquota inválida')
     const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
 
     const normCarrier = carrierName.trim().toLowerCase()
