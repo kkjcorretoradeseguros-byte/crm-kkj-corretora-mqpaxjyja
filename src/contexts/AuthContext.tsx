@@ -156,7 +156,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 2. Ouvinte de mudanças de estado de autenticação (onAuthStateChange)
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        // Avoid awaiting Supabase queries inside the auth-state callback.
+        void Promise.resolve().then(async () => {
         if (!isMounted) return
         if (session?.user) {
           setToken(session.access_token)
@@ -176,6 +178,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           persistProfile(null)
         }
         if (isMounted) setIsLoading(false)
+        }).catch((error) => {
+          console.error('Falha ao atualizar perfil após mudança de sessão:', error)
+          if (isMounted) setIsLoading(false)
+        })
       })
 
       authSub = subscription
