@@ -342,7 +342,7 @@ export const contractService = {
           opportunity_id: mapped.opportunity_id,
           action: 'STATUS_CHANGE',
           title: `Contrato Ativado (${mapped.contract_number || 'Sem número'})`,
-          description: `Valor do produto: R$ ${mapped.sale_value.toLocaleString('pt-BR')} | Faturamento KKJ estimado: R$ ${(mapped.commission_value || 0).toLocaleString('pt-BR')}`,
+          description: `Valor do produto: R$ ${mapped.sale_value.toLocaleString('pt-BR')} | Comissão KKJ: a conciliar`,
           created_by: currentUserId,
         })
       } catch (tlErr) {
