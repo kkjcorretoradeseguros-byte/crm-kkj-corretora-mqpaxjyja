@@ -412,7 +412,8 @@ export function calculateRecurringCommission(params: {
       !Number.isFinite(mensalidade) || mensalidade <= 0 ||
       !Number.isFinite(rule.aliquota_imposto_pct) || rule.aliquota_imposto_pct < 0 ||
       rule.aliquota_imposto_pct > 100 ||
-      rule.cronograma_parcelas?.some(item => item.month === month)) {
+      !Array.isArray(rule.cronograma_parcelas) ||
+      rule.cronograma_parcelas.some(item => item.month === month)) {
     throw new Error('Competência recorrente ou regra inválida')
   }
   const percentual = rule.recurring_percentage!
