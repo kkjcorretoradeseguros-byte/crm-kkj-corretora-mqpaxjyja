@@ -300,6 +300,7 @@ export const contractService = {
       'Pendente Renovação': 'pendente_renovacao',
     }
     if (data.status && !statusMap[data.status]) throw new Error('Status de contrato inválido')
+    if (data.status === 'Cancelado') throw new Error('Use a ação de cancelamento para registrar a justificativa')
     const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
 
     const insertPayload: Record<string, unknown> = {
@@ -361,7 +362,8 @@ export const contractService = {
     if (data.carrier_id !== undefined && (typeof data.carrier_id !== 'string' || !data.carrier_id.trim())) {
       throw new Error('Operadora inválida')
     }
-    if (data.status !== undefined && !['Ativo', 'Cancelado', 'Em Implantação', 'Pendente Renovação'].includes(data.status)) {
+    if (data.status === 'Cancelado') throw new Error('Use a ação de cancelamento para registrar a justificativa')
+    if (data.status !== undefined && !['Ativo', 'Em Implantação', 'Pendente Renovação'].includes(data.status)) {
       throw new Error('Status de contrato inválido')
     }
     if (data.assigned_to !== undefined && (typeof data.assigned_to !== 'string' || !data.assigned_to.trim())) {
