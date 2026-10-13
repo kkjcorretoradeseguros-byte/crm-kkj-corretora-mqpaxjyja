@@ -134,8 +134,7 @@ export const commissionRuleService = {
 
       const { data, error } = await query
       if (error) {
-        console.warn('Erro ao carregar commission_rules:', error.message)
-        return []
+        throw new Error('Erro ao carregar regras de comissão: ' + error.message)
       }
 
       return (data || []).map((r: any) => ({
@@ -146,8 +145,8 @@ export const commissionRuleService = {
             ? JSON.parse(r.cronograma_parcelas)
             : [],
       }))
-    } catch {
-      return []
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Falha inesperada ao carregar regras de comissão')
     }
   },
 
