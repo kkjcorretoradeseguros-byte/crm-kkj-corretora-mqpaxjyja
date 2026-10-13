@@ -58,7 +58,7 @@ function persistProfile(profile: User | null) {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => getStoredProfile())
+  const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [configured, setConfigured] = useState<boolean>(() => isSupabaseConfiguredStatic)
@@ -154,7 +154,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (isMounted) setIsLoading(false)
         })
         .catch(() => {
-          if (isMounted) setIsLoading(false)
+          if (isMounted) {
+            setToken(null)
+            setUser(null)
+            persistProfile(null)
+            setIsLoading(false)
+          }
         })
 
       // 2. Ouvinte de mudanças de estado de autenticação (onAuthStateChange)
@@ -296,13 +301,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await supabase.auth.signOut()
-    } catch {
-      /* ignore */
-    } finally {
-      setUser(null)
-      setToken(null)
-      persistProfile(null)
+    } catch (error) {
+      throw error
     }
+    setUser(null)
+    setToken(null)
+    persistProfile(null)
   }
 
   const requestPasswordReset = async (email: string) => {
@@ -418,7 +422,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!token,
         isSupabaseConfigured: configured,
         login,
         signup,
