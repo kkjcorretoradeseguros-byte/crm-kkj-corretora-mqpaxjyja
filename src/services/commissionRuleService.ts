@@ -284,7 +284,7 @@ export const commissionRuleService = {
    * Lê configurações globais de repasse dos vendedores em system_settings
    */
   async getSellerSplitSettings(): Promise<SellerSplitSettings> {
-    if (!isSupabaseConfigured) return DEFAULT_SELLER_SPLITS
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     try {
       const { data, error } = await supabase
