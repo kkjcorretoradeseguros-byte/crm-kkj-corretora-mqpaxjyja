@@ -171,6 +171,13 @@ function mapContractRow(r: ContractDbRow): Contract {
       nome_curto: r.carriers.nome_curto || undefined,
       ativo: true,
     } as Carrier
+    c.operator = r.carriers.nome || r.carriers.nome_curto || undefined
+    c.contracted_carrier_name = r.carriers.nome || r.carriers.nome_curto || undefined
+  }
+  if (r.plano) {
+    c.contracted_plan_name = r.plano
+  } else if (r.products?.nome) {
+    c.contracted_plan_name = r.products.nome
   }
   if (r.profiles) {
     c.expand.assigned_to = {
@@ -408,10 +415,70 @@ export const contractService = {
     return mapContractRow(updated as unknown as ContractDbRow)
   },
 
-  async deleteContract(id: string): Promise<boolean> {
+  async deleteContract(id: string, motivo?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false
 
+    // Verificar se há boletos de adesão pagos ou repasses
+    const { data: boletosPagos } = await supabase
+      .from('boletos_adesao')
+      .select('id, status')
+      .eq('contract_id', id)
+      .eq('status', 'pago')
+
+    if (boletosPagos && boletosPagos.length > 0) {
+      throw new Error(
+        'Exclusão bloqueada: Contrato possui boletos de adesão com pagamento confirmado. Utilize o cancelamento auditável do contrato.',
+      )
+    }
+
+    const { data: repassesPagos } = await supabase
+      .from('commission_installments')
+      .select('id, status')
+      .eq('contract_id', id)
+      .eq('status', 'repassado')
+
+    if (repassesPagos && repassesPagos.length > 0) {
+      throw new Error(
+        'Exclusão bloqueada: Contrato possui parcelas com repasse de comissão já executado. Utilize o cancelamento auditável.',
+      )
+    }
+
+    // Remove registros secundários vinculados de teste sem movimentação financeira
+    await supabase.from('commission_installments').delete().eq('contract_id', id)
+    await supabase.from('boletos_adesao').delete().eq('contract_id', id)
+    await supabase.from('post_sales_requests').delete().eq('contract_id', id)
+
     const { error } = await supabase.from('contracts').delete().eq('id', id)
-    return !error
+    if (error) {
+      throw new Error(error.message || 'Falha ao excluir contrato')
+    }
+    return true
+  },
+
+  async cancelContract(id: string, motivo: string): Promise<Contract> {
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+    const { data: authData } = await supabase.auth.getUser()
+    const currentUserId = authData?.user?.id || null
+
+    const updated = await this.updateContract(id, {
+      status: 'Cancelado',
+      notes: `Cancelamento Administrativo. Motivo: ${motivo}`,
+    })
+
+    if (updated.opportunity_id) {
+      try {
+        await supabase.from('opportunity_timeline').insert({
+          opportunity_id: updated.opportunity_id,
+          tipo_evento: 'STATUS_CHANGE',
+          conteudo: `Contrato Cancelado (${updated.contract_number || id}). Motivo: ${motivo}`,
+          dados_adicionais: { cancelado_por: currentUserId, motivo },
+          user_id: currentUserId,
+        })
+      } catch (err) {
+        console.warn('Erro ao registrar cancelamento do contrato na timeline:', err)
+      }
+    }
+
+    return updated
   },
 }

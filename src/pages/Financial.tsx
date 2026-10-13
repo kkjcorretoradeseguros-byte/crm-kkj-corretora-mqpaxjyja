@@ -27,6 +27,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { contractService } from '@/services/contractService'
 import { opportunityService } from '@/services/opportunityService'
 import { adesaoService } from '@/services/adesaoService'
+import { teamService } from '@/services/teamService'
+import { financialService, type FinancialCommissionSummary } from '@/services/financialService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
 
@@ -35,35 +37,73 @@ export default function Financial() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [adesaoBoletos, setAdesaoBoletos] = useState<AdesaoBoleto[]>([])
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [teamName, setTeamName] = useState<string | null>(null)
+  const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
 
   const isSeller = user?.role === 'VENDEDOR'
+  const isGestor = user?.role === 'GESTOR'
+  const isAdmin = user?.role === 'ADMINISTRADOR'
+  const isGlobalView = isAdmin
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [contractsRes, oppsRes, boletosRes] = await Promise.all([
+      const [contractsRes, oppsRes, boletosRes, financeiroRes] = await Promise.all([
         contractService.getAllContracts(),
         opportunityService.getAllOpportunities(),
         adesaoService.getBoletos(),
+        financialService.getMeuFinanceiro().catch(() => null),
       ])
 
-      // Vendedor vê apenas contratos e oportunidades da sua própria carteira
+      setMeuFinanceiro(financeiroRes)
+
+      // Vendedor vê APENAS os próprios contratos (RLS também restringe no banco).
+      // Gestor vê somente a própria produção + produção consolidada da equipe.
+      // Administrador vê tudo (visão global da corretora).
       if (isSeller && user?.id) {
         setContracts(contractsRes.filter((c) => c.assigned_to === user.id))
         setOpportunities(oppsRes.filter((o) => o.assigned_to === user.id))
         setAdesaoBoletos(boletosRes.filter((b) => b.vendedor_id === user.id))
+        setTeamMemberIds([user.id])
+        setTeamName(null)
+      } else if (isGestor && user?.id) {
+        try {
+          const teams = await teamService.getMyTeams()
+          const minhaEquipe = teams[0]
+          const members = minhaEquipe ? await teamService.getTeamMembers(minhaEquipe.id) : []
+          const memberIds = Array.from(new Set([user.id, ...members.map((m) => m.user_id)]))
+          setTeamMemberIds(memberIds)
+          setTeamName(minhaEquipe?.nome || null)
+          setContracts(contractsRes.filter((c) => memberIds.includes(c.assigned_to || '')))
+          setOpportunities(
+            oppsRes.filter(
+              (o) => memberIds.includes(o.assigned_to || '') || o.created_by === user.id,
+            ),
+          )
+          setAdesaoBoletos(boletosRes.filter((b) => memberIds.includes(b.vendedor_id || '')))
+        } catch {
+          // Sem equipe acessível: fica só com a carteira própria
+          setTeamMemberIds([user.id])
+          setTeamName(null)
+          setContracts(contractsRes.filter((c) => c.assigned_to === user.id))
+          setOpportunities(oppsRes.filter((o) => o.assigned_to === user.id))
+          setAdesaoBoletos(boletosRes.filter((b) => b.vendedor_id === user.id))
+        }
       } else {
         setContracts(contractsRes)
         setOpportunities(oppsRes)
         setAdesaoBoletos(boletosRes)
+        setTeamMemberIds([])
+        setTeamName(null)
       }
     } catch (err) {
       console.error(err)
     } finally {
       setLoading(false)
     }
-  }, [isSeller, user?.id])
+  }, [isSeller, isGestor, user?.id])
 
   useEffect(() => {
     loadData()
@@ -132,13 +172,32 @@ export default function Financial() {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-[#101828] dark:text-foreground">
-            Financeiro & Produção
-          </h2>
-          <p className="text-xs text-[#667085] dark:text-muted-foreground">
-            {isSeller
-              ? 'Visão restrita da sua carteira comercial pessoal'
-              : 'Gestão consolidada de produção, comissões, faturamento e resultado KKJ'}
+          <div className="flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-bold text-[#101828] dark:text-foreground">
+              Financeiro & Produção
+            </h2>
+            {isGlobalView && (
+              <Badge className="bg-[#1B2A4A] text-white text-[10px] font-semibold">
+                Visão Global Administrador
+              </Badge>
+            )}
+            {isGestor && (
+              <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 text-[10px] font-semibold">
+                Visão da Equipe{teamName ? `: ${teamName}` : ''}
+              </Badge>
+            )}
+            {isSeller && (
+              <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-semibold">
+                Carteira Pessoal
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs text-[#667085] dark:text-muted-foreground mt-0.5">
+            {isGlobalView
+              ? 'Gestão financeira global KKJ: faturamento, impostos, repasses, comissões e resultado líquido da corretora.'
+              : isGestor
+                ? `Produção e repasses consolidados da ${teamName ? `Equipe ${teamName}` : 'sua equipe'} e carteira própria. Restrito ao escopo da equipe.`
+                : 'Visão estritamente pessoal da sua carteira: valor vendido, comissão prevista, recebida e a repassar.'}
           </p>
         </div>
 
@@ -173,28 +232,48 @@ export default function Financial() {
           </div>
           <div>
             <strong className="text-purple-800 dark:text-purple-300 block">
-              Comissão do Vendedor
+              {isSeller ? 'Sua Comissão' : 'Comissão dos Corretores'}
             </strong>
             <span>Repasse ao corretor responsável pelo fechamento do contrato.</span>
           </div>
           <div>
-            <strong className="text-[#1B2A4A] dark:text-blue-300 block">Resultado KKJ</strong>
-            <span>Margem líquida da corretora após repasses de comissão.</span>
+            <strong className="text-[#1B2A4A] dark:text-blue-300 block">
+              {isGlobalView
+                ? 'Resultado Líquido KKJ'
+                : isGestor
+                  ? 'Margem Líquida da Equipe'
+                  : 'Seu Saldo Repassado'}
+            </strong>
+            <span>
+              {isGlobalView
+                ? 'Margem líquida da corretora após repasses e impostos.'
+                : isGestor
+                  ? 'Margem dos contratos fechados no âmbito da sua equipe.'
+                  : 'Total de comissões liberadas e repassadas a você.'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Financial Metrics Cards: Separados e Não Conflitantes */}
+      {/* Financial Metrics Cards: Separados e Não Conflitantes, por perfil */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Valor Vendido (Mensalidades dos Contratos Fechados) */}
+        {/* CARD 1: Valor Vendido */}
         <Card className="border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-card shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
-                Valor Vendido
+                {isGlobalView
+                  ? 'Valor Vendido Global'
+                  : isGestor
+                    ? 'Valor Vendido (Equipe)'
+                    : 'Meu Valor Vendido'}
               </span>
               <p className="text-[10px] text-muted-foreground">
-                Mensalidades de contratos fechados
+                {isGlobalView
+                  ? 'Mensalidades totais da corretora'
+                  : isGestor
+                    ? 'Mensalidades da equipe + própria'
+                    : 'Mensalidades da sua carteira'}
               </p>
             </div>
             <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#1B2A4A] dark:text-blue-400">
@@ -206,73 +285,181 @@ export default function Financial() {
               R$ {totalSaleValue.toLocaleString('pt-BR')}
             </div>
             <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-              Contratos ativos e em implantação
+              {contracts.length} contratos autorizados
             </p>
           </CardContent>
         </Card>
 
-        {/* 2. Receita Bruta de Adesão (100% KKJ) */}
-        <Card className="border-orange-200 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-orange-800 dark:text-orange-300">
-                Receita Adesão 100% KKJ
-              </span>
-              <p className="text-[10px] text-orange-700 dark:text-orange-400">
-                1ª mensalidade integral retida
+        {/* CARD 2: Conforme perfil */}
+        {isGlobalView ? (
+          <Card className="border-orange-200 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-orange-800 dark:text-orange-300">
+                  Receita Adesão 100% KKJ
+                </span>
+                <p className="text-[10px] text-orange-700 dark:text-orange-400">
+                  1ª mensalidade integral retida
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300">
+                <Award className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-orange-900 dark:text-orange-200">
+                R$ {totalReceitaAdesaoPaga.toLocaleString('pt-BR')}
+              </div>
+              <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-1">
+                {totalReceitaAdesaoPendente > 0
+                  ? `+ R$ ${totalReceitaAdesaoPendente.toLocaleString('pt-BR')} pendentes`
+                  : 'Sem boletos pendentes'}
               </p>
-            </div>
-            <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300">
-              <Award className="h-5 w-5" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-orange-900 dark:text-orange-200">
-              R$ {totalReceitaAdesaoPaga.toLocaleString('pt-BR')}
-            </div>
-            <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-1">
-              {totalReceitaAdesaoPendente > 0
-                ? `+ R$ ${totalReceitaAdesaoPendente.toLocaleString('pt-BR')} pendentes`
-                : 'Sem boletos pendentes'}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* 3. Faturamento KKJ (Confirmado vs Previsto) */}
-        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                Faturamento KKJ Confirmado
-              </span>
-              <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
-                Comissões recebidas + Adesão paga
+            </CardContent>
+          </Card>
+        ) : isGestor ? (
+          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/20 dark:bg-purple-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-800 dark:text-purple-300">
+                  Comissão de Gestão
+                </span>
+                <p className="text-[10px] text-purple-700 dark:text-purple-400">
+                  Regra configurável da equipe
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300">
+                <Award className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-purple-900 dark:text-purple-200">
+                R$ 0,00
+              </div>
+              <p className="text-[11px] text-purple-700 dark:text-purple-400 mt-1">
+                Comissão de gestão desativada (0%)
               </p>
-            </div>
-            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-              R$ {faturamentoKKJConfirmado.toLocaleString('pt-BR')}
-            </div>
-            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-              Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
-            </p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300">
+                  Comissão Pessoal Prevista
+                </span>
+                <p className="text-[10px] text-blue-700 dark:text-blue-400">
+                  Total a ser repassado
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-blue-900 dark:text-blue-200">
+                R${' '}
+                {(meuFinanceiro
+                  ? meuFinanceiro.total_repasse_previsto
+                  : totalSaleValue * 0.4
+                ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
+                Baseada nos seus contratos fechados
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* 4. Resultado Líquido KKJ */}
-        {!isSeller ? (
+        {/* CARD 3: Faturamento KKJ (Admin) / Produção Equipe (Gestor) / Comissão Liberada (Vendedora) */}
+        {isGlobalView ? (
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  Faturamento KKJ Confirmado
+                </span>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                  Comissões recebidas + Adesão paga
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
+                R$ {faturamentoKKJConfirmado.toLocaleString('pt-BR')}
+              </div>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+                Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
+              </p>
+            </CardContent>
+          </Card>
+        ) : isGestor ? (
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  Produção Confirmada (Equipe)
+                </span>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                  Contratos ativos no escopo da equipe
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
+                R$ {totalComissaoRecebida.toLocaleString('pt-BR')}
+              </div>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+                Previsto da equipe: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                  Comissão Recebida / Liberada
+                </span>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                  Valores repassados e pagos
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300">
+                <Shield className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
+                R${' '}
+                {(meuFinanceiro ? meuFinanceiro.total_repasse_pago : 0).toLocaleString('pt-BR', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </div>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+                Lançamentos já pagos em conta
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* CARD 4: Resultado Líquido KKJ (Admin) / Resultado da Equipe (Gestor) / Pendente de Repasse (Vendedora) */}
+        {isGlobalView ? (
           <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/20 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-[#1B2A4A] dark:text-blue-300">
-                  Resultado Líquido KKJ
+                  Resultado Líquido Global KKJ
                 </span>
                 <p className="text-[10px] text-[#1B2A4A]/80 dark:text-blue-400">
-                  Após impostos e comissões dos corretores
+                  Após impostos (11%) e comissões dos corretores
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-[#1B2A4A] dark:bg-primary text-white">
@@ -284,14 +471,61 @@ export default function Financial() {
                 R$ {totalResultadoKKJ.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Comissões pagas aos vendedores: R$ {totalComissaoVendedor.toLocaleString('pt-BR')}
+                Comissões repassadas: R$ {totalComissaoVendedor.toLocaleString('pt-BR')}
+              </p>
+            </CardContent>
+          </Card>
+        ) : isGestor ? (
+          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-300">
+                  Resultado Consolidado da Equipe
+                </span>
+                <p className="text-[10px] text-purple-700 dark:text-purple-400">
+                  Exclusivo para {teamName ? `Equipe ${teamName}` : 'sua equipe'}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-purple-700 text-white">
+                <Building2 className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-purple-950 dark:text-foreground">
+                R$ {totalResultadoKKJ.toLocaleString('pt-BR')}
+              </div>
+              <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
+                Restrito aos contratos sob sua supervisão
               </p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-[#E4E7EC] dark:border-[#24324D] bg-slate-50 dark:bg-muted/40 flex flex-col justify-center items-center p-6 text-center text-xs text-[#667085] dark:text-muted-foreground">
-            <Lock className="h-6 w-6 text-slate-400 mb-1" />
-            <span>Resultado global KKJ restrito ao Gestor e Administrador</span>
+          <Card className="border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
+                  Pendente de Repasse
+                </span>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                  A receber das próximas parcelas
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-amber-600 text-white">
+                <Calendar className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-amber-950 dark:text-foreground">
+                R${' '}
+                {(meuFinanceiro
+                  ? meuFinanceiro.total_repasse_pendente
+                  : totalSaleValue * 0.4
+                ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                {meuFinanceiro?.parcelas_a_vencer || 0} parcelas programadas
+              </p>
+            </CardContent>
           </Card>
         )}
       </div>
@@ -438,10 +672,19 @@ export default function Financial() {
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium text-[#101828] dark:text-foreground">
-                        {c.operator || 'Operadora'}
+                        {c.contracted_carrier_name ||
+                          c.operator ||
+                          c.expand?.carrier_id?.nome ||
+                          c.expand?.carrier_id?.nome_curto || (
+                            <span className="text-amber-600 dark:text-amber-400 italic">
+                              Operadora não informada
+                            </span>
+                          )}
                       </span>
                       <span className="text-[10px] text-[#667085] dark:text-muted-foreground">
-                        {c.expand?.product_id?.name || 'Saúde PME'}
+                        {c.contracted_plan_name || c.plano || c.expand?.product_id?.name || (
+                          <span className="text-slate-400 italic">Plano a definir</span>
+                        )}
                       </span>
                     </div>
                   </TableCell>

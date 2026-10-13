@@ -690,11 +690,88 @@ export const opportunityService = {
     return mapped
   },
 
-  async deleteOpportunity(id: string): Promise<boolean> {
+  async deleteOpportunity(id: string, motivo?: string): Promise<boolean> {
     if (!isSupabaseConfigured) return false
 
+    // Verificar se há contratos ou financeiro vinculado antes de excluir
+    const { data: contracts } = await supabase
+      .from('contracts')
+      .select('id, status, numero_contrato')
+      .eq('opportunity_id', id)
+
+    if (contracts && contracts.length > 0) {
+      // Se houver contrato ativo ou vinculado, verificar boletos pagos/repasse
+      const contractIds = contracts.map((c) => c.id)
+      const { data: boletos } = await supabase
+        .from('boletos_adesao')
+        .select('id, status')
+        .in('contract_id', contractIds)
+        .eq('status', 'pago')
+
+      if (boletos && boletos.length > 0) {
+        throw new Error(
+          'Exclusão bloqueada: Esta oportunidade possui contrato com boleto/receita financeira paga e confirmada. Use o cancelamento auditável em vez de excluir.',
+        )
+      }
+
+      // Se for registro sem movimentação financeira efetiva (ex: teste ou cancelado),
+      // limpa os vínculos para permitir a remoção administrativa segura
+      await supabase.from('commission_installments').delete().in('contract_id', contractIds)
+      await supabase.from('boletos_adesao').delete().in('contract_id', contractIds)
+      await supabase.from('post_sales_requests').delete().in('contract_id', contractIds)
+      await supabase.from('contracts').delete().in('id', contractIds)
+    }
+
+    // Limpa tarefas, timeline e sugestões de cotação associadas
+    await supabase.from('tasks').delete().eq('opportunity_id', id)
+    await supabase.from('opportunity_plan_suggestions').delete().eq('opportunity_id', id)
+    await supabase.from('opportunity_timeline').delete().eq('opportunity_id', id)
+
     const { error } = await supabase.from('opportunities').delete().eq('id', id)
-    return !error
+    if (error) {
+      throw new Error(error.message || 'Falha ao excluir oportunidade.')
+    }
+    return true
+  },
+
+  async cancelOpportunity(id: string, motivo: string): Promise<boolean> {
+    if (!isSupabaseConfigured) return false
+    const { data: authData } = await supabase.auth.getUser()
+    const currentUserId = authData?.user?.id || null
+
+    // Atualiza status da oportunidade para cancelada/perdida
+    const { error } = await supabase
+      .from('opportunities')
+      .update({
+        etapa_vendas: 'Perdido',
+        perda_motivo: motivo,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+
+    if (error) {
+      throw new Error(error.message || 'Falha ao cancelar oportunidade.')
+    }
+
+    // Cancela contratos vinculados com auditoria
+    await supabase
+      .from('contracts')
+      .update({
+        status: 'cancelado',
+        observacoes: `Venda cancelada administrativamente. Motivo: ${motivo}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('opportunity_id', id)
+
+    // Registra na timeline auditável
+    await this.addTimelineEvent(
+      id,
+      'STATUS_CHANGE',
+      `Oportunidade e venda canceladas administrativamente. Motivo: ${motivo}`,
+      { cancelado_por: currentUserId, motivo },
+    )
+
+    return true
   },
 
   async getTimeline(opportunityId: string): Promise<OpportunityTimeline[]> {

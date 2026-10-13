@@ -148,14 +148,23 @@ export default function Companies() {
     }
   }
 
+  const isAdmin = user?.role === 'ADMINISTRADOR'
+
   const handleDelete = async (id: string) => {
-    if (confirm('Deseja realmente excluir esta empresa?')) {
-      try {
-        await companyService.deleteCompany(id)
-        loadData()
-      } catch (err) {
-        console.error(err)
-      }
+    if (!isAdmin) {
+      alert('Ação exclusiva do Administrador. Apenas o administrador pode excluir empresas.')
+      return
+    }
+    const motivo = prompt(
+      'Confirmar exclusão administrativa da empresa? Digite o motivo da exclusão:',
+    )
+    if (!motivo || !motivo.trim()) return
+
+    try {
+      await companyService.deleteCompany(id)
+      loadData()
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao excluir empresa.')
     }
   }
 
@@ -315,14 +324,17 @@ export default function Companies() {
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(comp.id)}
-                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(comp.id)}
+                          title="Exclusão Administrativa (Admin)"
+                          className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

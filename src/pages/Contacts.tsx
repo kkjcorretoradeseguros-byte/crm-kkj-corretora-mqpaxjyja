@@ -149,14 +149,21 @@ export default function Contacts() {
     }
   }
 
+  const isAdmin = user?.role === 'ADMINISTRADOR'
+
   const handleDelete = async (id: string) => {
-    if (confirm('Deseja realmente excluir este contato?')) {
-      try {
-        await contactService.deleteContact(id)
-        loadData()
-      } catch (err) {
-        console.error(err)
-      }
+    if (!isAdmin) {
+      alert('Ação exclusiva do Administrador. Apenas o administrador pode excluir contatos.')
+      return
+    }
+    const motivo = prompt('Confirmar exclusão administrativa do contato? Digite o motivo:')
+    if (!motivo || !motivo.trim()) return
+
+    try {
+      await contactService.deleteContact(id)
+      loadData()
+    } catch (err: any) {
+      alert(err?.message || 'Erro ao excluir contato.')
     }
   }
 
@@ -311,14 +318,17 @@ export default function Contacts() {
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(contact.id)}
-                        className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(contact.id)}
+                          title="Exclusão Administrativa (Admin)"
+                          className="h-7 w-7 text-[#667085] dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
