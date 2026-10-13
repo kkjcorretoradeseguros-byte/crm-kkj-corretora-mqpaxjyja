@@ -167,3 +167,9 @@ test('Recurring month four computes only expected commission, not a payment', ()
  assert.throws(() => calculateRecurringCommission({rule,mensalidade:1000,month:3}))
  assert.throws(() => calculateRecurringCommission({rule,mensalidade:1000,month:4.5}))
 })
+
+test('Recurring calculation rejects malformed schedule and out-of-range tax', () => {
+ const rule = { cronograma_parcelas: null, has_recurring:true, recurring_percentage:2, recurring_start_month:4, aliquota_imposto_pct:15 }
+ assert.throws(() => calculateRecurringCommission({rule,mensalidade:1000,month:4}))
+ assert.throws(() => calculateRecurringCommission({rule:{...rule,cronograma_parcelas:[],aliquota_imposto_pct:101},mensalidade:1000,month:4}))
+})
