@@ -35,3 +35,29 @@ export async function previewContractCommissions(params: {
     repasse_pago_vendedor: 0,
   }
 }
+
+/**
+ * Persiste a previsão somente pela função transacional do banco.
+ * A função RPC recalcula e valida valores contra contrato e regra comercial.
+ * Requer a migração correspondente aplicada e privilégios administrativos.
+ */
+export async function persistContractCommissionForecast(params: {
+  contractId: string
+  ruleId: string
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  leadOrigin: 'kkj' | 'vendedor'
+  firstDueDate: string
+}): Promise<string> {
+  if (!params.ruleId?.trim()) throw new Error('Regra de comissão obrigatória')
+  const preview = await previewContractCommissions(params)
+  const { data, error } = await supabase.rpc('persist_contract_commission_forecast', {
+    p_contract_id: params.contractId,
+    p_rule_id: params.ruleId,
+    p_lead_origin: params.leadOrigin,
+    p_installments: preview.installments,
+  })
+  if (error) throw new Error('Falha ao registrar previsão financeira: ' + error.message)
+  if (typeof data !== 'string' || !data) throw new Error('Resposta financeira inválida')
+  return data
+}
