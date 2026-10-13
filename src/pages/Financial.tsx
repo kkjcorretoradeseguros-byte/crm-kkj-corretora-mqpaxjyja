@@ -139,7 +139,7 @@ export default function Financial() {
       'Empresa',
       'Operadora / Produto',
       'Valor Vendido (Mensalidade)',
-      'Faturamento KKJ',
+      'Comissão prevista (não conciliada)',
       'Vidas',
       'Status',
     ]
@@ -362,7 +362,7 @@ export default function Financial() {
                 ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
-                Baseada nos seus contratos fechados
+                Baseada nas parcelas financeiras registradas
               </p>
             </CardContent>
           </Card>
