@@ -89,7 +89,7 @@ begin
   if v_count < 1 or v_count > 1200 then raise exception 'Quantidade de parcelas inválida'; end if;
   if exists (select 1 from jsonb_array_elements(p_installments) x
     where jsonb_typeof(x) is distinct from 'object'
-      or (x->>'numero_parcela') is null) then
+      or jsonb_typeof(x->'numero_parcela') is distinct from 'number') then
     raise exception 'Estrutura de parcela inválida';
   end if;
   if jsonb_typeof(v_rule_schedule) is distinct from 'array' then raise exception 'Cronograma inválido'; end if;
