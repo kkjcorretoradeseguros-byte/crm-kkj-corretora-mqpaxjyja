@@ -283,6 +283,9 @@ export const contractService = {
     if (data.sale_value !== undefined && (!Number.isFinite(data.sale_value) || data.sale_value < 0)) {
       throw new Error('Valor do contrato inválido')
     }
+    if (data.lives_count !== undefined && (!Number.isInteger(data.lives_count) || data.lives_count < 1)) {
+      throw new Error('Quantidade de vidas inválida')
+    }
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
