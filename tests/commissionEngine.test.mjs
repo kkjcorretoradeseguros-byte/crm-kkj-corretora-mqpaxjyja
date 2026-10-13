@@ -123,3 +123,10 @@ test('Database rule rejects duplicate months and invalid financial percentages',
   rule.aliquota_imposto_pct = 150
   assert.throws(() => calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }))
 })
+
+test('Recurring schedule cannot overlap fixed installments', () => {
+  const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 4, pct: 50 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100, has_recurring: true, recurring_percentage: 2, recurring_start_month: 4 }
+  assert.throws(() => calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }))
+  rule.recurring_start_month = 5
+  assert.equal(calculateFromDatabaseRule({ rule, mensalidade: 1000, leadOrigin: 'kkj' }).length, 2)
+})
