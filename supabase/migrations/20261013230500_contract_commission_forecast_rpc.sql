@@ -31,6 +31,7 @@ declare
   v_contract_product uuid;
   v_rule_start date;
   v_rule_end date;
+  v_required_field text;
   v_split_rate numeric;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
@@ -80,6 +81,18 @@ begin
     raise exception 'Previsão já existente: operação não pode sobrescrever histórico financeiro';
   end if;
   for v_row in select value from jsonb_array_elements(p_installments) loop
+    if jsonb_typeof(v_row) is distinct from 'object' then
+      raise exception 'Formato de parcela inválido';
+    end if;
+    foreach v_required_field in array array[
+      'numero_parcela', 'data_vencimento', 'valor_previsto',
+      'imposto_retido', 'valor_liquido', 'repasse_previsto_vendedor',
+      'percentual_aplicado', 'valor_base_mensalidade'
+    ] loop
+      if not (v_row ? v_required_field) or v_row->>v_required_field is null then
+        raise exception 'Campo obrigatório ausente na parcela: %', v_required_field;
+      end if;
+    end loop;
     if (v_row->>'numero_parcela')::integer < 1
       or (v_row->>'valor_previsto')::numeric < 0
       or (v_row->>'imposto_retido')::numeric < 0
@@ -140,4 +153,4 @@ begin
 end;
 $$;
 revoke all on function public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) from public, anon;
-grant execute on function public.persist_contract_commission_forecast(uuid,uuid,jsonb) to authenticated;
+grant execute on function public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) to authenticated;
