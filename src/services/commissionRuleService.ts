@@ -76,6 +76,37 @@ export const DEFAULT_SELLER_SPLITS: SellerSplitSettings = {
   outros_pct: 50, // Outros
 }
 
+export async function getApplicableCommissionRule(params: {
+  carrierId: string
+  productId?: string | null
+  modality?: string | null
+  livesCount?: number | null
+}): Promise<CommissionRule> {
+  if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+  if (!params.carrierId?.trim()) throw new Error('Operadora não informada')
+  const { data, error } = await supabase
+    .from('commission_rules')
+    .select('*')
+    .eq('ativo', true)
+    .eq('carrier_id', params.carrierId)
+  if (error) throw new Error('Erro ao consultar regras: ' + error.message)
+  const today = new Date().toISOString().slice(0, 10)
+  const candidates = (data ?? []).filter(rule => {
+    if (rule.product_id && rule.product_id !== params.productId) return false
+    if (rule.modalidade && params.modality && rule.modalidade.toLowerCase() !== params.modality.toLowerCase()) return false
+    if (rule.data_inicio_vigencia && rule.data_inicio_vigencia > today) return false
+    if (rule.data_fim_vigencia && rule.data_fim_vigencia < today) return false
+    if (params.livesCount != null && (params.livesCount < (rule.min_lives ?? 0) || params.livesCount > (rule.max_lives ?? Infinity))) return false
+    return true
+  })
+  if (candidates.length !== 1) {
+    throw new Error(candidates.length === 0
+      ? 'Nenhuma regra comercial aplicável à operadora e ao produto'
+      : 'Há mais de uma regra comercial aplicável; revise as regras antes de calcular')
+  }
+  return candidates[0] as CommissionRule
+}
+
 export const commissionRuleService = {
   /**
    * Lista todas as regras de comissão do banco Supabase
