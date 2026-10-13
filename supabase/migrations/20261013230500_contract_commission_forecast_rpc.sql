@@ -90,8 +90,7 @@ begin
   if exists (select 1 from jsonb_array_elements(p_installments) x
     where jsonb_typeof(x) is distinct from 'object'
       or jsonb_typeof(x->'numero_parcela') is distinct from 'number'
-      or (x->>'numero_parcela') !~ '^[0-9]+
-    raise exception 'Estrutura de parcela inválida';
+      or (x->>'numero_parcela') !~ '^[0-9]+    raise exception 'Estrutura de parcela inválida';
   end if;
   if jsonb_typeof(v_rule_schedule) is distinct from 'array' then raise exception 'Cronograma inválido'; end if;
   v_schedule_count := jsonb_array_length(v_rule_schedule);
@@ -99,8 +98,7 @@ begin
   if exists (select 1 from jsonb_array_elements(v_rule_schedule) x
     where jsonb_typeof(x) is distinct from 'object'
       or jsonb_typeof(x->'month') is distinct from 'number'
-      or (x->>'month') !~ '^[0-9]+
-      or jsonb_typeof(x->'pct') is distinct from 'number'
+      or (x->>'month') !~ '^[0-9]+      or jsonb_typeof(x->'pct') is distinct from 'number'
       or (x->>'month')::integer < 1 or (x->>'month')::integer > 1200
       or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 100) then
     raise exception 'Cronograma da regra inválido';
@@ -228,6 +226,7 @@ grant execute on function public.persist_contract_commission_forecast(uuid,uuid,
   if exists (select 1 from jsonb_array_elements(v_rule_schedule) x
     where jsonb_typeof(x) is distinct from 'object'
       or jsonb_typeof(x->'month') is distinct from 'number'
+      or (x->>'month') !~ '^[0-9]+
       or jsonb_typeof(x->'pct') is distinct from 'number'
       or (x->>'month')::integer < 1 or (x->>'month')::integer > 1200
       or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 100) then
@@ -476,6 +475,7 @@ grant execute on function public.persist_contract_commission_forecast(uuid,uuid,
   if exists (select 1 from jsonb_array_elements(v_rule_schedule) x
     where jsonb_typeof(x) is distinct from 'object'
       or jsonb_typeof(x->'month') is distinct from 'number'
+      or (x->>'month') !~ '^[0-9]+
       or jsonb_typeof(x->'pct') is distinct from 'number'
       or (x->>'month')::integer < 1 or (x->>'month')::integer > 1200
       or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 100) then
