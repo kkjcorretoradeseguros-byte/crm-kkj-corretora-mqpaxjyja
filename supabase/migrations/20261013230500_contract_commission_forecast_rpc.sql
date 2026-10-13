@@ -114,8 +114,6 @@ begin
   if exists (select 1 from public.contract_financials where contract_id = p_contract_id) then
     raise exception 'Previsão já existente: operação não pode sobrescrever histórico financeiro';
   end if;
-  select min((x->>'data_vencimento')::date) into v_first_due
-    from jsonb_array_elements(p_installments) x;
   select (x->>'data_vencimento')::date into v_first_due
     from jsonb_array_elements(p_installments) x
     where (x->>'numero_parcela')::integer = 1;
