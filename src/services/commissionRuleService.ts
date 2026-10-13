@@ -177,6 +177,14 @@ export const commissionRuleService = {
       throw new Error('Vitalício incompatível com o cronograma')
     }
 
+    if (rule.has_recurring && months.size > 0 && (rule.recurring_start_month ?? 0) < 1) {
+      throw new Error('Início do vitalício inválido')
+    }
+    if (rule.data_inicio_vigencia && rule.data_fim_vigencia &&
+        rule.data_fim_vigencia < rule.data_inicio_vigencia) {
+      throw new Error('Vigência final anterior à inicial')
+    }
+
     const payload: Record<string, any> = {
       nome: rule.nome,
       code: rule.code || null,
