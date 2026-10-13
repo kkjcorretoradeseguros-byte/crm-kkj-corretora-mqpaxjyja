@@ -432,7 +432,7 @@ export const contractService = {
 
   async cancelContract(id: string, motivo: string): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
-    if (!motivo.trim()) throw new Error('Informe o motivo do cancelamento')
+    if (typeof motivo !== 'string' || !motivo.trim()) throw new Error('Informe o motivo do cancelamento')
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
