@@ -290,6 +290,10 @@ export const contractService = {
     const currentUserId = authData?.user?.id || null
 
     const assignedTo = data.assigned_to || currentUserId
+    if (!currentUserId) throw new Error('Sessão expirada. Faça login novamente para cadastrar o contrato')
+    if (typeof assignedTo !== 'string' || !assignedTo.trim()) {
+      throw new Error('Responsável pelo contrato obrigatório')
+    }
 
     const statusMap: Record<string, string> = {
       Ativo: 'ativo',
@@ -357,6 +361,9 @@ export const contractService = {
     }
     if (data.carrier_id !== undefined && (typeof data.carrier_id !== 'string' || !data.carrier_id.trim())) {
       throw new Error('Operadora inválida')
+    }
+    if (data.status !== undefined && !['Ativo', 'Cancelado', 'Em Implantação', 'Pendente Renovação'].includes(data.status)) {
+      throw new Error('Status de contrato inválido')
     }
 
     const payload: Record<string, unknown> = {
