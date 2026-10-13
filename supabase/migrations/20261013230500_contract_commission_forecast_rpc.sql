@@ -87,6 +87,13 @@ begin
   if jsonb_typeof(v_rule_schedule) is distinct from 'array' then raise exception 'Cronograma inválido'; end if;
   v_schedule_count := jsonb_array_length(v_rule_schedule);
   if v_count <> v_schedule_count then raise exception 'Cronograma incompleto'; end if;
+  if exists (select 1 from jsonb_array_elements(v_rule_schedule) x
+    where jsonb_typeof(x) is distinct from 'object'
+      or (x->>'month') is null or (x->>'pct') is null
+      or (x->>'month')::integer < 1 or (x->>'month')::integer > 1200
+      or (x->>'pct')::numeric < 0 or (x->>'pct')::numeric > 1000) then
+    raise exception 'Cronograma da regra inválido';
+  end if;
   select count(distinct (x->>'month')::integer) into v_schedule_distinct
     from jsonb_array_elements(v_rule_schedule) x;
   if v_schedule_distinct <> v_schedule_count then
