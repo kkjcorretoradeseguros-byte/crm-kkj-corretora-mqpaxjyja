@@ -26,6 +26,8 @@ declare
   v_premium numeric;
   v_contract_premium numeric;
   v_schedule_count integer;
+  v_rule_start date;
+  v_rule_end date;
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
@@ -34,11 +36,16 @@ begin
     where id = p_contract_id for update;
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
-  select carrier_id, aliquota_imposto_pct, cronograma_parcelas
-    into v_rule_carrier, v_rule_tax, v_rule_schedule
+  select carrier_id, aliquota_imposto_pct, cronograma_parcelas,
+    data_inicio_vigencia, data_fim_vigencia
+    into v_rule_carrier, v_rule_tax, v_rule_schedule, v_rule_start, v_rule_end
     from public.commission_rules where id = p_rule_id and ativo;
   if not found or v_rule_carrier is distinct from v_contract_carrier then
     raise exception 'Regra de comissão incompatível com contrato';
+  end if;
+  if (v_rule_start is not null and current_date < v_rule_start)
+     or (v_rule_end is not null and current_date > v_rule_end) then
+    raise exception 'Regra fora da vigência';
   end if;
   if jsonb_typeof(p_installments) is distinct from 'array' then
     raise exception 'Parcelas inválidas';
