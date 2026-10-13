@@ -299,6 +299,7 @@ export const contractService = {
       'Em Implantação': 'em_implantacao',
       'Pendente Renovação': 'pendente_renovacao',
     }
+    if (data.status && !statusMap[data.status]) throw new Error('Status de contrato inválido')
     const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
 
     const insertPayload: Record<string, unknown> = {
