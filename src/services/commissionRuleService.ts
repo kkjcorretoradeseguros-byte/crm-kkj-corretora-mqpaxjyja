@@ -310,7 +310,7 @@ export const commissionRuleService = {
    * Salva configurações globais de repasse dos vendedores em system_settings
    */
   async updateSellerSplitSettings(settings: SellerSplitSettings): Promise<SellerSplitSettings> {
-    if (!isSupabaseConfigured) return settings
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     const { error } = await supabase.from('system_settings').upsert({
       key: 'seller_split_rules',
