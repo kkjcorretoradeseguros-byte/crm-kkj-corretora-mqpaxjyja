@@ -341,7 +341,7 @@ export const contractService = {
         await supabase.from('opportunity_timeline').insert({
           opportunity_id: mapped.opportunity_id,
           action: 'STATUS_CHANGE',
-          title: `Contrato Ativado (${mapped.contract_number || 'Sem número'})`,
+          title: `Contrato cadastrado (${mapped.contract_number || 'Sem número'})`,
           description: `Valor do produto: R$ ${mapped.sale_value.toLocaleString('pt-BR')} | Comissão KKJ: a conciliar`,
           created_by: currentUserId,
         })
