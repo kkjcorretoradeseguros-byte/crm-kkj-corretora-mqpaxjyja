@@ -167,6 +167,7 @@ export function calculateFromDatabaseRule(params: {
   leadOrigin: 'kkj' | 'vendedor'
 }): CalculatedInstallment[] {
   const { rule, mensalidade, leadOrigin } = params
+  if (!rule || typeof rule !== 'object') throw new Error('Regra de comissão inválida')
   if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
   if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') throw new Error('Origem do lead inválida')
   const rates = [rule.aliquota_imposto_pct, rule.repasse_vendedor_pct, rule.repasse_vendedor_proprio_pct]
@@ -178,7 +179,7 @@ export function calculateFromDatabaseRule(params: {
   }
   const seen = new Set<number>()
   const installments = rule.cronograma_parcelas.map(({ month, pct }) => {
-    if (!Number.isInteger(month) || month < 1 || seen.has(month) || !Number.isFinite(pct) || pct < 0 || pct > 100) {
+    if (!Number.isInteger(month) || month < 1 || month > 1200 || seen.has(month) || !Number.isFinite(pct) || pct < 0 || pct > 100) {
       throw new Error('Parcela da regra inválida')
     }
     seen.add(month)
