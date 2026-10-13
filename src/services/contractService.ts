@@ -430,10 +430,22 @@ export const contractService = {
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
-    const updated = await this.updateContract(id, {
-      status: 'Cancelado',
-      notes: `Cancelamento Administrativo. Motivo: ${motivo}`,
-    })
+    const { data: cancelledRow, error: cancellationError } = await supabase
+      .from('contracts')
+      .update({
+        status: 'cancelado',
+        motivo_cancelamento: motivo.trim(),
+        data_cancelamento: new Date().toISOString().slice(0, 10),
+      })
+      .eq('id', id)
+      .select('id')
+      .single()
+
+    if (cancellationError || !cancelledRow) {
+      throw new Error(cancellationError?.message || 'Não foi possível cancelar o contrato')
+    }
+    const updated = await this.getContractById(id)
+    if (!updated) throw new Error('Contrato cancelado, mas não foi possível recarregar os dados')
 
     if (updated.opportunity_id) {
       try {
