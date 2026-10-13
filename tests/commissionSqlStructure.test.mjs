@@ -22,3 +22,12 @@ test('SQL validates financial input boundaries', () => {
   assert.ok(sql.includes("(v_row->>'percentual_aplicado')::numeric > 100"))
   assert.ok(sql.includes("(v_row->>'valor_base_mensalidade')::numeric <= 0"))
 })
+
+test('SQL recalculates financial values from the persisted contract and rule', () => {
+  assert.ok(sql.includes('v_premium is distinct from v_contract_premium'))
+  assert.ok(sql.includes('round(v_premium * v_pct / 100, 2)'))
+  assert.ok(sql.includes('round((v_row->>\'valor_previsto\')::numeric * v_rule_tax / 100, 2)'))
+  assert.ok(sql.includes('repasse_previsto_vendedor'))
+  assert.ok(sql.includes('v_rule_carrier is distinct from v_contract_carrier'))
+  assert.ok(sql.includes('v_count <> v_schedule_count'))
+})
