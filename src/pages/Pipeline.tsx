@@ -434,7 +434,7 @@ export default function Pipeline() {
         opportunity_id: vendaGanhaTargetOpp.id,
       })
 
-      let activeContract = existingContracts[0]
+      let activeContract = existingContracts.items[0]
       const contractNum = activeContract
         ? activeContract.contract_number
         : `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
