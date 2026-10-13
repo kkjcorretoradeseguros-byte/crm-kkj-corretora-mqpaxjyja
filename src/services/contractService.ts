@@ -239,7 +239,7 @@ export const contractService = {
   },
 
   async getAllContracts(): Promise<Contract[]> {
-    if (!isSupabaseConfigured) return []
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     try {
       const { data, error } = await supabase
