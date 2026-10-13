@@ -529,16 +529,23 @@ export default function Pipeline() {
       )
 
       // 6. IDEMPOTÊNCIA: Criar ou verificar fluxo de Pós-Venda
-      const existingPosVenda = opportunities.find(
-        (o) =>
-          o.pipeline_type === 'POS_VENDA' &&
-          (o.company_id === companyId || o.title.includes(data.companyName)),
+      // Consultar o funil de pós-venda, não a lista atualmente carregada do funil de vendas.
+      // O vínculo pela oportunidade de origem evita confundir contratos da mesma empresa.
+      const posVendaOpportunities = await opportunityService.getAllOpportunities('POS_VENDA')
+      const existingPosVenda = posVendaOpportunities.find(
+        (o) => o.attribution?.source_opportunity_id === vendaGanhaTargetOpp.id,
       )
 
       if (!existingPosVenda) {
         const posVendaOpp = await opportunityService.createOpportunity({
           title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
           pipeline_type: 'POS_VENDA',
+          product_id: vendaGanhaTargetOpp.product_id,
+          attribution: {
+            ...(vendaGanhaTargetOpp.attribution || {}),
+            source_opportunity_id: vendaGanhaTargetOpp.id,
+            source_contract_id: activeContract.id,
+          },
           stage: 'Documentação',
           temperature: 'Quente',
           company_id: companyId,
