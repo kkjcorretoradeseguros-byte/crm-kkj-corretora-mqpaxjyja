@@ -225,7 +225,11 @@ export function buildFinancialInstallmentDrafts(params: {
   if (first.getUTCFullYear() !== year || first.getUTCMonth() !== month - 1 || first.getUTCDate() !== day) {
     throw new Error('Data de vencimento inválida')
   }
+  if (year < 1900 || year > 9998) throw new Error('Ano de vencimento fora do intervalo permitido')
   const installments = calculateFromDatabaseRule({ rule, mensalidade, leadOrigin })
+  if (installments.some(item => year + Math.floor((month - 1 + item.numero_parcela - 1) / 12) > 9999)) {
+    throw new Error('Cronograma ultrapassa o limite de datas')
+  }
   return installments.map(item => {
     const target = new Date(Date.UTC(year, month - 1 + item.numero_parcela - 1, 1))
     const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
