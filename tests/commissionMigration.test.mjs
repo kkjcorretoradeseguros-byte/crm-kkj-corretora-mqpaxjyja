@@ -26,3 +26,10 @@ test('SQL validates source data and persists expected, not received, installment
   assert.match(sql, /insert into public\.contract_financials/)
   assert.match(sql, /insert into public\.commission_installments/)
 })
+
+test('SQL due dates are anchored to the first installment and month-end clamped', () => {
+  assert.match(sql, /where \(x->>'numero_parcela'\)::integer = 1/)
+  assert.match(sql, /Vencimento não corresponde ao cronograma/)
+  assert.match(sql, /least\(extract\(day from v_first_due\)/)
+  assert.doesNotMatch(sql, /select min\(\(x->>'data_vencimento'\)::date\) into v_first_due/)
+})
