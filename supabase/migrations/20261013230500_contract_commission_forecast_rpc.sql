@@ -27,7 +27,6 @@ declare
   v_premium numeric;
   v_contract_premium numeric;
   v_schedule_count integer;
-  v_rule_modality text;
   v_rule_product uuid;
   v_contract_product uuid;
   v_rule_start date;
@@ -46,10 +45,10 @@ begin
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
   select carrier_id, aliquota_imposto_pct, cronograma_parcelas,
-    data_inicio_vigencia, data_fim_vigencia, product_id, modalidade,
+    data_inicio_vigencia, data_fim_vigencia, product_id,
     case when p_lead_origin = 'vendedor' then repasse_vendedor_proprio_pct else repasse_vendedor_pct end
     into v_rule_carrier, v_rule_tax, v_rule_schedule, v_rule_start, v_rule_end,
-      v_rule_product, v_rule_modality, v_split_rate
+      v_rule_product, v_split_rate
     from public.commission_rules where id = p_rule_id and ativo;
   if not found or v_rule_carrier is distinct from v_contract_carrier then
     raise exception 'Regra de comissão incompatível com contrato';
