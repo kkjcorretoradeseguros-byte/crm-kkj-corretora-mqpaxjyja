@@ -31,3 +31,9 @@ test('SQL recalculates financial values from the persisted contract and rule', (
   assert.ok(sql.includes('v_rule_carrier is distinct from v_contract_carrier'))
   assert.ok(sql.includes('v_count <> v_schedule_count'))
 })
+
+test('SQL rejects string-encoded monetary values', () => {
+  for (const key of ['valor_previsto', 'imposto_retido', 'valor_liquido', 'repasse_previsto_vendedor', 'percentual_aplicado', 'valor_base_mensalidade']) {
+    assert.ok(sql.includes("jsonb_typeof(v_row->'" + key + "') <> 'number'"))
+  }
+})
