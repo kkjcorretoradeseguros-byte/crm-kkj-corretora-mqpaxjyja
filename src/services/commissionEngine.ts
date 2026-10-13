@@ -219,7 +219,7 @@ export function buildFinancialInstallmentDrafts(params: {
   firstDueDate: string
 }): FinancialInstallmentDraft[] {
   const { rule, mensalidade, leadOrigin, firstDueDate } = params
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(firstDueDate)) throw new Error('Data de vencimento inválida')
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(firstDueDate)) throw new Error('Data de vencimento inválida')
   const [year, month, day] = firstDueDate.split('-').map(Number)
   const first = new Date(Date.UTC(year, month - 1, day))
   if (first.getUTCFullYear() !== year || first.getUTCMonth() !== month - 1 || first.getUTCDate() !== day) {
