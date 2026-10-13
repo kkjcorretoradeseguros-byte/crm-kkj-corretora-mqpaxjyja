@@ -216,21 +216,23 @@ export default function Layout() {
         </div>
 
         {/* Visual separator for admin / settings */}
-        <div className="px-3 py-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
-          <NavLink
-            to="/configuracoes"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-[#1B2A4A] text-white font-semibold'
-                  : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
-              }`
-            }
-          >
-            <Settings className="h-4.5 w-4.5 text-[#667085] dark:text-[#94A3B8]" />
-            <span>Configurações</span>
-          </NavLink>
-        </div>
+        {user?.role?.toUpperCase() === 'ADMINISTRADOR' && (
+          <div className="px-3 py-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
+            <NavLink
+              to="/configuracoes"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-[#1B2A4A] text-white font-semibold'
+                    : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
+                }`
+              }
+            >
+              <Settings className="h-4.5 w-4.5 text-[#667085] dark:text-[#94A3B8]" />
+              <span>Configurações</span>
+            </NavLink>
+          </div>
+        )}
 
         {/* User profile footer */}
         <div className="border-t border-[#E4E7EC] dark:border-[#24324D] p-3">
@@ -318,22 +320,24 @@ export default function Layout() {
                 )
               })}
 
-              <div className="pt-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
-                <NavLink
-                  to="/configuracoes"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
-                      isActive
-                        ? 'bg-[#1B2A4A] text-white'
-                        : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
-                    }`
-                  }
-                >
-                  <Settings className="h-5 w-5" />
-                  <span>Configurações</span>
-                </NavLink>
-              </div>
+              {user?.role?.toUpperCase() === 'ADMINISTRADOR' && (
+                <div className="pt-2 border-t border-[#E4E7EC] dark:border-[#24324D]">
+                  <NavLink
+                    to="/configuracoes"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium ${
+                        isActive
+                          ? 'bg-[#1B2A4A] text-white'
+                          : 'text-[#667085] dark:text-[#94A3B8] hover:bg-[#F5F7FA] dark:hover:bg-[#152238] hover:text-[#101828] dark:hover:text-foreground'
+                      }`
+                    }
+                  >
+                    <Settings className="h-5 w-5" />
+                    <span>Configurações</span>
+                  </NavLink>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-[#E4E7EC] dark:border-[#24324D] p-4">
@@ -632,10 +636,12 @@ export default function Layout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="dark:bg-border" />
-                <DropdownMenuItem onClick={() => navigate('/configuracoes')}>
-                  <Settings className="mr-2 h-4 w-4 text-[#667085] dark:text-muted-foreground" />
-                  <span>Configurações</span>
-                </DropdownMenuItem>
+                {user?.role?.toUpperCase() === 'ADMINISTRADOR' && (
+                  <DropdownMenuItem onClick={() => navigate('/configuracoes')}>
+                    <Settings className="mr-2 h-4 w-4 text-[#667085] dark:text-muted-foreground" />
+                    <span>Configurações</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={logout} className="text-[#D92D20] focus:text-[#D92D20]">
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Sair</span>

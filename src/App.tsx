@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { ProtectedRoute } from './components/ProtectedRoute'
+import { ProtectedRoute, AdminRoute } from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
 // Pages
@@ -53,7 +53,14 @@ export function App() {
               <Route path="tarefas" element={<Tasks />} />
               <Route path="conversas" element={<Conversations />} />
               <Route path="financeiro" element={<Financial />} />
-              <Route path="configuracoes" element={<SettingsPage />} />
+              <Route
+                path="configuracoes"
+                element={
+                  <AdminRoute>
+                    <SettingsPage />
+                  </AdminRoute>
+                }
+              />
 
               {/* Old route redirects */}
               <Route path="properties" element={<Navigate to="/pipeline" replace />} />

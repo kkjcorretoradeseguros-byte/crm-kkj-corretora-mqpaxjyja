@@ -42,9 +42,10 @@ export default function Financial() {
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const isSeller = user?.role === 'VENDEDOR'
-  const isGestor = user?.role === 'GESTOR'
-  const isAdmin = user?.role === 'ADMINISTRADOR'
+  const normalizedRole = user?.role?.toUpperCase()
+  const isSeller = normalizedRole === 'VENDEDOR'
+  const isGestor = normalizedRole === 'GESTOR'
+  const isAdmin = normalizedRole === 'ADMINISTRADOR'
   const isGlobalView = isAdmin
 
   const loadData = useCallback(async () => {
@@ -586,7 +587,7 @@ export default function Financial() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {b.status === 'pendente' && !isSeller && (
+                    {b.status === 'pendente' && isAdmin && (
                       <Button
                         size="sm"
                         variant="outline"

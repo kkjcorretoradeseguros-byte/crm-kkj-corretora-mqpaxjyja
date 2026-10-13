@@ -151,7 +151,7 @@ export default function Contacts() {
     }
   }
 
-  const isAdmin = user?.role === 'ADMINISTRADOR'
+  const isAdmin = user?.role?.toUpperCase() === 'ADMINISTRADOR'
 
   const handleDelete = async (id: string) => {
     if (!isAdmin) {
