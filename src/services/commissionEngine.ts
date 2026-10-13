@@ -29,6 +29,13 @@ export const SPECIAL_PME_RULES: Record<string, SpecialRuleSchedule> = {
     totalPercentual: 400,
     semVitalicio: true,
   },
+  'bradesco saude': {
+    carrier: 'Bradesco Saúde',
+    modalidade: 'PME',
+    parcelas: [100, 100, 100, 50, 50],
+    totalPercentual: 400,
+    semVitalicio: true,
+  },
   bradesco: {
     carrier: 'Bradesco Saúde',
     modalidade: 'PME',
