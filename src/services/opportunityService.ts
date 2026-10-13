@@ -515,21 +515,29 @@ export const opportunityService = {
     if (data.attribution !== undefined) payload.attribution = data.attribution || {}
 
     if (data.stage !== undefined) {
-      // Resolver stage_id
-      const fType = (payload.funnel_type as string) || 'vendas'
-      const { data: stRow } = await supabase
+      // Resolver a etapa no funil real da oportunidade, inclusive no pós-venda.
+      let fType = payload.funnel_type as string | undefined
+      if (!fType) {
+        const { data: current, error: currentError } = await supabase
+          .from('opportunities')
+          .select('funnel_type')
+          .eq('id', id)
+          .single()
+        if (currentError) throw new Error(currentError.message)
+        fType = current?.funnel_type
+      }
+      if (!fType) throw new Error('Funil da oportunidade não identificado')
+      const { data: stRow, error: stageError } = await supabase
         .from('pipeline_stages')
         .select('id, is_fechamento')
         .eq('funnel_type', fType)
         .ilike('nome', data.stage.trim())
         .limit(1)
         .maybeSingle()
-      if (stRow?.id) {
-        payload.stage_id = stRow.id
-        if (stRow.is_fechamento) {
-          payload.status = 'ganha'
-        }
-      }
+      if (stageError) throw new Error(stageError.message)
+      if (!stRow?.id) throw new Error(`Etapa "${data.stage}" não cadastrada no funil ${fType}`)
+      payload.stage_id = stRow.id
+      if (stRow.is_fechamento) payload.status = 'ganha'
     }
 
     // Buscar valores prévios para registrar alterações relevantes se não houver logTimelineAction explícito
