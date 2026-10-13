@@ -24,11 +24,12 @@ declare
   v_month integer;
   v_pct numeric;
   v_premium numeric;
+  v_contract_premium numeric;
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
   end if;
-  select status::text, carrier_id into v_status, v_contract_carrier from public.contracts
+  select status::text, carrier_id, valor_mensal into v_status, v_contract_carrier, v_contract_premium from public.contracts
     where id = p_contract_id for update;
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
@@ -63,7 +64,8 @@ begin
       where (schedule->>'month')::integer = v_month;
     if v_pct is null then raise exception 'Parcela não prevista na regra'; end if;
     v_premium := (v_row->>'valor_base_mensalidade')::numeric;
-    if v_premium <= 0 or (v_row->>'percentual_aplicado')::numeric <> v_pct
+    if v_premium <= 0 or v_premium is distinct from v_contract_premium
+       or (v_row->>'percentual_aplicado')::numeric <> v_pct
        or (v_row->>'valor_previsto')::numeric <> round(v_premium * v_pct / 100, 2) then
       raise exception 'Valor ou percentual de comissão divergente';
     end if;
