@@ -394,3 +394,30 @@ export const commissionEngine = {
     }
   },
 }
+
+/**
+ * Calcula uma competência recorrente isolada. O lançamento só deve ocorrer
+ * após conferência da competência e autorização no banco.
+ */
+export function calculateRecurringCommission(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  month: number
+}): { month: number; percentual: number; valor_previsto: number; imposto_retido: number; valor_liquido: number } {
+  const { rule, mensalidade, month } = params
+  if (!rule?.has_recurring || !Number.isInteger(month) || month < 1 || month > 1200 ||
+      !Number.isInteger(rule.recurring_start_month) || month < rule.recurring_start_month! ||
+      !Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 ||
+      (rule.recurring_percentage ?? 0) > 100 ||
+      !Number.isFinite(mensalidade) || mensalidade <= 0 ||
+      !Number.isFinite(rule.aliquota_imposto_pct) || rule.aliquota_imposto_pct < 0 ||
+      rule.aliquota_imposto_pct > 100 ||
+      rule.cronograma_parcelas?.some(item => item.month === month)) {
+    throw new Error('Competência recorrente ou regra inválida')
+  }
+  const percentual = rule.recurring_percentage!
+  const valor_previsto = Math.round(mensalidade * percentual) / 100
+  const imposto_retido = Math.round(valor_previsto * rule.aliquota_imposto_pct) / 100
+  return { month, percentual, valor_previsto, imposto_retido,
+    valor_liquido: Math.round((valor_previsto - imposto_retido) * 100) / 100 }
+}
