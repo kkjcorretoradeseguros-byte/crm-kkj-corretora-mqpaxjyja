@@ -432,6 +432,7 @@ export const contractService = {
 
   async cancelContract(id: string, motivo: string): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+    if (!motivo.trim()) throw new Error('Informe o motivo do cancelamento')
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
@@ -442,13 +443,14 @@ export const contractService = {
 
     if (updated.opportunity_id) {
       try {
-        await supabase.from('opportunity_timeline').insert({
+        const { error: timelineError } = await supabase.from('opportunity_timeline').insert({
           opportunity_id: updated.opportunity_id,
           tipo_evento: 'STATUS_CHANGE',
           conteudo: `Contrato Cancelado (${updated.contract_number || id}). Motivo: ${motivo}`,
           dados_adicionais: { cancelado_por: currentUserId, motivo },
           user_id: currentUserId,
         })
+        if (timelineError) console.warn('Falha ao registrar cancelamento na timeline:', timelineError.message)
       } catch (err) {
         console.warn('Erro ao registrar cancelamento do contrato na timeline:', err)
       }
