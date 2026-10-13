@@ -36,15 +36,6 @@ function mapDbRoleToAppRole(dbRole?: string | null): UserRole {
   return 'VENDEDOR'
 }
 
-function getStoredProfile(): User | null {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
 function persistProfile(profile: User | null) {
   try {
     if (profile) {
