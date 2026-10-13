@@ -135,6 +135,15 @@ begin
         raise exception 'Campo obrigatório ausente na parcela: %', v_required_field;
       end if;
     end loop;
+    if jsonb_typeof(v_row->'numero_parcela') <> 'number'
+      or jsonb_typeof(v_row->'valor_previsto') <> 'number'
+      or jsonb_typeof(v_row->'imposto_retido') <> 'number'
+      or jsonb_typeof(v_row->'valor_liquido') <> 'number'
+      or jsonb_typeof(v_row->'repasse_previsto_vendedor') <> 'number'
+      or jsonb_typeof(v_row->'percentual_aplicado') <> 'number'
+      or jsonb_typeof(v_row->'valor_base_mensalidade') <> 'number' then
+      raise exception 'Valores numéricos obrigatórios';
+    end if;
     if (v_row->>'numero_parcela')::integer < 1
       or (v_row->>'percentual_aplicado')::numeric < 0
       or (v_row->>'percentual_aplicado')::numeric > 100
