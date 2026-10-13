@@ -37,6 +37,7 @@ declare
   v_max_lives integer;
   v_contract_lives integer;
   v_split_rate numeric;
+  v_schedule_distinct integer;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
@@ -80,6 +81,11 @@ begin
   if jsonb_typeof(v_rule_schedule) is distinct from 'array' then raise exception 'Cronograma inválido'; end if;
   v_schedule_count := jsonb_array_length(v_rule_schedule);
   if v_count <> v_schedule_count then raise exception 'Cronograma incompleto'; end if;
+  select count(distinct (x->>'month')::integer) into v_schedule_distinct
+    from jsonb_array_elements(v_rule_schedule) x;
+  if v_schedule_distinct <> v_schedule_count then
+    raise exception 'Cronograma da regra possui meses repetidos';
+  end if;
   select count(distinct (x->>'numero_parcela')::integer) into v_unique_count
     from jsonb_array_elements(p_installments) x;
   if v_unique_count <> v_count then raise exception 'Parcelas duplicadas'; end if;
