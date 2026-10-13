@@ -73,6 +73,12 @@ begin
      or (v_rule_end is not null and current_date > v_rule_end) then
     raise exception 'Regra fora da vigência';
   end if;
+  if v_rule_tax is null or v_rule_tax < 0 or v_rule_tax > 100 then
+    raise exception 'Alíquota da regra inválida';
+  end if;
+  if v_contract_premium is null or v_contract_premium <= 0 then
+    raise exception 'Mensalidade do contrato inválida';
+  end if;
   if jsonb_typeof(p_installments) is distinct from 'array' then
     raise exception 'Parcelas inválidas';
   end if;
