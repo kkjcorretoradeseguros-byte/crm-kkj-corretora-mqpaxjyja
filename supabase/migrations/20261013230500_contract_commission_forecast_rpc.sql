@@ -16,22 +16,33 @@ declare
   v_net numeric := 0;
   v_split numeric := 0;
   v_count integer;
+  v_unique_count integer;
+  v_rule_carrier uuid;
+  v_contract_carrier uuid;
+  v_rule_tax numeric;
+  v_rule_schedule jsonb;
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
   end if;
-  select status::text into v_status from public.contracts
+  select status::text, carrier_id into v_status, v_contract_carrier from public.contracts
     where id = p_contract_id for update;
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
-  if not exists (select 1 from public.commission_rules where id = p_rule_id and ativo) then
-    raise exception 'Regra de comissão indisponível';
+  select carrier_id, aliquota_imposto_pct, cronograma_parcelas
+    into v_rule_carrier, v_rule_tax, v_rule_schedule
+    from public.commission_rules where id = p_rule_id and ativo;
+  if not found or v_rule_carrier is distinct from v_contract_carrier then
+    raise exception 'Regra de comissão incompatível com contrato';
   end if;
   if jsonb_typeof(p_installments) is distinct from 'array' then
     raise exception 'Parcelas inválidas';
   end if;
   v_count := jsonb_array_length(p_installments);
   if v_count < 1 or v_count > 1200 then raise exception 'Quantidade de parcelas inválida'; end if;
+  select count(distinct (x->>'numero_parcela')::integer) into v_unique_count
+    from jsonb_array_elements(p_installments) x;
+  if v_unique_count <> v_count then raise exception 'Parcelas duplicadas'; end if;
   if exists (select 1 from public.contract_financials where contract_id = p_contract_id) then
     raise exception 'Previsão já existente: operação não pode sobrescrever histórico financeiro';
   end if;
@@ -42,6 +53,13 @@ begin
       or (v_row->>'valor_liquido')::numeric < 0
       or (v_row->>'repasse_previsto_vendedor')::numeric < 0 then
       raise exception 'Valores de parcela inválidos';
+    end if;
+    if round((v_row->>'valor_previsto')::numeric - (v_row->>'imposto_retido')::numeric, 2)
+       <> (v_row->>'valor_liquido')::numeric then
+      raise exception 'Imposto ou valor líquido inconsistente';
+    end if;
+    if (v_row->>'imposto_retido')::numeric <> round((v_row->>'valor_previsto')::numeric * v_rule_tax / 100, 2) then
+      raise exception 'Alíquota de imposto divergente';
     end if;
     v_total := v_total + (v_row->>'valor_previsto')::numeric;
     v_tax := v_tax + (v_row->>'imposto_retido')::numeric;
