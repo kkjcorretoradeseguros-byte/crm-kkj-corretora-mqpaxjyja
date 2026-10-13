@@ -445,7 +445,6 @@ export const contractService = {
       throw new Error(cancellationError?.message || 'Não foi possível cancelar o contrato')
     }
     const updated = await this.getContractById(id)
-    if (!updated) throw new Error('Contrato cancelado, mas não foi possível recarregar os dados')
 
     if (updated.opportunity_id) {
       try {
