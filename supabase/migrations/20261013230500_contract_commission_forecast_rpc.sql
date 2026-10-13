@@ -41,10 +41,13 @@ declare
   v_due_date date;
   v_first_due date;
   v_expected_due date;
+  v_authorized_origin text;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
   end if;
+  -- The origin is an administrator attestation, preserved with the immutable forecast snapshot.
+  v_authorized_origin := p_lead_origin;
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
   end if;
@@ -198,7 +201,7 @@ begin
     comissao_liquida, repasse_vendedor, comissao_snapshot
   ) values (
     p_contract_id, p_rule_id, v_total, v_tax, v_net, v_split,
-    jsonb_build_object('rule_id',p_rule_id,'installments',p_installments)
+    jsonb_build_object('rule_id',p_rule_id,'lead_origin_attested',v_authorized_origin,'attested_by',auth.uid(),'attested_at',now(),'installments',p_installments)
   ) returning id into v_financial_id;
   insert into public.commission_installments (
     contract_id, contract_financial_id, numero_parcela, total_parcelas,
