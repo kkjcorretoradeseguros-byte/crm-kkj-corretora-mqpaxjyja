@@ -188,7 +188,7 @@ begin
     end if;
     if v_split_rate is null or v_split_rate < 0 or v_split_rate > 100
        or (v_row->>'repasse_previsto_vendedor')::numeric <>
-          case when v_month = 1 then round((v_row->>'valor_liquido')::numeric * v_split_rate / 100, 2) else 0 end then
+          (case when v_month = 1 then round((v_row->>'valor_liquido')::numeric * v_split_rate / 100, 2) else 0 end) then
       raise exception 'Repasse ao vendedor divergente';
     end if;
     v_total := v_total + (v_row->>'valor_previsto')::numeric;
