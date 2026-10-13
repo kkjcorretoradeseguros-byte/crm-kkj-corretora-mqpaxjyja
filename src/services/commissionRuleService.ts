@@ -293,9 +293,8 @@ export const commissionRuleService = {
         .eq('key', 'seller_split_rules')
         .maybeSingle()
 
-      if (error || !data || !data.value) {
-        return DEFAULT_SELLER_SPLITS
-      }
+      if (error) throw new Error(error.message)
+      if (!data || !data.value) return DEFAULT_SELLER_SPLITS
 
       return {
         ...DEFAULT_SELLER_SPLITS,
