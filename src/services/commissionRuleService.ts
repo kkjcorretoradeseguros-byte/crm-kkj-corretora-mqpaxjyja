@@ -157,6 +157,16 @@ export const commissionRuleService = {
   async saveRule(rule: Partial<CommissionRule>): Promise<CommissionRule> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
+    if (rule.id) {
+      const { data: existing, error: lookupError } = await supabase
+        .from('commission_rules')
+        .select('*')
+        .eq('id', rule.id)
+        .single()
+      if (lookupError || !existing) throw new Error(lookupError?.message || 'Regra não encontrada')
+      rule = { ...existing, ...rule }
+    }
+
     if (!rule.carrier_id) throw new Error('Operadora obrigatória para a regra')
     if (rule.data_inicio_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_inicio_vigencia)) throw new Error('Data inicial inválida')
     if (rule.data_fim_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_fim_vigencia)) throw new Error('Data final inválida')
