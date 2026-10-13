@@ -365,6 +365,9 @@ export const contractService = {
     if (data.status !== undefined && !['Ativo', 'Cancelado', 'Em Implantação', 'Pendente Renovação'].includes(data.status)) {
       throw new Error('Status de contrato inválido')
     }
+    if (data.assigned_to !== undefined && (typeof data.assigned_to !== 'string' || !data.assigned_to.trim())) {
+      throw new Error('Responsável pelo contrato inválido')
+    }
 
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
