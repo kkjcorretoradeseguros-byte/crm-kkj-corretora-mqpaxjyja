@@ -175,6 +175,8 @@ export const commissionEngine = {
     if (!Number.isFinite(impostoAliquota) || impostoAliquota < 0 || impostoAliquota > 100) throw new Error('Alíquota inválida')
     const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
 
+    if (typeof carrierName !== 'string' || !carrierName.trim()) throw new Error('Operadora obrigatória')
+    if (typeof modalidade !== 'string' || !modalidade.trim()) throw new Error('Modalidade obrigatória')
     const normCarrier = carrierName.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const normMod = modalidade.trim().toLocaleUpperCase('pt-BR')
 
