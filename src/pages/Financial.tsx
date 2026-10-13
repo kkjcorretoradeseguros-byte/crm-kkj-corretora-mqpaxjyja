@@ -128,10 +128,6 @@ export default function Financial() {
   const totalComissaoPrevista = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
   // Contrato ativo não comprova recebimento de comissão. Valores recebidos e margem
   // exigem conciliação com lançamentos financeiros confirmados no banco.
-  const totalComissaoRecebida: number | null = null
-  const faturamentoKKJConfirmado: number | null = null
-  const totalComissaoVendedor: number | null = null
-  const totalResultadoKKJ: number | null = null
 
   const exportCSV = () => {
     const headers = [
@@ -386,7 +382,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                {faturamentoKKJConfirmado === null ? 'A conciliar' : 'R$ ' + faturamentoKKJConfirmado.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -410,7 +406,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                {totalComissaoRecebida === null ? 'A conciliar' : 'R$ ' + totalComissaoRecebida.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto da equipe: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -465,10 +461,10 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-[#1B2A4A] dark:text-foreground">
-                {totalResultadoKKJ === null ? 'A conciliar' : 'R$ ' + totalResultadoKKJ.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Comissões repassadas: {totalComissaoVendedor === null ? 'A conciliar' : 'R$ ' + totalComissaoVendedor.toLocaleString('pt-BR')}
+                Comissões repassadas: A conciliar
               </p>
             </CardContent>
           </Card>
@@ -489,7 +485,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-purple-950 dark:text-foreground">
-                {totalResultadoKKJ === null ? 'A conciliar' : 'R$ ' + totalResultadoKKJ.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
                 Restrito aos contratos sob sua supervisão
