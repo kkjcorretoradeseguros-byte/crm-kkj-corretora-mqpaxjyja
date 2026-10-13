@@ -37,3 +37,11 @@ test('SQL rejects string-encoded monetary values', () => {
     assert.ok(sql.includes("jsonb_typeof(v_row->'" + key + "') <> 'number'"))
   }
 })
+
+test('forecast RPC remains invoker scoped and admin gated', () => {
+  assert.ok(sql.includes('language plpgsql security invoker'))
+  assert.ok(sql.includes('auth.uid() is null or not public.is_admin()'))
+  assert.ok(sql.includes('for update'))
+  assert.ok(sql.includes('from public.contract_financials where contract_id = p_contract_id'))
+  assert.ok(sql.includes('revoke all on function public.persist_contract_commission_forecast'))
+})
