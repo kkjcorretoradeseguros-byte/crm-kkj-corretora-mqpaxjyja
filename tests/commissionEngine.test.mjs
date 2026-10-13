@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../src/services/commissionEngine.ts', impor
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText
-const { commissionEngine, calculateFromDatabaseRule, buildFinancialInstallmentDrafts } = await import('data:text/javascript,' + encodeURIComponent(compiled))
+const { commissionEngine, calculateFromDatabaseRule, buildFinancialInstallmentDrafts, calculateRecurringCommission } = await import('data:text/javascript,' + encodeURIComponent(compiled))
 
 test('Bradesco PME: 400% over five installments and 15% tax on seller payout', () => {
   const result = commissionEngine.calculate({ carrierName: 'Bradesco Saúde', mensalidade: 1000 })
@@ -159,4 +159,11 @@ test('Database rules reject missing rule and excessive month', () => {
 test('Recurring rule cannot silently generate only initial financial drafts', () => {
   const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }, { month: 2, pct: 100 }, { month: 3, pct: 100 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100, has_recurring: true, recurring_percentage: 2, recurring_start_month: 4 }
   assert.throws(() => buildFinancialInstallmentDrafts({ rule, mensalidade: 1000, leadOrigin: 'kkj', firstDueDate: '2026-11-01' }), /recorrente/)
+})
+
+test('Recurring month four computes only expected commission, not a payment', () => {
+ const rule = { cronograma_parcelas: [{month:1,pct:100},{month:2,pct:100},{month:3,pct:100}], has_recurring:true, recurring_percentage:2, recurring_start_month:4, aliquota_imposto_pct:15 }
+ assert.deepEqual(calculateRecurringCommission({rule,mensalidade:1000,month:4}), {month:4,percentual:2,valor_previsto:20,imposto_retido:3,valor_liquido:17})
+ assert.throws(() => calculateRecurringCommission({rule,mensalidade:1000,month:3}))
+ assert.throws(() => calculateRecurringCommission({rule,mensalidade:1000,month:4.5}))
 })
