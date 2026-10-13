@@ -38,6 +38,7 @@ declare
   v_contract_lives integer;
   v_split_rate numeric;
   v_schedule_distinct integer;
+  v_due_date date;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
@@ -130,6 +131,8 @@ begin
       or (v_row->>'repasse_previsto_vendedor')::numeric < 0 then
       raise exception 'Valores de parcela inválidos';
     end if;
+    v_due_date := (v_row->>'data_vencimento')::date;
+    if v_due_date is null then raise exception 'Vencimento obrigatório'; end if;
     v_month := (v_row->>'numero_parcela')::integer;
     select (schedule->>'pct')::numeric into v_pct
       from jsonb_array_elements(v_rule_schedule) schedule
