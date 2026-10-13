@@ -89,3 +89,8 @@ test('Different PME lead origins change only first installment seller payout', (
   assert.equal(own.parcelas[0].repasse_vendedor, 850)
   assert.deepEqual(kkj.parcelas.slice(1), own.parcelas.slice(1))
 })
+
+
+test('Reject unsupported lead origin instead of silently paying the KKJ rate', () => {
+  assert.throws(() => commissionEngine.calculate({ carrierName: 'Amil', mensalidade: 1000, leadOrigin: 'unknown' }))
+})
