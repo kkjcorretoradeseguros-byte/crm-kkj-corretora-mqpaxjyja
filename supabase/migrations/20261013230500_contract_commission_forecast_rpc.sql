@@ -21,6 +21,9 @@ declare
   v_contract_carrier uuid;
   v_rule_tax numeric;
   v_rule_schedule jsonb;
+  v_month integer;
+  v_pct numeric;
+  v_premium numeric;
 begin
   if auth.uid() is null or not public.is_admin() then
     raise exception 'Acesso administrativo necessário';
@@ -53,6 +56,16 @@ begin
       or (v_row->>'valor_liquido')::numeric < 0
       or (v_row->>'repasse_previsto_vendedor')::numeric < 0 then
       raise exception 'Valores de parcela inválidos';
+    end if;
+    v_month := (v_row->>'numero_parcela')::integer;
+    select (schedule->>'pct')::numeric into v_pct
+      from jsonb_array_elements(v_rule_schedule) schedule
+      where (schedule->>'month')::integer = v_month;
+    if v_pct is null then raise exception 'Parcela não prevista na regra'; end if;
+    v_premium := (v_row->>'valor_base_mensalidade')::numeric;
+    if v_premium <= 0 or (v_row->>'percentual_aplicado')::numeric <> v_pct
+       or (v_row->>'valor_previsto')::numeric <> round(v_premium * v_pct / 100, 2) then
+      raise exception 'Valor ou percentual de comissão divergente';
     end if;
     if round((v_row->>'valor_previsto')::numeric - (v_row->>'imposto_retido')::numeric, 2)
        <> (v_row->>'valor_liquido')::numeric then
