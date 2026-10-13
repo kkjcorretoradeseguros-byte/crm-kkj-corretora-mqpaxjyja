@@ -277,7 +277,9 @@ export const contractService = {
   async createContract(data: Partial<Contract>): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    if (!data.carrier_id) throw new Error('Selecione uma operadora para cadastrar o contrato')
+    if (!data.carrier_id || typeof data.carrier_id !== 'string' || !data.carrier_id.trim()) {
+      throw new Error('Selecione uma operadora para cadastrar o contrato')
+    }
     if (data.sale_value !== undefined && (!Number.isFinite(data.sale_value) || data.sale_value < 0)) {
       throw new Error('Valor do contrato inválido')
     }
