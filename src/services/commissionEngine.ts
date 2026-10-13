@@ -182,7 +182,7 @@ export function calculateFromDatabaseRule(params: {
       throw new Error('Parcela da regra inválida')
     }
     seen.add(month)
-    const valor = Math.round(mensalidade * pct) / 100
+    const valor = Math.round((mensalidade * pct / 100) * 100) / 100
     const sellerRate = leadOrigin === 'vendedor' ? rule.repasse_vendedor_proprio_pct : rule.repasse_vendedor_pct
     const repasse = month === 1 ? Math.round(valor * (1 - rule.aliquota_imposto_pct / 100) * sellerRate) / 100 : 0
     return { numero_parcela: month, percentual: pct, valor_previsto: valor, repasse_vendedor: repasse, is_vitalicio: false }
