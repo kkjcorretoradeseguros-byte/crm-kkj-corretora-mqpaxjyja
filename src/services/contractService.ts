@@ -347,13 +347,14 @@ export const contractService = {
 
     if (mapped.opportunity_id) {
       try {
-        await supabase.from('opportunity_timeline').insert({
+        const { error: timelineError } = await supabase.from('opportunity_timeline').insert({
           opportunity_id: mapped.opportunity_id,
-          action: 'STATUS_CHANGE',
-          title: `Contrato cadastrado (${mapped.contract_number || 'Sem número'})`,
-          description: `Valor do produto: R$ ${mapped.sale_value.toLocaleString('pt-BR')} | Comissão KKJ: a conciliar`,
-          created_by: currentUserId,
+          tipo_evento: 'STATUS_CHANGE',
+          conteudo: `Contrato cadastrado (${mapped.contract_number || 'Sem número'}). Valor do produto: R$ ${mapped.sale_value.toLocaleString('pt-BR')} | Comissão KKJ: a conciliar`,
+          dados_adicionais: { contract_id: mapped.id },
+          user_id: currentUserId,
         })
+        if (timelineError) console.warn('Falha ao registrar cadastro na timeline:', timelineError.message)
       } catch (tlErr) {
         console.warn('Erro ao registrar histórico do contrato na timeline:', tlErr)
       }
@@ -364,6 +365,15 @@ export const contractService = {
 
   async updateContract(id: string, data: Partial<Contract>): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+    if (data.sale_value !== undefined && (!Number.isFinite(data.sale_value) || data.sale_value < 0)) {
+      throw new Error('Valor do contrato inválido')
+    }
+    if (data.lives_count !== undefined && (!Number.isInteger(data.lives_count) || data.lives_count < 1)) {
+      throw new Error('Quantidade de vidas inválida')
+    }
+    if (data.carrier_id !== undefined && (typeof data.carrier_id !== 'string' || !data.carrier_id.trim())) {
+      throw new Error('Operadora inválida')
+    }
 
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
