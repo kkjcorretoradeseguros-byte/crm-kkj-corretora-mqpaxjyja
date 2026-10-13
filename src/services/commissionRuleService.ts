@@ -168,8 +168,8 @@ export const commissionRuleService = {
     }
 
     if (!rule.carrier_id) throw new Error('Operadora obrigatória para a regra')
-    if (rule.data_inicio_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_inicio_vigencia)) throw new Error('Data inicial inválida')
-    if (rule.data_fim_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_fim_vigencia)) throw new Error('Data final inválida')
+    if (rule.data_inicio_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_inicio_vigencia)) throw new Error('Data inicial inválida')
+    if (rule.data_fim_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_fim_vigencia)) throw new Error('Data final inválida')
     if (!rule.nome?.trim()) throw new Error('Nome da regra obrigatório')
     if (!Array.isArray(rule.cronograma_parcelas) || rule.cronograma_parcelas.length === 0) {
       throw new Error('Informe ao menos uma parcela da comissão')
