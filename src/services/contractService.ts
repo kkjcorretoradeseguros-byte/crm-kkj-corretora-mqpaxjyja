@@ -430,6 +430,7 @@ export const contractService = {
     if (typeof motivo !== 'string' || !motivo.trim()) throw new Error('Informe o motivo do cancelamento')
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
+    if (!currentUserId) throw new Error('Sessão expirada. Faça login novamente para cancelar o contrato')
 
     const { data: cancelledRow, error: cancellationError } = await supabase
       .from('contracts')
