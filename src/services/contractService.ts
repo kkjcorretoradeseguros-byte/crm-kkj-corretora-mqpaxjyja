@@ -121,12 +121,6 @@ function mapContractRow(r: ContractDbRow): Contract {
     status: uiStatus,
     start_date: r.data_inicio_vigencia || new Date().toISOString().slice(0, 10),
     renewal_date: r.data_renovacao || undefined,
-    data_vencimento_primeiro_pagamento: (r as any).data_vencimento_primeiro_pagamento || undefined,
-    data_confirmacao_pagamento: (r as any).data_confirmacao_pagamento || undefined,
-    usuario_confirmou_pagamento_id: (r as any).usuario_confirmou_pagamento_id || undefined,
-    usuario_implantacao_id: (r as any).usuario_implantacao_id || undefined,
-    primeira_competencia: (r as any).primeira_competencia || undefined,
-    first_installment_reference: (r as any).primeira_competencia || undefined,
     sale_value: val,
     commission_value: undefined,
     lives_count: r.qtd_vidas || undefined,
@@ -214,7 +208,13 @@ export const contractService = {
         query = query.eq('opportunity_id', options.opportunity_id)
       }
       if (options.status) {
-        query = query.eq('status', options.status)
+        const statusToDb: Record<ContractStatus, string> = {
+          'Ativo': 'ativo',
+          'Cancelado': 'cancelado',
+          'Em Implantação': 'em_implantacao',
+          'Pendente Renovação': 'pendente_renovacao',
+        }
+        query = query.eq('status', statusToDb[options.status])
       }
       if (options.search) {
         const s = options.search.trim()
