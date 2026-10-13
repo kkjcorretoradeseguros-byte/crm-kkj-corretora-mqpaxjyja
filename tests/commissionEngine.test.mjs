@@ -144,3 +144,8 @@ test('Financial installment drafts reject impossible calendar dates', () => {
   const rule = { cronograma_parcelas: [{ month: 1, pct: 100 }], aliquota_imposto_pct: 15, repasse_vendedor_pct: 50, repasse_vendedor_proprio_pct: 100 }
   assert.throws(() => buildFinancialInstallmentDrafts({ rule, mensalidade: 1000, leadOrigin: 'kkj', firstDueDate: '2026-02-30' }))
 })
+
+test('Financial drafts reject calendar overflow', () => {
+ const rule = { cronograma_parcelas: [{month: 1,pct:100},{month:14,pct:50}], aliquota_imposto_pct:15, repasse_vendedor_pct:50, repasse_vendedor_proprio_pct:100 }
+ assert.throws(() => buildFinancialInstallmentDrafts({rule,mensalidade:1000,leadOrigin:'kkj',firstDueDate:'9999-12-31'}))
+})
