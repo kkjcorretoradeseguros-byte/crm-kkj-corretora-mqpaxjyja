@@ -174,7 +174,11 @@ export async function ensureSupabaseConfigured(): Promise<boolean> {
     return isSupabaseConfigured
   })()
 
-  return initPromise
+  try {
+    return await initPromise
+  } finally {
+    initPromise = null
+  }
 }
 
 // Inicia a verificação/busca em segundo plano imediatamente na importação no navegador
