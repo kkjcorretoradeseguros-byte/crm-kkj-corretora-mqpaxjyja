@@ -68,3 +68,10 @@ test('Carrier aliases preserve each negotiated PME schedule', () => {
     assert.deepEqual(result.parcelas.map(p => p.percentual), percentages, carrierName)
   }
 })
+
+test('Reject empty carrier and modality', () => {
+  for (const carrierName of ['', '   ']) {
+    assert.throws(() => commissionEngine.calculate({ carrierName, mensalidade: 1000 }))
+  }
+  assert.throws(() => commissionEngine.calculate({ carrierName: 'Amil', modalidade: ' ', mensalidade: 1000 }))
+})
