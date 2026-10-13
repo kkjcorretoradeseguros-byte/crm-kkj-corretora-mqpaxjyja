@@ -151,6 +151,53 @@ export interface CommissionCalculationResult {
   isSpecialRule: boolean
 }
 
+export interface DatabaseCommissionRule {
+  cronograma_parcelas: Array<{ month: number; pct: number }>
+  aliquota_imposto_pct: number
+  repasse_vendedor_pct: number
+  repasse_vendedor_proprio_pct: number
+  has_recurring?: boolean
+  recurring_percentage?: number
+  recurring_start_month?: number
+}
+
+export function calculateFromDatabaseRule(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  leadOrigin: 'kkj' | 'vendedor'
+}): CalculatedInstallment[] {
+  const { rule, mensalidade, leadOrigin } = params
+  if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+  if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') throw new Error('Origem do lead inválida')
+  const rates = [rule.aliquota_imposto_pct, rule.repasse_vendedor_pct, rule.repasse_vendedor_proprio_pct]
+  if (rates.some(rate => !Number.isFinite(rate) || rate < 0 || rate > 100)) {
+    throw new Error('Percentuais da regra inválidos')
+  }
+  if (!Array.isArray(rule.cronograma_parcelas) || rule.cronograma_parcelas.length === 0) {
+    throw new Error('Cronograma de comissões ausente')
+  }
+  const seen = new Set<number>()
+  const installments = rule.cronograma_parcelas.map(({ month, pct }) => {
+    if (!Number.isInteger(month) || month < 1 || seen.has(month) || !Number.isFinite(pct) || pct < 0 || pct > 100) {
+      throw new Error('Parcela da regra inválida')
+    }
+    seen.add(month)
+    const valor = Math.round(mensalidade * pct) / 100
+    const sellerRate = leadOrigin === 'vendedor' ? rule.repasse_vendedor_proprio_pct : rule.repasse_vendedor_pct
+    const repasse = month === 1 ? Math.round(valor * (1 - rule.aliquota_imposto_pct / 100) * sellerRate) / 100 : 0
+    return { numero_parcela: month, percentual: pct, valor_previsto: valor, repasse_vendedor: repasse, is_vitalicio: false }
+  })
+  if (rule.has_recurring) {
+    if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100 ||
+        !Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 1 ||
+        seen.has(rule.recurring_start_month!)) {
+      throw new Error('Configuração de vitalício inválida')
+    }
+    // A recorrência é indefinida: não gerar parcelas fictícias sem competência confirmada.
+  }
+  return installments.sort((a, b) => a.numero_parcela - b.numero_parcela)
+}
+
 export const commissionEngine = {
   /**
    * Calcula o cronograma de comissões conforme operadora, modalidade e mensalidade
