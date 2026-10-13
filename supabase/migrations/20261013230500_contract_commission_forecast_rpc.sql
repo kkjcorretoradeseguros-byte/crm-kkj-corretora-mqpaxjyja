@@ -30,7 +30,6 @@ declare
   v_rule_start date;
   v_rule_end date;
   v_split_rate numeric;
-  v_lead_origin text;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
