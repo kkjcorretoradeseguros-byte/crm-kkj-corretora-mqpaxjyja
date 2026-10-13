@@ -225,8 +225,7 @@ export const contractService = {
 
       const { data, count, error } = await query
       if (error) {
-        console.warn('Erro ao consultar contratos do Supabase:', error.message)
-        return { items: [] as Contract[], totalItems: 0, totalPages: 0, page, perPage }
+        throw new Error('Falha ao consultar contratos: ' + error.message)
       }
 
       const totalItems = count || 0
@@ -234,8 +233,8 @@ export const contractService = {
       const items = ((data || []) as unknown as ContractDbRow[]).map(mapContractRow)
 
       return { items, totalItems, totalPages, page, perPage }
-    } catch {
-      return { items: [] as Contract[], totalItems: 0, totalPages: 0, page, perPage }
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Falha ao consultar contratos')
     }
   },
 
@@ -249,12 +248,11 @@ export const contractService = {
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.warn('Erro ao listar contratos:', error.message)
-        return []
+        throw new Error('Falha ao listar contratos: ' + error.message)
       }
       return ((data || []) as unknown as ContractDbRow[]).map(mapContractRow)
-    } catch {
-      return []
+    } catch (error) {
+      throw error instanceof Error ? error : new Error('Falha ao listar contratos')
     }
   },
 
