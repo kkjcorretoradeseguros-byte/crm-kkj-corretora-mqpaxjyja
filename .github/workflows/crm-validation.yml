@@ -22,5 +22,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit
-      - run: pnpm run lint
+      - run: pnpm exec oxlint src --format json
       - run: pnpm run build
