@@ -157,6 +157,26 @@ export const commissionRuleService = {
   async saveRule(rule: Partial<CommissionRule>): Promise<CommissionRule> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
+    if (!rule.nome?.trim()) throw new Error('Nome da regra obrigatório')
+    if (!Array.isArray(rule.cronograma_parcelas) || rule.cronograma_parcelas.length === 0) {
+      throw new Error('Informe ao menos uma parcela da comissão')
+    }
+    const months = new Set<number>()
+    for (const installment of rule.cronograma_parcelas) {
+      if (!Number.isInteger(installment.month) || installment.month < 1 || installment.month > 1200 ||
+          !Number.isFinite(installment.pct) || installment.pct < 0 || installment.pct > 100 ||
+          months.has(installment.month)) throw new Error('Cronograma de comissão inválido')
+      months.add(installment.month)
+    }
+    for (const rate of [rule.aliquota_imposto_pct ?? 15, rule.repasse_vendedor_pct ?? 50, rule.repasse_vendedor_proprio_pct ?? 100]) {
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new Error('Percentual de comissão inválido')
+    }
+    if (rule.has_recurring && (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 ||
+        (rule.recurring_percentage ?? 0) > 100 || !Number.isInteger(rule.recurring_start_month) ||
+        (rule.recurring_start_month ?? 0) <= Math.max(...months))) {
+      throw new Error('Vitalício incompatível com o cronograma')
+    }
+
     const payload: Record<string, any> = {
       nome: rule.nome,
       code: rule.code || null,
