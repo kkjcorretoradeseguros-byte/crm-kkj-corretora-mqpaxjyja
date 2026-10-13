@@ -386,7 +386,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                R$ {(faturamentoKKJConfirmado === null ? 'A conciliar' : faturamentoKKJConfirmado.toLocaleString('pt-BR'))}
+                {faturamentoKKJConfirmado === null ? 'A conciliar' : 'R$ ' + faturamentoKKJConfirmado.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -410,7 +410,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                R$ {(totalComissaoRecebida === null ? 'A conciliar' : totalComissaoRecebida.toLocaleString('pt-BR'))}
+                {totalComissaoRecebida === null ? 'A conciliar' : 'R$ ' + totalComissaoRecebida.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto da equipe: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -465,10 +465,10 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-[#1B2A4A] dark:text-foreground">
-                R$ {(totalResultadoKKJ === null ? 'A conciliar' : totalResultadoKKJ.toLocaleString('pt-BR'))}
+                {totalResultadoKKJ === null ? 'A conciliar' : 'R$ ' + totalResultadoKKJ.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Comissões repassadas: R$ {(totalComissaoVendedor === null ? 'A conciliar' : totalComissaoVendedor.toLocaleString('pt-BR'))}
+                Comissões repassadas: {totalComissaoVendedor === null ? 'A conciliar' : 'R$ ' + totalComissaoVendedor.toLocaleString('pt-BR')}
               </p>
             </CardContent>
           </Card>
@@ -489,7 +489,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-purple-950 dark:text-foreground">
-                R$ {(totalResultadoKKJ === null ? 'A conciliar' : totalResultadoKKJ.toLocaleString('pt-BR'))}
+                {totalResultadoKKJ === null ? 'A conciliar' : 'R$ ' + totalResultadoKKJ.toLocaleString('pt-BR')}
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
                 Restrito aos contratos sob sua supervisão
@@ -692,7 +692,7 @@ export default function Financial() {
                     R$ {c.sale_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
-                    R$ {(c.commission_value || 0).toLocaleString('pt-BR')}
+                    {c.commission_value == null ? 'A conciliar' : 'R$ ' + c.commission_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell>
                     <Badge
