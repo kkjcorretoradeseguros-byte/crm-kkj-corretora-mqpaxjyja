@@ -39,6 +39,8 @@ declare
   v_split_rate numeric;
   v_schedule_distinct integer;
   v_due_date date;
+  v_expected_due date;
+  v_first_due date;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
@@ -111,6 +113,8 @@ begin
   if exists (select 1 from public.contract_financials where contract_id = p_contract_id) then
     raise exception 'Previsão já existente: operação não pode sobrescrever histórico financeiro';
   end if;
+  select min((x->>'data_vencimento')::date) into v_first_due
+    from jsonb_array_elements(p_installments) x;
   for v_row in select value from jsonb_array_elements(p_installments) loop
     if jsonb_typeof(v_row) is distinct from 'object' then
       raise exception 'Formato de parcela inválido';
@@ -133,6 +137,12 @@ begin
     end if;
     v_due_date := (v_row->>'data_vencimento')::date;
     if v_due_date is null then raise exception 'Vencimento obrigatório'; end if;
+    v_expected_due := (date_trunc('month', v_first_due)::date +
+      make_interval(months => (v_row->>'numero_parcela')::integer - 1))::date;
+    v_expected_due := v_expected_due +
+      least(extract(day from v_first_due)::integer,
+        extract(day from (date_trunc('month', v_expected_due) + interval '1 month - 1 day'))::integer) - 1;
+    if v_due_date <> v_expected_due then raise exception 'Vencimento fora do cronograma'; end if;
     v_month := (v_row->>'numero_parcela')::integer;
     select (schedule->>'pct')::numeric into v_pct
       from jsonb_array_elements(v_rule_schedule) schedule
