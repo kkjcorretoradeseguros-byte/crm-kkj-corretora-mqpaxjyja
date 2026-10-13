@@ -17,3 +17,8 @@ test('migration uses one monthly due date check', () => {
   assert.match(sql, /v_expected_due/)
   assert.match(sql, /v_first_due/)
 })
+
+test('SQL validates financial input boundaries', () => {
+  assert.ok(sql.includes("(v_row->>'percentual_aplicado')::numeric > 100"))
+  assert.ok(sql.includes("(v_row->>'valor_base_mensalidade')::numeric <= 0"))
+})
