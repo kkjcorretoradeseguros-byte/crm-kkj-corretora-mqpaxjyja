@@ -157,7 +157,7 @@ export const commissionRuleService = {
   async saveRule(rule: Partial<CommissionRule>): Promise<CommissionRule> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    if (rule.id && !rule.carrier_id) throw new Error('Operadora obrigatória para a regra')
+    if (!rule.carrier_id) throw new Error('Operadora obrigatória para a regra')
     if (rule.data_inicio_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_inicio_vigencia)) throw new Error('Data inicial inválida')
     if (rule.data_fim_vigencia && !/^\\d{4}-\\d{2}-\\d{2}$/.test(rule.data_fim_vigencia)) throw new Error('Data final inválida')
     if (!rule.nome?.trim()) throw new Error('Nome da regra obrigatório')
