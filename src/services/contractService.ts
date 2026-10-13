@@ -414,7 +414,7 @@ export const contractService = {
 
   async deleteContract(id: string, _motivo?: string): Promise<boolean> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
-    if (!id.trim()) throw new Error('Contrato inválido')
+    if (typeof id !== 'string' || !id.trim()) throw new Error('Contrato inválido')
 
     // Exclusão física pode apagar histórico financeiro e deixar registros órfãos.
     // Até existir uma operação transacional auditável no banco, usar cancelamento.
@@ -425,6 +425,7 @@ export const contractService = {
 
   async cancelContract(id: string, motivo: string): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+    if (typeof id !== 'string' || !id.trim()) throw new Error('Contrato inválido')
     if (typeof motivo !== 'string' || !motivo.trim()) throw new Error('Informe o motivo do cancelamento')
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
