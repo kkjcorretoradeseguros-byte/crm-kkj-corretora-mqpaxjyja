@@ -670,10 +670,7 @@ export default function Pipeline() {
     setConfirmPaymentError(null)
 
     try {
-      const contractsRes = await contractService.getContracts({
-        opportunity_id: pendingConfirmPaymentOpp.id,
-      })
-      const contract = contractsRes.items[0]
+      const contract = await contractService.getContractForOpportunity(pendingConfirmPaymentOpp.id)
 
       if (!contract) {
         throw new Error('Nenhum contrato vinculado foi localizado para esta oportunidade.')
@@ -698,10 +695,7 @@ export default function Pipeline() {
     setImplantationBlockMessage(null)
 
     try {
-      const contractsRes = await contractService.getContracts({
-        opportunity_id: pendingImplantationOpp.id,
-      })
-      const contract = contractsRes.items[0]
+      const contract = await contractService.getContractForOpportunity(pendingImplantationOpp.id)
 
       if (!contract) {
         setImplantationBlockMessage(
@@ -1507,10 +1501,7 @@ export default function Pipeline() {
                 if (!pendingPaymentDateOpp || !expectedPaymentDate) return
                 setSavingPaymentDate(true)
                 try {
-                  const found = await contractService.getContracts({
-                    opportunity_id: pendingPaymentDateOpp.id,
-                  })
-                  const contract = found.items[0]
+                  const contract = await contractService.getContractForOpportunity(pendingPaymentDateOpp.id)
                   if (contract) {
                     await contractService.updateContract(contract.id, {
                       data_vencimento_primeiro_pagamento: expectedPaymentDate,
