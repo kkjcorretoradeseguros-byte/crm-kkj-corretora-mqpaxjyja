@@ -1,13 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
   KanbanSquare,
   Plus,
-  Building2,
   AlertCircle,
-  Clock,
-  Flame,
-  CheckCircle2,
   Calendar,
+  CheckCircle2,
   Filter,
   ShieldCheck,
   RotateCcw,
@@ -31,7 +40,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { opportunityService } from '@/services/opportunityService'
 import { companyService } from '@/services/companyService'
@@ -45,6 +53,8 @@ import { tagService } from '@/services/tagService'
 import { useAuth } from '@/contexts/AuthContext'
 import { OpportunityDetailModal } from '@/components/OpportunityDetailModal'
 import { VendaGanhaModal } from '@/components/VendaGanhaModal'
+import { OpportunityCardView, type PipelineStageItem } from '@/components/OpportunityCard'
+import { KanbanColumn } from '@/components/KanbanColumn'
 import type {
   Opportunity,
   Company,
@@ -58,16 +68,6 @@ import type {
   Temperature,
   LostReason,
 } from '@/types/crm'
-
-interface PipelineStageItem {
-  id: string
-  nome: string
-  ordem: number
-  funnel_type: string
-  is_fechamento?: boolean
-  e_saida?: boolean
-  ativo?: boolean
-}
 
 const LOST_REASONS: LostReason[] = [
   'Preço',
@@ -106,9 +106,17 @@ export default function Pipeline() {
   const [selectedCarrierFilter, setSelectedCarrierFilter] = useState<string>('TODAS')
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<string>('TODOS')
 
-  // Drag-and-drop state
-  const [draggedOppId, setDraggedOppId] = useState<string | null>(null)
-  const [dragOverStage, setDragOverStage] = useState<string | null>(null)
+  // Drag-and-drop state com @dnd-kit
+  const [activeDragOpp, setActiveDragOpp] = useState<Opportunity | null>(null)
+
+  // Sensores otimizados para mouse (distância mínima de 4px para distinguir clique de arrasto) e toque (delay 200ms com tolerância de 5px)
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: {
+      distance: 4,
+    },
+  })
+  const keyboardSensor = useSensor(KeyboardSensor)
+  const sensors = useSensors(pointerSensor, keyboardSensor)
 
   // Modais
   const [isNewOppOpen, setIsNewOppOpen] = useState(false)
@@ -340,38 +348,37 @@ export default function Pipeline() {
     }
   }
 
-  // Drag and Drop (HTML5 nativo sem dependências pesadas)
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData('text/plain', id)
-    e.dataTransfer.effectAllowed = 'move'
-    setDraggedOppId(id)
-  }
-
-  const handleDragOver = (e: React.DragEvent, stageName: string) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    if (dragOverStage !== stageName) {
-      setDragOverStage(stageName)
+  // Handlers do DndContext (@dnd-kit)
+  const handleDndDragStart = (event: DragStartEvent) => {
+    const { active } = event
+    const foundOpp = opportunities.find((o) => o.id === active.id)
+    if (foundOpp) {
+      setActiveDragOpp(foundOpp)
     }
   }
 
-  const handleDragLeave = (stageName: string) => {
-    if (dragOverStage === stageName) {
-      setDragOverStage(null)
-    }
-  }
+  const handleDndDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveDragOpp(null)
 
-  const handleDrop = async (e: React.DragEvent, stageItem: PipelineStageItem) => {
-    e.preventDefault()
-    setDragOverStage(null)
-    const oppId = e.dataTransfer.getData('text/plain') || draggedOppId
-    setDraggedOppId(null)
-    if (!oppId) return
+    if (!over) return
 
+    const oppId = String(active.id)
     const opp = opportunities.find((o) => o.id === oppId)
     if (!opp) return
 
-    await executeStageTransition(opp, stageItem.nome, stageItem.id)
+    const targetStageIdOrName = String(over.id)
+    // Localizar a etapa alvo por id ou por nome
+    const targetStageItem = stages.find(
+      (s) => s.id === targetStageIdOrName || s.nome === targetStageIdOrName,
+    )
+    if (!targetStageItem) return
+
+    await executeStageTransition(opp, targetStageItem.nome, targetStageItem.id)
+  }
+
+  const handleDndDragCancel = () => {
+    setActiveDragOpp(null)
   }
 
   // Quick Move via Select do card
@@ -1001,7 +1008,7 @@ export default function Pipeline() {
         </div>
       </div>
 
-      {/* Kanban Board Dinâmico */}
+      {/* Kanban Board Dinâmico com DndContext e DragOverlay */}
       {loading ? (
         <div className="flex gap-4 overflow-x-auto pb-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -1009,302 +1016,86 @@ export default function Pipeline() {
           ))}
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-6 items-start min-h-[640px]">
-          {stages.map((stageItem, stageIdx) => {
-            const stageName = stageItem.nome
-            const stageOpps = opportunities.filter((o) => {
-              if (o.stage !== stageName) return false
-              if (selectedTagFilter !== 'TODAS') {
-                const oppTags = Array.isArray(o.tags)
-                  ? o.tags
-                  : typeof o.tags === 'string'
-                    ? [o.tags]
-                    : []
-                if (!oppTags.includes(selectedTagFilter)) return false
-              }
-              if (selectedCarrierFilter !== 'TODAS' && o.carrier_id !== selectedCarrierFilter) {
-                return false
-              }
-              if (selectedOwnerFilter !== 'TODOS' && o.assigned_to !== selectedOwnerFilter) {
-                return false
-              }
-              return true
-            })
-            const stageSaleTotal = stageOpps.reduce((sum, o) => sum + (o.sale_value || 0), 0)
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDndDragStart}
+          onDragEnd={handleDndDragEnd}
+          onDragCancel={handleDndDragCancel}
+        >
+          <div className="flex gap-4 overflow-x-auto pb-6 items-start min-h-[640px]">
+            {stages.map((stageItem, stageIdx) => {
+              const stageName = stageItem.nome
+              const stageOpps = opportunities.filter((o) => {
+                if (o.stage !== stageName) return false
+                if (selectedTagFilter !== 'TODAS') {
+                  const oppTags = Array.isArray(o.tags)
+                    ? o.tags
+                    : typeof o.tags === 'string'
+                      ? [o.tags]
+                      : []
+                  if (!oppTags.includes(selectedTagFilter)) return false
+                }
+                if (selectedCarrierFilter !== 'TODAS' && o.carrier_id !== selectedCarrierFilter) {
+                  return false
+                }
+                if (selectedOwnerFilter !== 'TODOS' && o.assigned_to !== selectedOwnerFilter) {
+                  return false
+                }
+                return true
+              })
 
-            const colors = [
-              '#3B82F6',
-              '#6366F1',
-              '#8B5CF6',
-              '#EC4899',
-              '#F59E0B',
-              '#10B981',
-              '#059669',
-              '#D97706',
-              '#EF4444',
-            ]
-            const accentColor = colors[stageIdx % colors.length]
-            const isDragOver = dragOverStage === stageName
+              return (
+                <KanbanColumn
+                  key={stageItem.id || stageName}
+                  stageItem={stageItem}
+                  stageIndex={stageIdx}
+                  opportunities={stageOpps}
+                  companies={companies}
+                  products={products}
+                  carriers={carriers}
+                  users={users}
+                  tasks={tasks}
+                  crmTags={crmTags}
+                  stages={stages}
+                  pipelineType={pipelineType}
+                  isAdmin={isAdmin}
+                  useDroppableHook={useDroppable}
+                  useDraggableHook={useDraggable}
+                  onOpenDetail={openDetail}
+                  onMoveToStage={handleQuickMove}
+                  onOpenConfirmPayment={(opp) => {
+                    setPendingConfirmPaymentOpp(opp)
+                    setConfirmPaymentDate(new Date().toISOString().slice(0, 10))
+                    setConfirmPaymentError(null)
+                    setIsConfirmPaymentModalOpen(true)
+                  }}
+                  onAddOpportunity={openCreateModal}
+                />
+              )
+            })}
+          </div>
 
-            return (
-              <div
-                key={stageItem.id || stageName}
-                onDragOver={(e) => handleDragOver(e, stageName)}
-                onDragLeave={() => handleDragLeave(stageName)}
-                onDrop={(e) => handleDrop(e, stageItem)}
-                className={`w-80 shrink-0 flex flex-col rounded-xl border transition bg-muted/30 overflow-hidden ${
-                  isDragOver ? 'ring-2 ring-primary border-primary bg-primary/5' : 'border-border'
-                }`}
-              >
-                {/* Cabeçalho da Coluna */}
-                <div className="p-3.5 bg-card border-b border-border relative">
-                  <div
-                    className="absolute top-0 left-0 right-0 h-1"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-foreground truncate">{stageName}</span>
-                    <Badge variant="secondary" className="text-[10px] font-bold">
-                      {stageOpps.length}
-                    </Badge>
-                  </div>
-                  <div className="text-[11px] font-semibold text-muted-foreground mt-1 flex items-center justify-between">
-                    <span>
-                      {stageSaleTotal > 0 ? `R$ ${stageSaleTotal.toLocaleString('pt-BR')}` : 'R$ 0'}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">mensal</span>
-                  </div>
-                </div>
-
-                {/* Corpo da Coluna / Cards */}
-                <div className="p-2.5 flex-1 space-y-2.5 min-h-[380px]">
-                  {stageOpps.map((opp) => {
-                    const company =
-                      opp.expand?.company_id || companies.find((c) => c.id === opp.company_id)
-                    const product =
-                      opp.expand?.product_id || products.find((p) => p.id === opp.product_id)
-                    const assigned =
-                      opp.expand?.assigned_to || users.find((u) => u.id === opp.assigned_to)
-
-                    const oppTask = tasks.find(
-                      (t) => t.opportunity_id === opp.id && t.status === 'Pendente',
-                    )
-                    const todayStr = new Date().toISOString().slice(0, 10)
-                    const isTaskOverdue = oppTask ? oppTask.due_date < todayStr : false
-
-                    return (
-                      <div
-                        key={opp.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, opp.id)}
-                        onClick={() => openDetail(opp)}
-                        className={`p-3 rounded-lg border border-border bg-card shadow-sm hover:shadow-md transition cursor-grab active:cursor-grabbing space-y-2 text-xs relative group text-card-foreground ${
-                          draggedOppId === opp.id ? 'opacity-40 ring-1 ring-primary' : ''
-                        }`}
-                      >
-                        {/* Título & Temperatura */}
-                        <div className="flex items-start justify-between gap-1.5">
-                          <div className="min-w-0">
-                            <h4 className="font-bold text-foreground text-xs truncate">
-                              {opp.title}
-                            </h4>
-                            <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
-                              <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-                              <span>{company?.trade_name || 'Sem empresa'}</span>
-                            </p>
-                          </div>
-
-                          {opp.temperature === 'Quente' && (
-                            <span
-                              title="Temperatura Quente"
-                              className="p-1 rounded bg-red-500/10 text-red-500 shrink-0 border border-red-500/20"
-                            >
-                              <Flame className="h-3.5 w-3.5 fill-red-500 text-red-500" />
-                            </span>
-                          )}
-                          {opp.temperature === 'Morno' && (
-                            <span
-                              title="Temperatura Morna"
-                              className="p-1 rounded bg-amber-500/10 text-amber-500 shrink-0 text-[10px] font-semibold border border-amber-500/20"
-                            >
-                              Morno
-                            </span>
-                          )}
-                          {opp.temperature === 'Frio' && (
-                            <span
-                              title="Temperatura Fria"
-                              className="p-1 rounded bg-blue-500/10 text-blue-500 shrink-0 text-[10px] font-semibold border border-blue-500/20"
-                            >
-                              Frio
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Produto & Vidas */}
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] font-normal py-0 border-border"
-                          >
-                            {product?.name || 'Seguro / Plano'}
-                          </Badge>
-                          {opp.health_data?.lives_count && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 py-0 border border-emerald-500/20"
-                            >
-                              {opp.health_data.lives_count} vidas
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* Tags */}
-                        {Array.isArray(opp.tags) && opp.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {opp.tags.map((tName) => {
-                              const tagObj = crmTags.find(
-                                (t) => t.name.toLowerCase() === tName.toLowerCase(),
-                              )
-                              return (
-                                <span
-                                  key={tName}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold border"
-                                  style={{
-                                    backgroundColor: tagObj?.bg_color || '#F1F5F9',
-                                    color: tagObj?.text_color || '#334155',
-                                    borderColor: tagObj?.color || '#CBD5E1',
-                                  }}
-                                >
-                                  {tName}
-                                </span>
-                              )
-                            })}
-                          </div>
-                        )}
-
-                        {/* Mensalidade Comercial */}
-                        <div className="pt-1 border-t border-border flex items-center justify-between text-xs">
-                          <div>
-                            <span className="text-[10px] text-muted-foreground block">
-                              Mensalidade Cotação:
-                            </span>
-                            <span className="font-extrabold text-foreground">
-                              R$ {(opp.sale_value || opp.value || 0).toLocaleString('pt-BR')}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-muted-foreground/70 block">
-                              Cotação Principal
-                            </span>
-                            <span className="text-[11px] font-medium text-foreground/80">
-                              {opp.expand?.carrier_id?.nome || 'Operadora'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Próxima Tarefa */}
-                        {oppTask && (
-                          <div
-                            className={`p-1.5 rounded flex items-center justify-between text-[10px] ${
-                              isTaskOverdue
-                                ? 'bg-red-500/10 text-red-500 border border-red-500/25 font-semibold'
-                                : 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            <span className="truncate flex items-center gap-1">
-                              <Clock className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{oppTask.title}</span>
-                            </span>
-                            <span className="shrink-0 font-mono ml-1">
-                              {isTaskOverdue ? 'Atrasada' : oppTask.due_date.slice(5)}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Ações Especiais no Pós-Venda: Botão de Confirmar 1º Pagamento exclusivo do Administrador */}
-                        {pipelineType === 'POS_VENDA' && isAdmin && (
-                          <div
-                            className="pt-1 border-t border-border"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setPendingConfirmPaymentOpp(opp)
-                                setConfirmPaymentDate(new Date().toISOString().slice(0, 10))
-                                setConfirmPaymentError(null)
-                                setIsConfirmPaymentModalOpen(true)
-                              }}
-                              className="w-full h-6 text-[10px] text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100 flex items-center justify-center gap-1 font-semibold"
-                            >
-                              <ShieldCheck className="h-3 w-3" />
-                              Confirmar 1º Pagamento (Admin)
-                            </Button>
-                          </div>
-                        )}
-
-                        {/* Rodapé: Responsável & Seletor de Etapa */}
-                        <div
-                          className="pt-1.5 border-t border-border flex items-center justify-between text-[10px]"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span className="text-muted-foreground truncate max-w-[110px]">
-                            {assigned?.name || 'Corretor'}
-                          </span>
-
-                          <select
-                            value={opp.stage}
-                            onChange={(e) => handleQuickMove(opp, e.target.value)}
-                            className="bg-transparent text-foreground font-semibold text-[10px] focus:outline-none cursor-pointer max-w-[130px] truncate"
-                          >
-                            {stages.map((st) => (
-                              <option
-                                key={st.id}
-                                value={st.nome}
-                                className="bg-popover text-popover-foreground"
-                              >
-                                {st.nome}
-                              </option>
-                            ))}
-                            {pipelineType === 'VENDAS' &&
-                              !stages.some((s) => s.nome.toLowerCase() === 'venda perdida') && (
-                                <option
-                                  value="Venda perdida"
-                                  className="bg-popover text-destructive"
-                                >
-                                  ✕ Venda perdida
-                                </option>
-                              )}
-                          </select>
-                        </div>
-                      </div>
-                    )
-                  })}
-
-                  {stageOpps.length === 0 && (
-                    <div className="h-28 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-[11px] text-muted-foreground">
-                      Arraste cards para cá
-                    </div>
-                  )}
-                </div>
-
-                {/* Rodapé da Coluna */}
-                <div className="p-2 border-t border-border bg-card">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openCreateModal(stageName)}
-                    className="w-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
-                  >
-                    <Plus className="mr-1.5 h-3.5 w-3.5" /> Adicionar Oportunidade
-                  </Button>
-                </div>
+          {/* DragOverlay renderiza o card acompanhando fielmente o cursor em tempo real */}
+          <DragOverlay dropAnimation={null}>
+            {activeDragOpp ? (
+              <div className="w-80 pointer-events-none">
+                <OpportunityCardView
+                  opp={activeDragOpp}
+                  companies={companies}
+                  products={products}
+                  carriers={carriers}
+                  users={users}
+                  tasks={tasks}
+                  crmTags={crmTags}
+                  stages={stages}
+                  pipelineType={pipelineType}
+                  isAdmin={isAdmin}
+                  isOverlay
+                />
               </div>
-            )
-          })}
-        </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* MODAL 1: CONFIRMAÇÃO DO PRIMEIRO PAGAMENTO (Exclusivo Administrador) */}
