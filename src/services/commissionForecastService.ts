@@ -114,7 +114,16 @@ export async function previewConfirmedContractCommissions(contractId: string) {
       ? 'Nenhuma regra de comissão aplicável ao contrato'
       : 'Mais de uma regra aplicável: seleção administrativa necessária')
   }
-  const rule = applicable[0]
+  const selected = applicable[0]
+  const rule: DatabaseCommissionRule = {
+    cronograma_parcelas: selected.cronograma_parcelas as DatabaseCommissionRule['cronograma_parcelas'],
+    aliquota_imposto_pct: Number(selected.aliquota_imposto_pct),
+    repasse_vendedor_pct: Number(selected.repasse_vendedor_pct),
+    repasse_vendedor_proprio_pct: Number(selected.repasse_vendedor_proprio_pct),
+    has_recurring: Boolean(selected.has_recurring),
+    recurring_percentage: selected.recurring_percentage == null ? undefined : Number(selected.recurring_percentage),
+    recurring_start_month: selected.recurring_start_month == null ? undefined : Number(selected.recurring_start_month),
+  }
   const preview = await previewContractCommissions({
     contractId,
     rule: rule as DatabaseCommissionRule,
@@ -122,7 +131,7 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     leadOrigin: 'kkj',
     firstDueDate: contract.data_pagamento,
   })
-  return { ...preview, ruleId: rule.id, ruleName: rule.nome, rule: rule as DatabaseCommissionRule, firstDueDate: contract.data_pagamento, mensalidade: Number(contract.valor_mensal) }
+  return { ...preview, ruleId: selected.id, ruleName: selected.nome, rule, firstDueDate: contract.data_pagamento, mensalidade: Number(contract.valor_mensal) }
 }
 
 /** Idempotent UI entrypoint: existing forecast is returned without recreating installments. */
