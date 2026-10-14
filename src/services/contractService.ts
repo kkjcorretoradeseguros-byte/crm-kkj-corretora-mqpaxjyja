@@ -324,7 +324,6 @@ export const contractService = {
       data_renovacao: data.renewal_date || null,
       data_previsao_vigencia: data.data_vencimento_primeiro_pagamento || null,
       data_pagamento: data.data_confirmacao_pagamento || null,
-      data_implantacao: data.usuario_implantacao_id ? new Date().toISOString().slice(0, 10) : null,
       valor_mensal: data.sale_value || 0,
       valor_venda: data.sale_value || 0,
       qtd_vidas: data.lives_count || 1,
@@ -399,6 +398,7 @@ export const contractService = {
         'Pendente Renovação': 'pendente_renovacao',
       }
       payload.status = statusMap[data.status] || data.status
+      if (data.status === 'Ativo') payload.data_implantacao = new Date().toISOString().slice(0, 10)
     }
     if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date || null
     if (data.data_vencimento_primeiro_pagamento !== undefined) payload.data_previsao_vigencia = data.data_vencimento_primeiro_pagamento || null
