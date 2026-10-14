@@ -81,5 +81,31 @@ begin
   end;
 end $$;
 reset role;
+-- A non-administrator must be denied even with direct table grants.
+create or replace function public.is_admin() returns boolean
+language sql stable as 'select false';
+do $
+begin
+  execute 'set local role authenticated';
+  begin
+    perform public.persist_contract_commission_forecast(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000002', 'kkj', '[]'::jsonb
+    );
+    raise exception 'Non-admin RPC call was incorrectly accepted';
+  exception when others then
+    if sqlerrm <> 'Acesso administrativo necessário' then raise; end if;
+  end;
+end $;
+reset role;
+do $
+begin
+  execute 'set local role authenticated';
+  if exists (select 1 from public.contract_financials)
+     or exists (select 1 from public.commission_installments) then
+    raise exception 'RLS leaked financial rows to non-admin';
+  end if;
+end $;
+reset role;
 select count(*) as financial_count from public.contract_financials;
 select count(*) as installment_count from public.commission_installments;
