@@ -132,6 +132,9 @@ export default function Pipeline() {
   const [lostReasonChoice, setLostReasonChoice] = useState<LostReason>('Preço')
   const [isVendaGanhaOpen, setIsVendaGanhaOpen] = useState(false)
   const [vendaGanhaTargetOpp, setVendaGanhaTargetOpp] = useState<Opportunity | null>(null)
+  const [pendingPaymentDateOpp, setPendingPaymentDateOpp] = useState<Opportunity | null>(null)
+  const [expectedPaymentDate, setExpectedPaymentDate] = useState('')
+  const [savingPaymentDate, setSavingPaymentDate] = useState(false)
 
   // Novo Cadastro Rápido inline dentro do formulário
   const [showQuickCompany, setShowQuickCompany] = useState(false)
@@ -241,20 +244,25 @@ export default function Pipeline() {
         return false
       }
 
-      // Validação do primeiro pagamento confirmado
+      // Se ainda não houver confirmação, solicitar a data REAL do pagamento.
       const isConfirmed = !!ct.data_confirmacao_pagamento || ct.status === 'Ativo'
       if (!isConfirmed) {
-        alert(
-          'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
+        const enteredDate = window.prompt(
+          'Informe a data REAL em que o primeiro pagamento foi recebido (AAAA-MM-DD). Não informe a data prevista.',
+          new Date().toISOString().slice(0, 10),
         )
-        return false
+        if (!enteredDate) return false
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(enteredDate) || Number.isNaN(Date.parse(enteredDate))) {
+          alert('Data inválida. Use o formato AAAA-MM-DD.')
+          return false
+        }
+        await contractService.updateContract(ct.id, { data_confirmacao_pagamento: enteredDate })
       }
 
-      // Ao implantar, persistir data e usuário da implantação
+      // Ativar o contrato somente depois de salvar a confirmação do pagamento.
       await contractService.updateContract(ct.id, {
         status: 'Ativo',
-        usuario_implantacao_id: user?.id,
-        notes: `${ct.notes || ''} [Implantado em ${new Date().toLocaleDateString('pt-BR')} por ${user?.name || 'Administração'}]`,
+        notes: (ct.notes || '') + ' [Implantado em ' + new Date().toLocaleDateString('pt-BR') + ' por ' + (user?.name || 'Administração') + ']',
       })
 
       await opportunityService.addTimelineEvent(
@@ -308,7 +316,19 @@ export default function Pipeline() {
       return
     }
 
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      setDraggedOppId(null)
+      return
+    }
+
     // Se for Implantado no Pós-Venda: VALIDAR antes de mover
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      return
+    }
     if (pipelineType === 'POS_VENDA' && targetStage === 'Implantado') {
       const canProceed = await validateImplantacaoPostSales(opp)
       if (!canProceed) {
@@ -334,6 +354,11 @@ export default function Pipeline() {
 
   // Quick move via select dropdown
   const handleQuickMove = async (opp: Opportunity, targetStage: string) => {
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      return
+    }
     if (targetStage === 'Venda perdida' || targetStage === 'Perdido') {
       setPendingLostOpp(opp)
       setIsLostModalOpen(true)
@@ -1661,6 +1686,41 @@ export default function Pipeline() {
         postSalesStages={POST_SALES_STAGES}
         lostReasons={LOST_REASONS}
       />
+
+
+      <Dialog open={!!pendingPaymentDateOpp} onOpenChange={(open) => { if (!open && !savingPaymentDate) setPendingPaymentDateOpp(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Data prevista do primeiro pagamento</DialogTitle>
+            <DialogDescription>Informe a previsão antes de avançar. Esta data não confirma recebimento financeiro.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="expected-first-payment-date">Data prevista</Label>
+            <Input id="expected-first-payment-date" type="date" value={expectedPaymentDate} onChange={(e) => setExpectedPaymentDate(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingPaymentDate} onClick={() => setPendingPaymentDateOpp(null)}>Cancelar</Button>
+            <Button disabled={savingPaymentDate || !expectedPaymentDate} onClick={async () => {
+              if (!pendingPaymentDateOpp || !expectedPaymentDate) return
+              setSavingPaymentDate(true)
+              try {
+                const found = await contractService.getContracts({ opportunity_id: pendingPaymentDateOpp.id })
+                const contract = found.items[0]
+                if (!contract) throw new Error('Nenhum contrato vinculado foi encontrado.')
+                await contractService.updateContract(contract.id, { data_vencimento_primeiro_pagamento: expectedPaymentDate })
+                await opportunityService.updateStage(pendingPaymentDateOpp.id, 'Aguardando pagamento', pendingPaymentDateOpp.stage)
+                setPendingPaymentDateOpp(null)
+                setExpectedPaymentDate('')
+                await fetchData()
+              } catch (err: any) {
+                alert('Não foi possível salvar a previsão: ' + (err?.message || 'erro inesperado'))
+              } finally {
+                setSavingPaymentDate(false)
+              }
+            }}>{savingPaymentDate ? 'Salvando...' : 'Salvar e avançar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL RIGOROSO DE VENDA GANHA */}
       <VendaGanhaModal

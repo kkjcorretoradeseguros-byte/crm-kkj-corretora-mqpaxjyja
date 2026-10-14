@@ -1,0 +1,75 @@
+name: CRM validation
+on:
+  push:
+    branches: [audit/auth-session-hardening-20261013]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm exec oxlint src --format json
+      - run: pnpm run build
+
+  postgres-migration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crm_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: crm_migration_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate migration in isolated PostgreSQL
+        run: |
+          psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
+          psql -v ON_ERROR_STOP=1 -c "SET check_function_bodies = on;" -f supabase/migrations/20261013230500_contract_commission_forecast_rpc.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'persist_contract_commission_forecast';" | grep -qx 1
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT has_function_privilege('anon', 'public.persist_contract_commission_forecast(uuid,uuid,text,jsonb)', 'EXECUTE');" | grep -qx f
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT has_function_privilege('authenticated', 'public.persist_contract_commission_forecast(uuid,uuid,text,jsonb)', 'EXECUTE');" | grep -qx t
+          psql -v ON_ERROR_STOP=1 -c "CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid'; CREATE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS 'SELECT false';"
+          psql -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public, auth TO authenticated;"
+          output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'Acesso administrativo necessário'
+          psql -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT ''00000000-0000-0000-0000-000000000003''::uuid';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'Acesso administrativo necessário'
+          # Verify the authenticated role can reach the admin-only path with a non-null identity.
+          # Missing fixture tables must fail only after the authorization gate.
+          psql -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION public.is_admin() RETURNS boolean LANGUAGE sql STABLE AS 'SELECT true';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'relation "public.contracts" does not exist'
+          if echo "$output" | grep -q 'Acesso administrativo necessário'; then exit 1; fi
+          psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql

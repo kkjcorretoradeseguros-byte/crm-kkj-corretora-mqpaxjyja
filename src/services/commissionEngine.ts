@@ -7,22 +7,29 @@ export interface SpecialRuleSchedule {
   modalidade: string
   parcelas: number[] // Ex: [100, 100, 100, 50, 50]
   vitalicioPercentual?: number // Ex: 2%
-  vitalicioAPartirDe?: number // Ex: a partir da 4ª
+  vitalicioAPartirDe?: number // Vitalício exclusivo da KKJ, a partir da 4ª competência
   totalPercentual: number
   semVitalicio: boolean
 }
 
 // 9. REGRAS ESPECIAIS SAÚDE PME CONFORME PRESCRIÇÃO DO CLIENTE:
 // - Bradesco Saúde: 100/100/100/50/50 (total 400%, sem vitalício)
-// - Amil: 100/100/100 + 2% vitalício a partir da 4ª (total 300% + recorrência)
-// - SulAmérica: idêntica à Amil (100/100/100 + 2% vitalício a partir da 4ª)
-// - Porto Seguro: idêntica à Amil (100/100/100 + 2% vitalício a partir da 4ª)
+// - Amil: 100/100/100 + 2% vitalício exclusivo da KKJ a partir da 4ª competência (total 300% + recorrência)
+// - SulAmérica: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
+// - Porto Seguro: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
 // - Alice: 100/100/100 (total 300%, sem vitalício)
 // - MedSênior: 100/50/50 (total 200%, sem vitalício)
 // - Hapvida: 100/100/100/50 (total 350%, sem vitalício)
 // - Plena Saúde PME: Opção 1 (100/50/40/20/20 = 230%)
 export const SPECIAL_PME_RULES: Record<string, SpecialRuleSchedule> = {
   'bradesco saúde': {
+    carrier: 'Bradesco Saúde',
+    modalidade: 'PME',
+    parcelas: [100, 100, 100, 50, 50],
+    totalPercentual: 400,
+    semVitalicio: true,
+  },
+  'bradesco saude': {
     carrier: 'Bradesco Saúde',
     modalidade: 'PME',
     parcelas: [100, 100, 100, 50, 50],
@@ -144,6 +151,160 @@ export interface CommissionCalculationResult {
   isSpecialRule: boolean
 }
 
+export interface DatabaseCommissionRule {
+  cronograma_parcelas: Array<{ month: number; pct: number }>
+  aliquota_imposto_pct: number
+  repasse_vendedor_pct: number
+  repasse_vendedor_proprio_pct: number
+  has_recurring?: boolean
+  recurring_percentage?: number
+  recurring_start_month?: number
+}
+
+export function calculateFromDatabaseRule(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  leadOrigin: 'kkj' | 'vendedor'
+}): CalculatedInstallment[] {
+  const { rule, mensalidade, leadOrigin } = params
+  if (!rule || typeof rule !== 'object') throw new Error('Regra de comissão inválida')
+  if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+  if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') throw new Error('Origem do lead inválida')
+  const rates = [rule.aliquota_imposto_pct, rule.repasse_vendedor_pct, rule.repasse_vendedor_proprio_pct]
+  if (rates.some(rate => !Number.isFinite(rate) || rate < 0 || rate > 100)) {
+    throw new Error('Percentuais da regra inválidos')
+  }
+  if (!Array.isArray(rule.cronograma_parcelas) || rule.cronograma_parcelas.length === 0) {
+    throw new Error('Cronograma de comissões ausente')
+  }
+  const seen = new Set<number>()
+  const installments = rule.cronograma_parcelas.map(({ month, pct }) => {
+    if (!Number.isInteger(month) || month < 1 || month > 1200 || seen.has(month) || !Number.isFinite(pct) || pct < 0 || pct > 100) {
+      throw new Error('Parcela da regra inválida')
+    }
+    seen.add(month)
+    const valor = Math.round((mensalidade * pct / 100) * 100) / 100
+    const sellerRate = leadOrigin === 'vendedor' ? rule.repasse_vendedor_proprio_pct : rule.repasse_vendedor_pct
+    const repasse = month === 1 ? Math.round(valor * (1 - rule.aliquota_imposto_pct / 100) * sellerRate) / 100 : 0
+    return { numero_parcela: month, percentual: pct, valor_previsto: valor, repasse_vendedor: repasse, is_vitalicio: false }
+  })
+  if (rule.has_recurring) {
+    if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100 ||
+        !Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 4 ||
+        [...seen].some(month => month >= rule.recurring_start_month!)) {
+      throw new Error('Configuração de vitalício inválida')
+    }
+    // A recorrência é indefinida: não gerar parcelas fictícias sem competência confirmada.
+  }
+  return installments.sort((a, b) => a.numero_parcela - b.numero_parcela)
+}
+
+export interface FinancialInstallmentDraft {
+  numero_parcela: number
+  total_parcelas: number
+  data_vencimento: string
+  tipo_parcela: 'inicial'
+  percentual_aplicado: number
+  valor_base_mensalidade: number
+  valor_previsto: number
+  repasse_previsto_vendedor: number
+  imposto_retido: number
+  valor_liquido: number
+  status: 'previsto'
+}
+
+export function buildFinancialInstallmentDrafts(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  leadOrigin: 'kkj' | 'vendedor'
+  firstDueDate: string
+}): FinancialInstallmentDraft[] {
+  const { rule, mensalidade, leadOrigin, firstDueDate } = params
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(firstDueDate)) throw new Error('Data de vencimento inválida')
+  const [year, month, day] = firstDueDate.split('-').map(Number)
+  const first = new Date(Date.UTC(year, month - 1, day))
+  if (first.getUTCFullYear() !== year || first.getUTCMonth() !== month - 1 || first.getUTCDate() !== day) {
+    throw new Error('Data de vencimento inválida')
+  }
+  if (year < 1900 || year > 9998) throw new Error('Ano de vencimento fora do intervalo permitido')
+  // Persist only initial installments; recurring competencies are booked separately.
+  const installments = calculateFromDatabaseRule({ rule, mensalidade, leadOrigin })
+  if (installments.some(item => year + Math.floor((month - 1 + item.numero_parcela - 1) / 12) > 9999)) {
+    throw new Error('Cronograma ultrapassa o limite de datas')
+  }
+  return installments.map(item => {
+    const target = new Date(Date.UTC(year, month - 1 + item.numero_parcela - 1, 1))
+    const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+    target.setUTCDate(Math.min(day, lastDay))
+    const date = target.toISOString().slice(0, 10)
+    const tax = Math.round(item.valor_previsto * rule.aliquota_imposto_pct) / 100
+    return {
+      numero_parcela: item.numero_parcela,
+      total_parcelas: installments.length,
+      data_vencimento: date,
+      tipo_parcela: 'inicial' as const,
+      percentual_aplicado: item.percentual,
+      valor_base_mensalidade: mensalidade,
+      valor_previsto: item.valor_previsto,
+      repasse_previsto_vendedor: item.repasse_vendedor,
+      imposto_retido: tax,
+      valor_liquido: Math.round((item.valor_previsto - tax) * 100) / 100,
+      status: 'previsto' as const,
+    }
+  })
+}
+
+
+
+export interface RecurringCommissionCompetence {
+  competencia: string
+  valor_base_mensalidade: number
+  percentual_aplicado: number
+  comissao_bruta_kkj: number
+  imposto_estimado: number
+  comissao_liquida_kkj: number
+  repasse_vendedor: 0
+  repasse_gestor: 0
+  tipo_parcela: 'vitalicio_kkj'
+}
+
+/** Calculates one confirmed monthly competence of the KKJ-only lifetime commission.
+ * Seller and manager payouts remain governed exclusively by the existing initial commission schedule.
+ * This helper creates a single competence at a time; it does not fabricate future receipts.
+ */
+export function calculateRecurringCommissionForCompetence(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  competencia: string
+}): RecurringCommissionCompetence {
+  const { rule, mensalidade, competencia } = params
+  if (!rule?.has_recurring) throw new Error('Regra sem comissão vitalícia')
+  if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100) {
+    throw new Error('Percentual de vitalício inválido')
+  }
+  if (!Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 4) {
+    throw new Error('O vitalício deve começar a partir da quarta competência')
+  }
+  if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+  if (!Number.isFinite(rule.aliquota_imposto_pct) || rule.aliquota_imposto_pct < 0 || rule.aliquota_imposto_pct > 100) throw new Error('Alíquota de imposto inválida')
+  if (!/^\d{4}-\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
+  const [year, month] = competencia.split('-').map(Number)
+  if (year < 1900 || year > 9998 || month < 1 || month > 12) throw new Error('Competência inválida')
+  const comissao = Math.round(mensalidade * (rule.recurring_percentage ?? 0)) / 100
+  const imposto = Math.round(comissao * rule.aliquota_imposto_pct) / 100
+  return {
+    competencia,
+    valor_base_mensalidade: mensalidade,
+    percentual_aplicado: rule.recurring_percentage!,
+    comissao_bruta_kkj: Math.round(comissao * 100) / 100,
+    imposto_estimado: Math.round(imposto * 100) / 100,
+    comissao_liquida_kkj: Math.round((comissao - imposto) * 100) / 100,
+    repasse_vendedor: 0,
+    repasse_gestor: 0,
+    tipo_parcela: 'vitalicio_kkj',
+  }
+}
+
 export const commissionEngine = {
   /**
    * Calcula o cronograma de comissões conforme operadora, modalidade e mensalidade
@@ -153,21 +314,26 @@ export const commissionEngine = {
     modalidade?: string
     mensalidade: number
     leadOrigin?: 'kkj' | 'vendedor' // Para repasse do vendedor
-    impostoAliquota?: number // Default configurável (ex: 11% = 0.11 ou 11)
+    impostoAliquota?: number // Default 15%; aceita decimal ou percentual
   }): CommissionCalculationResult {
     const {
       carrierName,
       modalidade = 'PME',
       mensalidade,
       leadOrigin = 'kkj',
-      impostoAliquota = 0.11, // Padrão 11% KKJ
+      impostoAliquota = 0.15, // Padrão 15% KKJ
     } = params
 
-    // Normaliza para decimal (se vier 11, converte para 0.11)
+    // Normaliza para decimal (por exemplo, 15 vira 0.15)
+    if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+    if (!Number.isFinite(impostoAliquota) || impostoAliquota < 0 || impostoAliquota > 100) throw new Error('Alíquota inválida')
     const taxaDecimal = impostoAliquota > 1 ? impostoAliquota / 100 : impostoAliquota
 
-    const normCarrier = carrierName.trim().toLowerCase()
-    const normMod = modalidade.trim().toUpperCase()
+    if (typeof carrierName !== 'string' || !carrierName.trim()) throw new Error('Operadora obrigatória')
+    if (typeof modalidade !== 'string' || !modalidade.trim()) throw new Error('Modalidade obrigatória')
+    if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') throw new Error('Origem do lead inválida')
+    const normCarrier = carrierName.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const normMod = modalidade.trim().toLocaleUpperCase('pt-BR')
 
     // Caso especial Adesão: Primeira mensalidade é 100% KKJ via boleto próprio!
     if (normMod === 'ADESÃO' || normMod === 'ADESAO') {
@@ -278,4 +444,32 @@ export const commissionEngine = {
       isSpecialRule: false,
     }
   },
+}
+
+/**
+ * Calcula uma competência recorrente isolada. O lançamento só deve ocorrer
+ * após conferência da competência e autorização no banco.
+ */
+export function calculateRecurringCommission(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  month: number
+}): { month: number; percentual: number; valor_previsto: number; imposto_retido: number; valor_liquido: number } {
+  const { rule, mensalidade, month } = params
+  if (!rule?.has_recurring || !Number.isInteger(month) || month < 1 || month > 1200 ||
+      !Number.isInteger(rule.recurring_start_month) || rule.recurring_start_month! < 4 || month < rule.recurring_start_month! ||
+      !Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 ||
+      (rule.recurring_percentage ?? 0) > 100 ||
+      !Number.isFinite(mensalidade) || mensalidade <= 0 ||
+      !Number.isFinite(rule.aliquota_imposto_pct) || rule.aliquota_imposto_pct < 0 ||
+      rule.aliquota_imposto_pct > 100 ||
+      !Array.isArray(rule.cronograma_parcelas) ||
+      rule.cronograma_parcelas.some(item => item.month === month)) {
+    throw new Error('Competência recorrente ou regra inválida')
+  }
+  const percentual = rule.recurring_percentage!
+  const valor_previsto = Math.round(mensalidade * percentual) / 100
+  const imposto_retido = Math.round(valor_previsto * rule.aliquota_imposto_pct) / 100
+  return { month, percentual, valor_previsto, imposto_retido,
+    valor_liquido: Math.round((valor_previsto - imposto_retido) * 100) / 100 }
 }

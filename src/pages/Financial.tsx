@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { supabase } from '@/lib/supabase/client'
 import { contractService } from '@/services/contractService'
 import { opportunityService } from '@/services/opportunityService'
 import { adesaoService } from '@/services/adesaoService'
@@ -41,6 +42,8 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [adminInstallments, setAdminInstallments] = useState<Array<{id: string; contract_id: string; numero_parcela: number; total_parcelas: number; data_vencimento: string; valor_previsto: number; valor_recebido: number | null; status: string}>>([])
+  const [installmentError, setInstallmentError] = useState<string | null>(null)
 
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
@@ -59,6 +62,15 @@ export default function Financial() {
       ])
 
       setMeuFinanceiro(financeiroRes)
+      if (isAdmin) {
+        const { data: installments, error: installmentsError } = await supabase
+          .from('commission_installments')
+          .select('id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status')
+          .order('data_vencimento', { ascending: true })
+          .limit(500)
+        setAdminInstallments(installments || [])
+        setInstallmentError(installmentsError?.message || null)
+      }
 
       // Vendedor vê APENAS os próprios contratos (RLS também restringe no banco).
       // Gestor vê somente a própria produção + produção consolidada da equipe.
@@ -104,7 +116,7 @@ export default function Financial() {
     } finally {
       setLoading(false)
     }
-  }, [isSeller, isGestor, user?.id])
+  }, [isSeller, isGestor, isAdmin, user?.id])
 
   useEffect(() => {
     loadData()
@@ -126,16 +138,8 @@ export default function Financial() {
     .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
 
   const totalComissaoPrevista = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
-  const totalComissaoRecebida = contracts
-    .filter((c) => c.status === 'Ativo')
-    .reduce((sum, c) => sum + (c.commission_value || 0), 0)
-
-  // Faturamento KKJ Realmente Recebido = Comissões Confirmadas + Adesão Paga
-  const faturamentoKKJConfirmado = totalComissaoRecebida + totalReceitaAdesaoPaga
-  // Comissão repassada ao vendedor
-  const totalComissaoVendedor = faturamentoKKJConfirmado * 0.4
-  // Resultado líquido da corretora
-  const totalResultadoKKJ = faturamentoKKJConfirmado - totalComissaoVendedor
+  // Contrato ativo não comprova recebimento de comissão. Valores recebidos e margem
+  // exigem conciliação com lançamentos financeiros confirmados no banco.
 
   const exportCSV = () => {
     const headers = [
@@ -143,7 +147,7 @@ export default function Financial() {
       'Empresa',
       'Operadora / Produto',
       'Valor Vendido (Mensalidade)',
-      'Faturamento KKJ',
+      'Comissão prevista (não conciliada)',
       'Vidas',
       'Status',
     ]
@@ -152,7 +156,7 @@ export default function Financial() {
       `"${c.expand?.company_id?.trade_name || ''}"`,
       `"${c.operator || c.expand?.product_id?.name || ''}"`,
       c.sale_value,
-      c.commission_value || 0,
+      c.commission_value == null ? 'A conciliar' : c.commission_value,
       c.lives_count || 1,
       `"${c.status}"`,
     ])
@@ -170,6 +174,37 @@ export default function Financial() {
 
   return (
     <div className="space-y-8">
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Parcelas de comissão</CardTitle>
+            <CardDescription>Previsões registradas; valores previstos não representam recebimentos confirmados.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {installmentError ? <p role="alert">Falha ao carregar parcelas: {installmentError}</p> : (
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>Contrato</TableHead><TableHead>Parcela</TableHead><TableHead>Vencimento</TableHead>
+                  <TableHead>Previsto</TableHead><TableHead>Recebido</TableHead><TableHead>Status</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {adminInstallments.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{contracts.find((contract) => contract.id === item.contract_id)?.contract_number || item.contract_id.slice(0, 8)}</TableCell>
+                      <TableCell>{item.numero_parcela}/{item.total_parcelas}</TableCell>
+                      <TableCell>{item.data_vencimento}</TableCell>
+                      <TableCell>{Number(item.valor_previsto).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                      <TableCell>{item.valor_recebido == null ? 'Não conciliado' : Number(item.valor_recebido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                      <TableCell>{item.status}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!adminInstallments.length && <TableRow><TableCell colSpan={6}>Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir de um contrato e uma regra de comissão.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
         <div>
@@ -362,11 +397,11 @@ export default function Financial() {
                 R${' '}
                 {(meuFinanceiro
                   ? meuFinanceiro.total_repasse_previsto
-                  : totalSaleValue * 0.4
+                  : 0
                 ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
-                Baseada nos seus contratos fechados
+                Baseada nas parcelas financeiras registradas
               </p>
             </CardContent>
           </Card>
@@ -390,7 +425,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                R$ {faturamentoKKJConfirmado.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -414,7 +449,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                R$ {totalComissaoRecebida.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Previsto da equipe: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
@@ -469,10 +504,10 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-[#1B2A4A] dark:text-foreground">
-                R$ {totalResultadoKKJ.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Comissões repassadas: R$ {totalComissaoVendedor.toLocaleString('pt-BR')}
+                Comissões repassadas: A conciliar
               </p>
             </CardContent>
           </Card>
@@ -493,7 +528,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-purple-950 dark:text-foreground">
-                R$ {totalResultadoKKJ.toLocaleString('pt-BR')}
+                A conciliar
               </div>
               <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
                 Restrito aos contratos sob sua supervisão
@@ -696,7 +731,7 @@ export default function Financial() {
                     R$ {c.sale_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
-                    R$ {(c.commission_value || 0).toLocaleString('pt-BR')}
+                    {c.commission_value == null ? 'A conciliar' : 'R$ ' + c.commission_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell>
                     <Badge

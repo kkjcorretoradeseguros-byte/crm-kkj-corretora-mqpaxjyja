@@ -1,0 +1,62 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const sql = readFileSync(new URL('../supabase/migrations/20261013230500_contract_commission_forecast_rpc.sql', import.meta.url), 'utf8')
+const declarations = sql.split(/\bdeclare\b/i)[1]?.split(/\bbegin\b/i)[0] ?? ''
+
+test('migration has no duplicate PL/pgSQL variables', () => {
+  assert.ok(declarations)
+  const variables = [...declarations.matchAll(/^\s*(v_[a-z_]+)\s+(?:uuid|numeric|integer|boolean|date|text|jsonb)\b/gm)].map(match => match[1])
+  assert.ok(variables.length > 15)
+  assert.equal(variables.length, new Set(variables).size)
+})
+
+test('migration uses one monthly due date check', () => {
+  assert.ok(sql.includes('Vencimento fora do cronograma'))
+  assert.match(sql, /v_expected_due/)
+  assert.match(sql, /v_first_due/)
+})
+
+test('SQL validates financial input boundaries', () => {
+  assert.ok(sql.includes("(v_row->>'percentual_aplicado')::numeric > 100"))
+  assert.ok(sql.includes("(v_row->>'valor_base_mensalidade')::numeric <= 0"))
+})
+
+test('SQL recalculates financial values from the persisted contract and rule', () => {
+  assert.ok(sql.includes('v_premium is distinct from v_contract_premium'))
+  assert.ok(sql.includes('round(v_premium * v_pct / 100, 2)'))
+  assert.ok(sql.includes('round((v_row->>\'valor_previsto\')::numeric * v_rule_tax / 100, 2)'))
+  assert.ok(sql.includes('repasse_previsto_vendedor'))
+  assert.ok(sql.includes('v_rule_carrier is distinct from v_contract_carrier'))
+  assert.ok(sql.includes('v_count <> v_schedule_count'))
+})
+
+test('SQL rejects string-encoded monetary values', () => {
+  for (const key of ['valor_previsto', 'imposto_retido', 'valor_liquido', 'repasse_previsto_vendedor', 'percentual_aplicado', 'valor_base_mensalidade']) {
+    assert.ok(sql.includes("jsonb_typeof(v_row->'" + key + "') <> 'number'"))
+  }
+})
+
+test('forecast RPC remains invoker scoped and admin gated', () => {
+  assert.ok(sql.includes('language plpgsql security invoker'))
+  assert.ok(sql.includes('auth.uid() is null or not public.is_admin()'))
+  assert.ok(sql.includes('for update'))
+  assert.ok(sql.includes('from public.contract_financials where contract_id = p_contract_id'))
+  assert.ok(sql.includes('revoke all on function public.persist_contract_commission_forecast'))
+})
+
+test('migration has one complete function and no trailing SQL fragments', () => {
+  assert.equal((sql.match(/create or replace function public\.persist_contract_commission_forecast\(/g) ?? []).length, 1)
+  assert.equal((sql.match(/^\$\$;$/gm) ?? []).length, 1)
+  assert.match(sql.trimEnd(), /grant execute on function public\.persist_contract_commission_forecast\(uuid,uuid,text,jsonb\) to authenticated;$/)
+  assert.match(sql, /\(x->>'numero_parcela'\) !~ '\^\[0-9\]\+\$'\) then/)
+  assert.match(sql, /\(x->>'month'\) !~ '\^\[0-9\]\+\$'/)
+})
+
+test('recurring commission rules persist only initial installments', () => {
+  assert.doesNotMatch(sql, /Comissão recorrente ainda não suportada nesta operação/)
+  assert.ok(sql.includes('v_count <> v_schedule_count'))
+  assert.ok(sql.includes("'inicial', (x->>'percentual_aplicado')::numeric"))
+  assert.ok(sql.includes("'previsto'"))
+})
