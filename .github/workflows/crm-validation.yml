@@ -57,3 +57,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
           psql -v ON_ERROR_STOP=1 -c "SET check_function_bodies = on;" -f supabase/migrations/20261013230500_contract_commission_forecast_rpc.sql
           psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'persist_contract_commission_forecast';" | grep -qx 1
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT has_function_privilege('anon', 'public.persist_contract_commission_forecast(uuid,uuid,text,jsonb)', 'EXECUTE');" | grep -qx f
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT has_function_privilege('authenticated', 'public.persist_contract_commission_forecast(uuid,uuid,text,jsonb)', 'EXECUTE');" | grep -qx t
