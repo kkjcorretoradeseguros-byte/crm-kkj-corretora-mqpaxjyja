@@ -324,11 +324,6 @@ export default function Pipeline() {
     }
 
     // Se for Implantado no Pós-Venda: VALIDAR antes de mover
-    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
-      setPendingPaymentDateOpp(opp)
-      setExpectedPaymentDate('')
-      return
-    }
     if (pipelineType === 'POS_VENDA' && targetStage === 'Implantado') {
       const canProceed = await validateImplantacaoPostSales(opp)
       if (!canProceed) {
@@ -346,6 +341,7 @@ export default function Pipeline() {
       await opportunityService.updateStage(oppId, targetStage, opp.stage)
     } catch (err) {
       console.error(err)
+      alert(`Não foi possível mover a proposta: ${err instanceof Error ? err.message : 'Erro inesperado'}`)
       fetchData()
     } finally {
       setDraggedOppId(null)
@@ -384,6 +380,7 @@ export default function Pipeline() {
       fetchData()
     } catch (err) {
       console.error(err)
+      alert(`Não foi possível mover a proposta: ${err instanceof Error ? err.message : 'Erro inesperado'}`)
     }
   }
 
