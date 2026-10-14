@@ -30,17 +30,71 @@ export const userService = {
   async getAllUsers(): Promise<User[]> {
     if (!isSupabaseConfigured) return []
     try {
+      // 1. Tentar carregar com as colunas oficiais do schema Supabase (celular / cargo / equipe)
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
+        .select(
+          'id, nome, email, role, celular, cargo, equipe, ativo, recebe_leads_automaticos, created_at, updated_at',
+        )
         .order('nome', { ascending: true })
 
-      if (error) {
-        console.warn('Erro ao carregar usuários:', error.message)
+      if (!error && data) {
+        return (data as any[]).map((p) => {
+          const rawRole = (p.role || '').toLowerCase().trim()
+          let normalizedRole: UserRole = 'VENDEDOR'
+          if (rawRole === 'administrador') normalizedRole = 'ADMINISTRADOR'
+          else if (rawRole === 'gestor') normalizedRole = 'GESTOR'
+
+          return {
+            id: p.id,
+            email: p.email,
+            name: p.nome || p.email?.split('@')[0] || 'Usuário',
+            role: normalizedRole,
+            phone: p.celular || undefined,
+            position: p.cargo || undefined,
+            team: p.equipe || undefined,
+            active: p.ativo ?? true,
+            receives_automatic_leads: p.recebe_leads_automaticos ?? true,
+            created: p.created_at || new Date().toISOString(),
+            updated: p.updated_at || new Date().toISOString(),
+          }
+        })
+      }
+
+      // 2. Fallback caso colunas específicas difiram
+      console.warn('Tentativa com select completo falhou, usando select genérico:', error?.message)
+      const fallbackRes = await supabase
+        .from('profiles')
+        .select('*')
+        .order('nome', { ascending: true })
+
+      if (fallbackRes.error) {
+        console.warn('Erro ao carregar usuários (fallback):', fallbackRes.error.message)
         return []
       }
-      return ((data || []) as ProfileRow[]).map(mapProfileToUser)
-    } catch {
+
+      return ((fallbackRes.data || []) as any[]).map((p) => {
+        const rawRole = (p.role || '').toLowerCase().trim()
+        let normalizedRole: UserRole = 'VENDEDOR'
+        if (rawRole === 'administrador') normalizedRole = 'ADMINISTRADOR'
+        else if (rawRole === 'gestor') normalizedRole = 'GESTOR'
+
+        return {
+          id: p.id,
+          email: p.email,
+          name: p.nome || p.name || p.email?.split('@')[0] || 'Usuário',
+          role: normalizedRole,
+          phone: p.celular || p.phone || undefined,
+          position: p.cargo || p.position || undefined,
+          team: p.equipe || p.team || undefined,
+          active: p.ativo ?? true,
+          receives_automatic_leads: p.recebe_leads_automaticos ?? true,
+          created: p.created_at || new Date().toISOString(),
+          updated: p.updated_at || new Date().toISOString(),
+        }
+      })
+    } catch (err: any) {
+      console.warn('Exceção ao listar usuários:', err?.message)
       return []
     }
   },
@@ -51,14 +105,55 @@ export const userService = {
     }
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
+      .select(
+        'id, nome, email, role, celular, cargo, equipe, ativo, recebe_leads_automaticos, created_at, updated_at',
+      )
       .eq('id', id)
-      .single()
+      .maybeSingle()
 
     if (error || !data) {
-      throw new Error(error?.message || 'Usuário não encontrado')
+      // Tentar fallback select *
+      const fallback = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
+      if (fallback.error || !fallback.data) {
+        throw new Error(error?.message || 'Usuário não encontrado')
+      }
+      const p = fallback.data as any
+      const rawRole = (p.role || '').toLowerCase().trim()
+      let normalizedRole: UserRole = 'VENDEDOR'
+      if (rawRole === 'administrador') normalizedRole = 'ADMINISTRADOR'
+      else if (rawRole === 'gestor') normalizedRole = 'GESTOR'
+      return {
+        id: p.id,
+        email: p.email,
+        name: p.nome || p.name || p.email?.split('@')[0] || 'Usuário',
+        role: normalizedRole,
+        phone: p.celular || p.phone || undefined,
+        position: p.cargo || p.position || undefined,
+        team: p.equipe || p.team || undefined,
+        active: p.ativo ?? true,
+        receives_automatic_leads: p.recebe_leads_automaticos ?? true,
+        created: p.created_at || new Date().toISOString(),
+        updated: p.updated_at || new Date().toISOString(),
+      }
     }
-    return mapProfileToUser(data as ProfileRow)
+    const p = data as any
+    const rawRole = (p.role || '').toLowerCase().trim()
+    let normalizedRole: UserRole = 'VENDEDOR'
+    if (rawRole === 'administrador') normalizedRole = 'ADMINISTRADOR'
+    else if (rawRole === 'gestor') normalizedRole = 'GESTOR'
+    return {
+      id: p.id,
+      email: p.email,
+      name: p.nome || p.email?.split('@')[0] || 'Usuário',
+      role: normalizedRole,
+      phone: p.celular || undefined,
+      position: p.cargo || undefined,
+      team: p.equipe || undefined,
+      active: p.ativo ?? true,
+      receives_automatic_leads: p.recebe_leads_automaticos ?? true,
+      created: p.created_at || new Date().toISOString(),
+      updated: p.updated_at || new Date().toISOString(),
+    }
   },
 
   async updateUserRole(id: string, newRole: UserRole, motivo?: string): Promise<User> {
@@ -80,9 +175,9 @@ export const userService = {
 
     const { data, error } = await supabase
       .from('profiles')
-      .update({ role: newRole, updated_at: new Date().toISOString() })
+      .update({ role: newRole.toLowerCase(), updated_at: new Date().toISOString() })
       .eq('id', id)
-      .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
+      .select('*')
       .single()
 
     if (error || !data) {
@@ -113,7 +208,7 @@ export const userService = {
       .from('profiles')
       .update({ ativo, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .select('id, nome, email, role, phone, avatar_url, ativo, created_at, updated_at')
+      .select('*')
       .single()
 
     if (error || !data) {

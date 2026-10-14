@@ -175,9 +175,6 @@ export default function Layout() {
             <span className="font-extrabold text-base tracking-tight text-[#1B2A4A] dark:text-foreground">
               KKJ Corretora
             </span>
-            <span className="text-[11px] font-medium text-[#667085] dark:text-[#94A3B8]">
-              Seguros & Benefícios
-            </span>
           </div>
         </div>
 
@@ -279,9 +276,6 @@ export default function Layout() {
                 <div className="flex flex-col">
                   <span className="font-bold text-base text-[#1B2A4A] dark:text-foreground">
                     KKJ Corretora
-                  </span>
-                  <span className="text-[10px] text-[#667085] dark:text-[#94A3B8]">
-                    Seguros & Benefícios
                   </span>
                 </div>
               </div>
