@@ -146,8 +146,7 @@ function mapContractRow(r: ContractDbRow): Contract {
     plano: r.plano || undefined,
     status: uiStatus,
     start_date: r.data_inicio_vigencia || undefined,
-    data_vencimento_primeiro_pagamento:
-      r.data_previsao_vigencia || undefined,
+    data_vencimento_primeiro_pagamento: r.data_previsao_vigencia || undefined,
     data_confirmacao_pagamento: r.data_pagamento || undefined,
     data_implantacao: r.data_implantacao || undefined,
     usuario_confirmou_pagamento_id: r.usuario_confirmou_pagamento_id || undefined,
@@ -454,8 +453,7 @@ export const contractService = {
       if (current.status === 'cancelado')
         throw new Error('Contrato cancelado não pode ser reativado por edição')
       const isConfirmed =
-        Boolean(data.data_confirmacao_pagamento) ||
-        Boolean(current.data_pagamento)
+        Boolean(data.data_confirmacao_pagamento) || Boolean(current.data_pagamento)
       if (!isConfirmed) {
         throw new Error(
           'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
