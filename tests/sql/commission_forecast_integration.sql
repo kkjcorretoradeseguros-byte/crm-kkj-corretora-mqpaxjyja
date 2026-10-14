@@ -24,6 +24,8 @@ create table public.commission_installments (
   imposto_retido numeric, valor_liquido numeric, status text
 );
 grant select on public.contracts, public.commission_rules, public.contract_financials to authenticated;
+-- SELECT ... FOR UPDATE requires UPDATE privilege on the locked contract row.
+grant update on public.contracts to authenticated;
 grant select, insert on public.commission_installments to authenticated;
 grant insert on public.contract_financials to authenticated;
 alter table public.contract_financials enable row level security;
