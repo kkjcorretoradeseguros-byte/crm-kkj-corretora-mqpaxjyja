@@ -7,14 +7,14 @@ export interface SpecialRuleSchedule {
   modalidade: string
   parcelas: number[] // Ex: [100, 100, 100, 50, 50]
   vitalicioPercentual?: number // Ex: 2%
-  vitalicioAPartirDe?: number // Vitalício exclusivo da KKJ, a partir da 2ª competência
+  vitalicioAPartirDe?: number // Vitalício exclusivo da KKJ, a partir da 4ª competência
   totalPercentual: number
   semVitalicio: boolean
 }
 
 // 9. REGRAS ESPECIAIS SAÚDE PME CONFORME PRESCRIÇÃO DO CLIENTE:
 // - Bradesco Saúde: 100/100/100/50/50 (total 400%, sem vitalício)
-// - Amil: 100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência (total 300% + recorrência)
+// - Amil: 100/100/100 + 2% vitalício exclusivo da KKJ a partir da 4ª competência (total 300% + recorrência)
 // - SulAmérica: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
 // - Porto Seguro: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
 // - Alice: 100/100/100 (total 300%, sem vitalício)
@@ -48,7 +48,7 @@ export const SPECIAL_PME_RULES: Record<string, SpecialRuleSchedule> = {
     modalidade: 'PME',
     parcelas: [100, 100, 100],
     vitalicioPercentual: 2,
-    vitalicioAPartirDe: 2,
+    vitalicioAPartirDe: 4,
     totalPercentual: 300,
     semVitalicio: false,
   },
@@ -282,8 +282,8 @@ export function calculateRecurringCommissionForCompetence(params: {
   if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100) {
     throw new Error('Percentual de vitalício inválido')
   }
-  if (!Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 2) {
-    throw new Error('O vitalício deve começar a partir da segunda competência')
+  if (!Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 4) {
+    throw new Error('O vitalício deve começar a partir da quarta competência')
   }
   if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
   if (!/^\\d{4}-\\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
