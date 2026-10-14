@@ -262,7 +262,7 @@ export default function Pipeline() {
       // Ativar o contrato somente depois de salvar a confirmação do pagamento.
       await contractService.updateContract(ct.id, {
         status: 'Ativo',
-        notes: `${ct.notes || ''} [Implantado em `${new Date().toLocaleDateString('pt-BR')} por `${user?.name || 'Administração'}]`,
+        notes: (ct.notes || '') + ' [Implantado em ' + new Date().toLocaleDateString('pt-BR') + ' por ' + (user?.name || 'Administração') + ']',
       })
 
       await opportunityService.addTimelineEvent(
