@@ -122,5 +122,25 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     leadOrigin: 'kkj',
     firstDueDate: contract.data_pagamento,
   })
-  return { ...preview, ruleId: rule.id, ruleName: rule.nome }
+  return { ...preview, ruleId: rule.id, ruleName: rule.nome, rule: rule as DatabaseCommissionRule, firstDueDate: contract.data_pagamento, mensalidade: Number(contract.valor_mensal) }
+}
+
+/** Idempotent UI entrypoint: existing forecast is returned without recreating installments. */
+export async function ensureConfirmedContractForecast(contractId: string) {
+  const { data: existing, error } = await supabase
+    .from('contract_financials')
+    .select('id')
+    .eq('contract_id', contractId)
+    .maybeSingle()
+  if (error) throw new Error('Falha ao consultar previsão existente: ' + error.message)
+  if (existing) return existing.id
+  const preview = await previewConfirmedContractCommissions(contractId)
+  return persistContractCommissionForecast({
+    contractId,
+    ruleId: preview.ruleId,
+    rule: preview.rule,
+    mensalidade: preview.mensalidade,
+    leadOrigin: 'kkj',
+    firstDueDate: preview.firstDueDate,
+  })
 }
