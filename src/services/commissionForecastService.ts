@@ -142,9 +142,12 @@ export async function ensureConfirmedContractForecast(contractId: string) {
     .eq('contract_id', contractId)
     .maybeSingle()
   if (error) throw new Error('Falha ao consultar previsão existente: ' + error.message)
-  if (existing) return existing.id
+  if (existing) {
+    await confirmFirstCommissionReceipt(contractId)
+    return existing.id
+  }
   const preview = await previewConfirmedContractCommissions(contractId)
-  return persistContractCommissionForecast({
+  const financialId = await persistContractCommissionForecast({
     contractId,
     ruleId: preview.ruleId,
     rule: preview.rule,
@@ -152,4 +155,14 @@ export async function ensureConfirmedContractForecast(contractId: string) {
     leadOrigin: 'kkj',
     firstDueDate: preview.firstDueDate,
   })
+  await confirmFirstCommissionReceipt(contractId)
+  return financialId
+}
+
+/** Confirm first commission receipt using the already confirmed client payment date. */
+export async function confirmFirstCommissionReceipt(contractId: string): Promise<void> {
+  const { error } = await supabase.rpc('confirm_first_commission_receipt', {
+    p_contract_id: contractId,
+  })
+  if (error) throw new Error('Falha ao confirmar recebimento da comissão: ' + error.message)
 }
