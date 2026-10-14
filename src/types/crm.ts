@@ -434,6 +434,7 @@ export interface Contract {
   hiring_date?: string // Data de contratação
   data_vencimento_primeiro_pagamento?: string // Vencimento do 1º boleto / pagamento
   data_confirmacao_pagamento?: string // Data efetiva da confirmação de pagamento
+  data_implantacao?: string
   usuario_confirmou_pagamento_id?: string
   usuario_implantacao_id?: string
   primeira_competencia?: string

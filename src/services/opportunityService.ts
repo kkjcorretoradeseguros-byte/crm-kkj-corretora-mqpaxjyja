@@ -656,13 +656,27 @@ export const opportunityService = {
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
+    const prevStage =
+      previousStageOrLostReason && previousStageOrLostReason !== lostReasonParam
+        ? previousStageOrLostReason
+        : undefined
+
     const lostReason =
       lostReasonParam ||
       (stage === 'PERDIDO' || stage === 'Venda perdida' ? previousStageOrLostReason : undefined)
 
+    let resolvedStageId = targetStageId
+    if (!resolvedStageId) {
+      const dbStages = await this.getPipelineStages()
+      const match = dbStages.find((s) => s.nome.trim().toLowerCase() === stage.trim().toLowerCase())
+      if (match) {
+        resolvedStageId = match.id
+      }
+    }
+
     const updatePayload: Partial<Opportunity> = { stage }
-    if (targetStageId) {
-      updatePayload.stage_id = targetStageId
+    if (resolvedStageId) {
+      updatePayload.stage_id = resolvedStageId
     }
 
     if (stage === 'PERDIDO' || stage === 'Venda perdida') {
@@ -677,14 +691,23 @@ export const opportunityService = {
     const updated = await this.updateOpportunity(id, updatePayload)
 
     try {
+      const conteudoTimeline =
+        stage === 'Venda perdida' || stage === 'PERDIDO'
+          ? `Movido de "${prevStage || 'etapa anterior'}" para "Venda perdida". Motivo: ${lostReason || 'Não informado'}.`
+          : prevStage
+            ? `Movido de "${prevStage}" para "${stage}".`
+            : `Etapa alterada para "${stage}".`
+
       await supabase.from('opportunity_timeline').insert({
         opportunity_id: id,
         tipo_evento: 'etapa_alterada',
-        conteudo:
-          stage === 'PERDIDO'
-            ? `Movido para ${stage}. Motivo da perda: ${lostReason || 'Não informado'}`
-            : `Etapa alterada para ${stage}`,
-        dados_adicionais: { newStage: stage, lostReason },
+        conteudo: conteudoTimeline,
+        dados_adicionais: {
+          previousStage: prevStage || null,
+          newStage: stage,
+          stage_id: resolvedStageId || null,
+          lostReason: lostReason || null,
+        },
         user_id: currentUserId,
       })
     } catch (err) {
