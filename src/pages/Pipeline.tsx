@@ -1501,10 +1501,7 @@ export default function Pipeline() {
                 if (!pendingPaymentDateOpp || !expectedPaymentDate) return
                 setSavingPaymentDate(true)
                 try {
-                  const found = await contractService.getContracts({
-                    opportunity_id: pendingPaymentDateOpp.id,
-                  })
-                  const contract = found.items[0]
+                  const contract = await contractService.getContractForOpportunity(pendingPaymentDateOpp.id)
                   if (contract) {
                     await contractService.updateContract(contract.id, {
                       data_vencimento_primeiro_pagamento: expectedPaymentDate,
