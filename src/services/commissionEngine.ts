@@ -227,7 +227,7 @@ export function buildFinancialInstallmentDrafts(params: {
     throw new Error('Data de vencimento inválida')
   }
   if (year < 1900 || year > 9998) throw new Error('Ano de vencimento fora do intervalo permitido')
-  if (rule.has_recurring) throw new Error('Previsão recorrente depende de competência confirmada')
+  // Persist only initial installments; recurring competencies are booked separately.
   const installments = calculateFromDatabaseRule({ rule, mensalidade, leadOrigin })
   if (installments.some(item => year + Math.floor((month - 1 + item.numero_parcela - 1) / 12) > 9999)) {
     throw new Error('Cronograma ultrapassa o limite de datas')
