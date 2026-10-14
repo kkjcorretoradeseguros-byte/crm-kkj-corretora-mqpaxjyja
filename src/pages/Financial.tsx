@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { supabase } from '@/lib/supabase/client'
 import { contractService } from '@/services/contractService'
 import { opportunityService } from '@/services/opportunityService'
 import { adesaoService } from '@/services/adesaoService'
@@ -41,6 +42,8 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [adminInstallments, setAdminInstallments] = useState<Array<{id: string; contract_id: string; numero_parcela: number; total_parcelas: number; data_vencimento: string; valor_previsto: number; valor_recebido: number | null; status: string}>>([])
+  const [installmentError, setInstallmentError] = useState<string | null>(null)
 
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
@@ -59,6 +62,15 @@ export default function Financial() {
       ])
 
       setMeuFinanceiro(financeiroRes)
+      if (isAdmin) {
+        const { data: installments, error: installmentsError } = await supabase
+          .from('commission_installments')
+          .select('id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status')
+          .order('data_vencimento', { ascending: true })
+          .limit(500)
+        setAdminInstallments(installments || [])
+        setInstallmentError(installmentsError?.message || null)
+      }
 
       // Vendedor vê APENAS os próprios contratos (RLS também restringe no banco).
       // Gestor vê somente a própria produção + produção consolidada da equipe.
@@ -104,7 +116,7 @@ export default function Financial() {
     } finally {
       setLoading(false)
     }
-  }, [isSeller, isGestor, user?.id])
+  }, [isSeller, isGestor, isAdmin, user?.id])
 
   useEffect(() => {
     loadData()
@@ -162,6 +174,37 @@ export default function Financial() {
 
   return (
     <div className="space-y-8">
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Parcelas de comissão</CardTitle>
+            <CardDescription>Previsões registradas; valores previstos não representam recebimentos confirmados.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {installmentError ? <p role="alert">Falha ao carregar parcelas: {installmentError}</p> : (
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>Contrato</TableHead><TableHead>Parcela</TableHead><TableHead>Vencimento</TableHead>
+                  <TableHead>Previsto</TableHead><TableHead>Recebido</TableHead><TableHead>Status</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {adminInstallments.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{contracts.find((contract) => contract.id === item.contract_id)?.contract_number || item.contract_id.slice(0, 8)}</TableCell>
+                      <TableCell>{item.numero_parcela}/{item.total_parcelas}</TableCell>
+                      <TableCell>{item.data_vencimento}</TableCell>
+                      <TableCell>{Number(item.valor_previsto).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                      <TableCell>{item.valor_recebido == null ? 'Não conciliado' : Number(item.valor_recebido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                      <TableCell>{item.status}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!adminInstallments.length && <TableRow><TableCell colSpan={6}>Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir de um contrato e uma regra de comissão.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
         <div>
