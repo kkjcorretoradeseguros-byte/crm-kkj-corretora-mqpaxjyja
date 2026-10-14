@@ -15,7 +15,9 @@ test('SQL financial transaction requires admin, contract lock, and rejects overw
   assert.match(sql, /auth\.uid\(\) is null or not public\.is_admin\(\)/)
   assert.match(sql, /where id = p_contract_id for update/)
   assert.match(sql, /from public\.contract_financials where contract_id = p_contract_id/)
-  assert.match(sql, /Comissão recorrente ainda não suportada/)
+  assert.doesNotMatch(sql, /Comissão recorrente ainda não suportada nesta operação/)
+  assert.match(sql, /v_count <> v_schedule_count/)
+  assert.match(sql, /'inicial', \(x->>'percentual_aplicado'\)::numeric/)
 })
 
 test('SQL validates source data and persists expected, not received, installments', () => {
