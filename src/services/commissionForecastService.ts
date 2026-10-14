@@ -93,36 +93,45 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento')
     .eq('id', contractId)
     .single()
-  if (contractError || !contract) throw new Error(contractError?.message || 'Contrato não encontrado')
+  if (contractError || !contract)
+    throw new Error(contractError?.message || 'Contrato não encontrado')
   if (!contract.data_pagamento) throw new Error('Confirme primeiro o pagamento do cliente')
   const { data: rules, error: rulesError } = await supabase
     .from('commission_rules')
-    .select('id,nome,carrier_id,product_id,min_lives,max_lives,data_inicio_vigencia,data_fim_vigencia,cronograma_parcelas,aliquota_imposto_pct,repasse_vendedor_pct,repasse_vendedor_proprio_pct,has_recurring,recurring_percentage,recurring_start_month')
+    .select(
+      'id,nome,carrier_id,product_id,min_lives,max_lives,data_inicio_vigencia,data_fim_vigencia,cronograma_parcelas,aliquota_imposto_pct,repasse_vendedor_pct,repasse_vendedor_proprio_pct,has_recurring,recurring_percentage,recurring_start_month',
+    )
     .eq('carrier_id', contract.carrier_id)
     .eq('ativo', true)
   if (rulesError) throw new Error('Falha ao consultar regras de comissão: ' + rulesError.message)
   const lives = Number(contract.qtd_vidas)
-  const applicable = (rules || []).filter((rule) =>
-    (!rule.product_id || rule.product_id === contract.product_id) &&
-    (rule.min_lives == null || lives >= Number(rule.min_lives)) &&
-    (rule.max_lives == null || lives <= Number(rule.max_lives)) &&
-    (!rule.data_inicio_vigencia || contract.data_pagamento >= rule.data_inicio_vigencia) &&
-    (!rule.data_fim_vigencia || contract.data_pagamento <= rule.data_fim_vigencia),
+  const applicable = (rules || []).filter(
+    (rule) =>
+      (!rule.product_id || rule.product_id === contract.product_id) &&
+      (rule.min_lives == null || lives >= Number(rule.min_lives)) &&
+      (rule.max_lives == null || lives <= Number(rule.max_lives)) &&
+      (!rule.data_inicio_vigencia || contract.data_pagamento >= rule.data_inicio_vigencia) &&
+      (!rule.data_fim_vigencia || contract.data_pagamento <= rule.data_fim_vigencia),
   )
   if (applicable.length !== 1) {
-    throw new Error(applicable.length === 0
-      ? 'Nenhuma regra de comissão aplicável ao contrato'
-      : 'Mais de uma regra aplicável: seleção administrativa necessária')
+    throw new Error(
+      applicable.length === 0
+        ? 'Nenhuma regra de comissão aplicável ao contrato'
+        : 'Mais de uma regra aplicável: seleção administrativa necessária',
+    )
   }
   const selected = applicable[0]
   const rule: DatabaseCommissionRule = {
-    cronograma_parcelas: selected.cronograma_parcelas as DatabaseCommissionRule['cronograma_parcelas'],
+    cronograma_parcelas:
+      selected.cronograma_parcelas as DatabaseCommissionRule['cronograma_parcelas'],
     aliquota_imposto_pct: Number(selected.aliquota_imposto_pct),
     repasse_vendedor_pct: Number(selected.repasse_vendedor_pct),
     repasse_vendedor_proprio_pct: Number(selected.repasse_vendedor_proprio_pct),
     has_recurring: Boolean(selected.has_recurring),
-    recurring_percentage: selected.recurring_percentage == null ? undefined : Number(selected.recurring_percentage),
-    recurring_start_month: selected.recurring_start_month == null ? undefined : Number(selected.recurring_start_month),
+    recurring_percentage:
+      selected.recurring_percentage == null ? undefined : Number(selected.recurring_percentage),
+    recurring_start_month:
+      selected.recurring_start_month == null ? undefined : Number(selected.recurring_start_month),
   }
   const preview = await previewContractCommissions({
     contractId,
@@ -131,7 +140,14 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     leadOrigin: 'kkj',
     firstDueDate: contract.data_pagamento,
   })
-  return { ...preview, ruleId: selected.id, ruleName: selected.nome, rule, firstDueDate: contract.data_pagamento, mensalidade: Number(contract.valor_mensal) }
+  return {
+    ...preview,
+    ruleId: selected.id,
+    ruleName: selected.nome,
+    rule,
+    firstDueDate: contract.data_pagamento,
+    mensalidade: Number(contract.valor_mensal),
+  }
 }
 
 /** Idempotent UI entrypoint: existing forecast is returned without recreating installments. */
