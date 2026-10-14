@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { opportunityService } from '@/services/opportunityService'
+import { contractService } from '@/services/contractService'
 import { taskService } from '@/services/taskService'
 import { companyService } from '@/services/companyService'
 import { contactService } from '@/services/contactService'
@@ -219,6 +220,14 @@ export function OpportunityDetailModal({
     }
 
     try {
+      if (opportunity.pipeline_type === 'POS_VENDA' && targetStage === 'Implantado') {
+        const linked = await contractService.getContracts({ opportunity_id: opportunity.id })
+        const contract = linked.items[0]
+        if (!contract) throw new Error('Não há contrato vinculado para implantação')
+        if (!contract.data_confirmacao_pagamento) {
+          throw new Error('Confirme o recebimento real do primeiro pagamento no contrato antes de implantar')
+        }
+      }
       const prev = opportunity.stage
       await opportunityService.updateStage(opportunity.id, targetStage, prev)
       setOpportunity((o) => (o ? { ...o, stage: targetStage } : null))
@@ -1413,6 +1422,7 @@ export function OpportunityDetailModal({
                   <SelectValue placeholder="Selecione o corretor" />
                 </SelectTrigger>
                 <SelectContent className="dark:bg-[#182540] dark:border-[#24324D] dark:text-slate-100">
+                  {users.length === 0 && <div className="px-2 py-2 text-xs text-muted-foreground">Nenhum usuário disponível. Verifique os perfis e permissões de acesso.</div>}
                   {users.map((u) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.name || u.email} ({u.role})
