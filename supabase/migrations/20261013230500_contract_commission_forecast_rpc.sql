@@ -120,6 +120,18 @@ begin
   if v_schedule_distinct <> v_schedule_count then
     raise exception 'Cronograma da regra possui meses repetidos';
   end if;
+  if not exists (
+    select 1 from jsonb_array_elements(v_rule_schedule) x
+    where (x->>'month')::integer = 1
+  ) then
+    raise exception 'Cronograma da regra deve iniciar no primeiro mês';
+  end if;
+  if coalesce(v_recurring, false) and exists (
+    select 1 from jsonb_array_elements(v_rule_schedule) x
+    where (x->>'month')::integer >= v_recurring_start_month
+  ) then
+    raise exception 'Parcelas iniciais não podem sobrepor competências vitalícias';
+  end if;
   select count(distinct (x->>'numero_parcela')::integer) into v_unique_count
     from jsonb_array_elements(p_installments) x;
   if v_unique_count <> v_count then raise exception 'Parcelas duplicadas'; end if;
