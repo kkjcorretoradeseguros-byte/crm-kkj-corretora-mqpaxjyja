@@ -132,6 +132,9 @@ export default function Pipeline() {
   const [lostReasonChoice, setLostReasonChoice] = useState<LostReason>('Preço')
   const [isVendaGanhaOpen, setIsVendaGanhaOpen] = useState(false)
   const [vendaGanhaTargetOpp, setVendaGanhaTargetOpp] = useState<Opportunity | null>(null)
+  const [pendingPaymentDateOpp, setPendingPaymentDateOpp] = useState<Opportunity | null>(null)
+  const [expectedPaymentDate, setExpectedPaymentDate] = useState('')
+  const [savingPaymentDate, setSavingPaymentDate] = useState(false)
 
   // Novo Cadastro Rápido inline dentro do formulário
   const [showQuickCompany, setShowQuickCompany] = useState(false)
@@ -308,7 +311,19 @@ export default function Pipeline() {
       return
     }
 
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      setDraggedOppId(null)
+      return
+    }
+
     // Se for Implantado no Pós-Venda: VALIDAR antes de mover
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      return
+    }
     if (pipelineType === 'POS_VENDA' && targetStage === 'Implantado') {
       const canProceed = await validateImplantacaoPostSales(opp)
       if (!canProceed) {
