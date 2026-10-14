@@ -30,6 +30,7 @@ import { opportunityService } from '@/services/opportunityService'
 import { adesaoService } from '@/services/adesaoService'
 import { teamService } from '@/services/teamService'
 import { financialService, type FinancialCommissionSummary } from '@/services/financialService'
+import { previewConfirmedContractCommissions, ensureConfirmedContractForecast } from '@/services/commissionForecastService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
 
@@ -55,6 +56,8 @@ export default function Financial() {
     }>
   >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
+  const [forecastBusy, setForecastBusy] = useState<string | null>(null)
+  const [forecastNotice, setForecastNotice] = useState<string | null>(null)
 
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
@@ -154,6 +157,27 @@ export default function Financial() {
   // Contrato ativo não comprova recebimento de comissão. Valores recebidos e margem
   // exigem conciliação com lançamentos financeiros confirmados no banco.
 
+  const registerForecast = async (contractId: string) => {
+    setForecastBusy(contractId)
+    setForecastNotice(null)
+    try {
+      const preview = await previewConfirmedContractCommissions(contractId)
+      const values = preview.installments
+        .map((p) => `Parcela ${p.numero_parcela}: ${p.data_vencimento} — R$ ${p.valor_previsto.toFixed(2)}`)
+        .join('\\n')
+      if (!window.confirm(
+        `Gerar previsão financeira com a regra "${preview.ruleName}"?\\n${values}\\n\\nAs parcelas serão previstas, não recebidas. Os contratos atuais são de homologação.`,
+      )) return
+      await ensureConfirmedContractForecast(contractId)
+      setForecastNotice('Previsão registrada. As parcelas foram atualizadas.')
+      await loadData()
+    } catch (error) {
+      setForecastNotice(error instanceof Error ? error.message : 'Falha ao gerar previsão')
+    } finally {
+      setForecastBusy(null)
+    }
+  }
+
   const exportCSV = () => {
     const headers = [
       'Contrato',
@@ -196,6 +220,14 @@ export default function Financial() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {forecastNotice && <p role="status" className="mb-3 text-sm">{forecastNotice}</p>}
+            <div className="mb-4 flex flex-wrap gap-2">
+              {contracts.filter((c) => c.data_confirmacao_pagamento && !adminInstallments.some((p) => p.contract_id === c.id)).map((c) => (
+                <Button key={c.id} type="button" size="sm" variant="outline" disabled={forecastBusy !== null} onClick={() => void registerForecast(c.id)}>
+                  {forecastBusy === c.id ? 'Gerando...' : `Gerar previsão: ${c.contract_number || c.id.slice(0, 8)}`}
+                </Button>
+              ))}
+            </div>
             {installmentError ? (
               <p role="alert">Falha ao carregar parcelas: {installmentError}</p>
             ) : (
