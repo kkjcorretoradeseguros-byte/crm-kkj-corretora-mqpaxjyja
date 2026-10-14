@@ -286,6 +286,7 @@ export function calculateRecurringCommissionForCompetence(params: {
     throw new Error('O vitalício deve começar a partir da quarta competência')
   }
   if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+  if (!Number.isFinite(rule.aliquota_imposto_pct) || rule.aliquota_imposto_pct < 0 || rule.aliquota_imposto_pct > 100) throw new Error('Alíquota de imposto inválida')
   if (!/^\d{4}-\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
   const [year, month] = competencia.split('-').map(Number)
   if (year < 1900 || year > 9998 || month < 1 || month > 12) throw new Error('Competência inválida')
@@ -456,7 +457,7 @@ export function calculateRecurringCommission(params: {
 }): { month: number; percentual: number; valor_previsto: number; imposto_retido: number; valor_liquido: number } {
   const { rule, mensalidade, month } = params
   if (!rule?.has_recurring || !Number.isInteger(month) || month < 1 || month > 1200 ||
-      !Number.isInteger(rule.recurring_start_month) || month < rule.recurring_start_month! ||
+      !Number.isInteger(rule.recurring_start_month) || rule.recurring_start_month! < 4 || month < rule.recurring_start_month! ||
       !Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 ||
       (rule.recurring_percentage ?? 0) > 100 ||
       !Number.isFinite(mensalidade) || mensalidade <= 0 ||
