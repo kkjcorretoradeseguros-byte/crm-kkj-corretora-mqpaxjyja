@@ -20,9 +20,6 @@ export async function previewContractCommissions(params: {
     .select('id,status').eq('id', params.contractId).single()
   if (error || !contract) throw new Error(error?.message || 'Contrato não encontrado')
   if (contract.status === 'cancelado') throw new Error('Contrato cancelado não pode gerar novas previsões')
-  if (params.rule.has_recurring) {
-    throw new Error('Comissão vitalícia requer geração de parcelas recorrentes antes da gravação')
-  }
   const installments = buildFinancialInstallmentDrafts(params)
   const total = (field: 'valor_previsto' | 'imposto_retido' | 'valor_liquido' | 'repasse_previsto_vendedor') =>
     Math.round(installments.reduce((sum, row) => sum + row[field], 0) * 100) / 100
