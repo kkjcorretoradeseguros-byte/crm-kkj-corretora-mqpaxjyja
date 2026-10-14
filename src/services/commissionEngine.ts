@@ -286,7 +286,7 @@ export function calculateRecurringCommissionForCompetence(params: {
     throw new Error('O vitalício deve começar a partir da quarta competência')
   }
   if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
-  if (!/^\\d{4}-\\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
+  if (!/^\d{4}-\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
   const [year, month] = competencia.split('-').map(Number)
   if (year < 1900 || year > 9998 || month < 1 || month > 12) throw new Error('Competência inválida')
   const comissao = Math.round(mensalidade * (rule.recurring_percentage ?? 0)) / 100
