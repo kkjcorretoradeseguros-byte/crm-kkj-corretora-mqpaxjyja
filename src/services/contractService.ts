@@ -271,6 +271,35 @@ export const contractService = {
     }
   },
 
+  async getContractForOpportunity(opportunityId: string): Promise<Contract | null> {
+    const direct = await this.getContracts({ opportunity_id: opportunityId })
+    if (direct.items.length > 1) throw new Error('Mais de um contrato vinculado à oportunidade')
+    if (direct.items.length === 1) return direct.items[0]
+
+    const { data: opportunity, error: opportunityError } = await supabase
+      .from('opportunities')
+      .select('funnel_type, company_id, contact_id, carrier_id')
+      .eq('id', opportunityId)
+      .single()
+    if (opportunityError) throw new Error(opportunityError.message)
+    if (opportunity?.funnel_type !== 'pos_venda') return null
+    if (!opportunity.company_id || !opportunity.contact_id || !opportunity.carrier_id) {
+      throw new Error('Pós-venda sem empresa, contato e operadora para localizar o contrato com segurança')
+    }
+    const { data: matches, error } = await supabase
+      .from('contracts')
+      .select('id')
+      .eq('company_id', opportunity.company_id)
+      .eq('contact_id', opportunity.contact_id)
+      .eq('carrier_id', opportunity.carrier_id)
+      .neq('status', 'cancelado')
+      .limit(2)
+    if (error) throw new Error('Falha ao localizar contrato do pós-venda: ' + error.message)
+    if (!matches?.length) return null
+    if (matches.length !== 1) throw new Error('Múltiplos contratos correspondentes; selecione o contrato explicitamente')
+    return this.getContractById(matches[0].id)
+  },
+
   async getAllContracts(): Promise<Contract[]> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
