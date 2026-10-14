@@ -244,20 +244,25 @@ export default function Pipeline() {
         return false
       }
 
-      // Validação do primeiro pagamento confirmado
+      // Se ainda não houver confirmação, solicitar a data REAL do pagamento.
       const isConfirmed = !!ct.data_confirmacao_pagamento || ct.status === 'Ativo'
       if (!isConfirmed) {
-        alert(
-          'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
+        const enteredDate = window.prompt(
+          'Informe a data REAL em que o primeiro pagamento foi recebido (AAAA-MM-DD). Não informe a data prevista.',
+          new Date().toISOString().slice(0, 10),
         )
-        return false
+        if (!enteredDate) return false
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(enteredDate) || Number.isNaN(Date.parse(enteredDate))) {
+          alert('Data inválida. Use o formato AAAA-MM-DD.')
+          return false
+        }
+        await contractService.updateContract(ct.id, { data_confirmacao_pagamento: enteredDate })
       }
 
-      // Ao implantar, persistir data e usuário da implantação
+      // Ativar o contrato somente depois de salvar a confirmação do pagamento.
       await contractService.updateContract(ct.id, {
         status: 'Ativo',
-        usuario_implantacao_id: user?.id,
-        notes: `${ct.notes || ''} [Implantado em ${new Date().toLocaleDateString('pt-BR')} por ${user?.name || 'Administração'}]`,
+        notes: `${ct.notes || ''} [Implantado em `${new Date().toLocaleDateString('pt-BR')} por `${user?.name || 'Administração'}]`,
       })
 
       await opportunityService.addTimelineEvent(
