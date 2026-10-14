@@ -34,6 +34,9 @@ interface ContractDbRow {
   sale_value?: number | null
   status: string
   data_inicio_vigencia?: string | null
+  data_previsao_vigencia?: string | null
+  data_pagamento?: string | null
+  data_implantacao?: string | null
   data_renovacao?: string | null
   observacoes?: string | null
   responsavel_id?: string | null
@@ -88,6 +91,9 @@ const SELECT_EXPAND = `
   valor_venda,
   status,
   data_inicio_vigencia,
+  data_previsao_vigencia,
+  data_pagamento,
+  data_implantacao,
   data_renovacao,
   observacoes,
   responsavel_id,
@@ -119,7 +125,9 @@ function mapContractRow(r: ContractDbRow): Contract {
     contract_number: r.numero_contrato || r.contract_number || undefined,
     plano: r.plano || undefined,
     status: uiStatus,
-    start_date: r.data_inicio_vigencia || new Date().toISOString().slice(0, 10),
+    start_date: r.data_inicio_vigencia || undefined,
+    data_vencimento_primeiro_pagamento: r.data_previsao_vigencia || undefined,
+    data_confirmacao_pagamento: r.data_pagamento || undefined,
     renewal_date: r.data_renovacao || undefined,
     sale_value: val,
     commission_value: undefined,
@@ -314,6 +322,9 @@ export const contractService = {
       status: dbStatus,
       data_inicio_vigencia: data.start_date || new Date().toISOString().split('T')[0],
       data_renovacao: data.renewal_date || null,
+      data_previsao_vigencia: data.data_vencimento_primeiro_pagamento || null,
+      data_pagamento: data.data_confirmacao_pagamento || null,
+      data_implantacao: data.usuario_implantacao_id ? new Date().toISOString().slice(0, 10) : null,
       valor_mensal: data.sale_value || 0,
       valor_venda: data.sale_value || 0,
       qtd_vidas: data.lives_count || 1,
@@ -389,7 +400,9 @@ export const contractService = {
       }
       payload.status = statusMap[data.status] || data.status
     }
-    if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date
+    if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date || null
+    if (data.data_vencimento_primeiro_pagamento !== undefined) payload.data_previsao_vigencia = data.data_vencimento_primeiro_pagamento || null
+    if (data.data_confirmacao_pagamento !== undefined) payload.data_pagamento = data.data_confirmacao_pagamento || null
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
       payload.valor_mensal = data.sale_value
