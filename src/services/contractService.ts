@@ -614,6 +614,12 @@ export const contractService = {
       usuario_confirmou_pagamento_id: currentUserId,
     })
 
+    // A confirmação do pagamento também gera as previsões iniciais.
+    // A RPC financeira é transacional e protege contra duplicidade.
+    // O recebimento efetivo da primeira comissão será tratado por RPC específica.
+    const { ensureConfirmedContractForecast } = await import('./commissionForecastService')
+    await ensureConfirmedContractForecast(contractId)
+
     if (updated.opportunity_id) {
       try {
         await supabase.from('opportunity_timeline').insert({
