@@ -515,21 +515,26 @@ export const opportunityService = {
     if (data.attribution !== undefined) payload.attribution = data.attribution || {}
 
     if (data.stage !== undefined) {
-      // Resolver stage_id
-      const fType = (payload.funnel_type as string) || 'vendas'
-      const { data: stRow } = await supabase
+      // Resolve the stage against the opportunity's persisted funnel.
+      const { data: current, error: currentError } = await supabase
+        .from('opportunities')
+        .select('funnel_type')
+        .eq('id', id)
+        .single()
+      if (currentError || !current) throw new Error(currentError?.message || 'Oportunidade não encontrada')
+      const fType = (payload.funnel_type as string) || current.funnel_type
+      const { data: stRow, error: stageError } = await supabase
         .from('pipeline_stages')
         .select('id, is_fechamento')
         .eq('funnel_type', fType)
         .ilike('nome', data.stage.trim())
         .limit(1)
         .maybeSingle()
-      if (stRow?.id) {
-        payload.stage_id = stRow.id
-        if (stRow.is_fechamento) {
-          payload.status = 'ganha'
-        }
+      if (stageError || !stRow) {
+        throw new Error(stageError?.message || 'Etapa não cadastrada no funil selecionado')
       }
+      payload.stage_id = stRow.id
+      if (stRow.is_fechamento) payload.status = 'ganha'
     }
 
     // Buscar valores prévios para registrar alterações relevantes se não houver logTimelineAction explícito
@@ -542,7 +547,7 @@ export const opportunityService = {
       try {
         const { data: cur } = await supabase
           .from('opportunities')
-          .select('temperatura, etapa, owner_id')
+          .select('temperatura, stage_id, owner_id')
           .eq('id', id)
           .single()
         previousRow = cur
