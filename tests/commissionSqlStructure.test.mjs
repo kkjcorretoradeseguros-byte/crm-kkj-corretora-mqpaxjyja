@@ -53,3 +53,8 @@ test('migration has one complete function and no trailing SQL fragments', () => 
   assert.match(sql, /\(x->>'numero_parcela'\) !~ '\^\[0-9\]\+\$'\) then/)
   assert.match(sql, /\(x->>'month'\) !~ '\^\[0-9\]\+\$'/)
 })
+
+test('recurring commission remains explicitly blocked until installment generation is implemented', () => {
+  assert.ok(sql.includes("if coalesce(v_recurring, false) then"))
+  assert.ok(sql.includes('Comissão recorrente ainda não suportada nesta operação'))
+})
