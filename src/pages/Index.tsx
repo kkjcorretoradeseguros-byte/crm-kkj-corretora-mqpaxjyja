@@ -15,6 +15,7 @@ import {
   UserCheck,
   Calendar,
   Layers,
+  Wallet,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -62,6 +63,8 @@ export default function Index() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [usersList, setUsersList] = useState<User[]>([])
+  const [pendingCommissions, setPendingCommissions] = useState<{ amount: number; count: number; next: string | null } | null>(null)
+  const [commissionLoadError, setCommissionLoadError] = useState(false)
 
   // Filters
   const [period, setPeriod] = useState<PeriodFilter>('mes_atual')
@@ -98,6 +101,38 @@ export default function Index() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    let active = true
+    async function loadPendingCommissions() {
+      if (!isAdmin) {
+        setPendingCommissions(null)
+        return
+      }
+      const { data, error } = await supabase
+        .from('commission_installments')
+        .select('valor_previsto,valor_recebido,data_vencimento,status')
+        .not('status', 'in', '("cancelado","estornado")')
+      if (!active) return
+      if (error) {
+        setCommissionLoadError(true)
+        setPendingCommissions(null)
+        return
+      }
+      const pending = (data || []).map((row) => ({
+        value: Math.max(0, Number(row.valor_previsto || 0) - Number(row.valor_recebido || 0)),
+        date: row.data_vencimento,
+      })).filter((row) => row.value > 0)
+      setPendingCommissions({
+        amount: pending.reduce((sum, row) => sum + row.value, 0),
+        count: pending.length,
+        next: pending.map((row) => row.date).sort()[0] || null,
+      })
+      setCommissionLoadError(false)
+    }
+    void loadPendingCommissions()
+    return () => { active = false }
+  }, [isAdmin])
 
   // Helper date filtering
   const now = useMemo(() => new Date(), [])
@@ -388,6 +423,18 @@ export default function Index() {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in pb-10">
+      {isAdmin && (
+        <Link to="/financial" className="block rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md dark:border-blue-900 dark:bg-card" aria-label="Ver comissões a receber no Financeiro">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><Wallet size={18} className="text-blue-600"/> Comissões a receber — KKJ</p>
+              <p className="mt-2 text-3xl font-bold text-[#101f42] dark:text-white">{commissionLoadError ? 'Indisponível' : pendingCommissions ? pendingCommissions.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Carregando...'}</p>
+              <p className="mt-1 text-xs text-slate-500">{pendingCommissions ? `${pendingCommissions.count} parcelas pendentes${pendingCommissions.next ? ' · próximo vencimento ' + pendingCommissions.next.split('-').reverse().join('/') : ''}` : 'Valores das parcelas iniciais registradas'}</p>
+            </div>
+            <span className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Abrir Financeiro →</span>
+          </div>
+        </Link>
+      )}
       {/* Top Banner KKJ */}
       <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#0F1C34] via-[#152747] to-[#1E3A66] border border-[#203960]/40 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-md relative overflow-hidden">
         <div className="flex items-center gap-3.5 relative z-10">
