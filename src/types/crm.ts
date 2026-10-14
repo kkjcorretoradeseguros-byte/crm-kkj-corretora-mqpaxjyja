@@ -238,6 +238,7 @@ export interface Opportunity {
   title: string
   pipeline_type: PipelineType
   stage: string
+  stage_id?: string
   temperature?: Temperature
   contact_id?: string
   company_id?: string

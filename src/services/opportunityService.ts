@@ -170,6 +170,7 @@ function mapOpportunityRow(r: ExtendedOppRow): Opportunity {
     current_carrier_name: r.current_carrier_name || undefined,
     pipeline_type: pType,
     stage: stageName,
+    stage_id: r.stage_id || r.pipeline_stages?.id || undefined,
     value: finalVal,
     sale_value: finalVal,
     commission_value: undefined,
@@ -514,7 +515,15 @@ export const opportunityService = {
     if (data.health_data !== undefined) payload.health_data = data.health_data || {}
     if (data.attribution !== undefined) payload.attribution = data.attribution || {}
 
-    if (data.stage !== undefined) {
+    if (data.stage_id) {
+      payload.stage_id = data.stage_id
+      const { data: stRow } = await supabase
+        .from('pipeline_stages')
+        .select('id, nome, is_fechamento')
+        .eq('id', data.stage_id)
+        .maybeSingle()
+      if (stRow?.is_fechamento) payload.status = 'ganha'
+    } else if (data.stage !== undefined) {
       // Resolve the stage against the opportunity's persisted funnel.
       const { data: current, error: currentError } = await supabase
         .from('opportunities')
@@ -610,11 +619,37 @@ export const opportunityService = {
     return mapped
   },
 
+  async getPipelineStages(pipelineType?: PipelineType) {
+    if (!isSupabaseConfigured) return []
+    try {
+      let query = supabase
+        .from('pipeline_stages')
+        .select('id, nome, ordem, funnel_type, is_fechamento, e_saida, ativo')
+        .eq('ativo', true)
+        .order('ordem', { ascending: true })
+
+      if (pipelineType) {
+        const fType = pipelineType === 'POS_VENDA' ? 'pos_venda' : 'vendas'
+        query = query.eq('funnel_type', fType)
+      }
+
+      const { data, error } = await query
+      if (error) {
+        console.warn('Erro ao carregar pipeline_stages:', error.message)
+        return []
+      }
+      return data || []
+    } catch {
+      return []
+    }
+  },
+
   async updateStage(
     id: string,
     stage: string,
     previousStageOrLostReason?: string,
     lostReasonParam?: string,
+    targetStageId?: string,
   ): Promise<Opportunity> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
@@ -626,6 +661,10 @@ export const opportunityService = {
       (stage === 'PERDIDO' || stage === 'Venda perdida' ? previousStageOrLostReason : undefined)
 
     const updatePayload: Partial<Opportunity> = { stage }
+    if (targetStageId) {
+      updatePayload.stage_id = targetStageId
+    }
+
     if (stage === 'PERDIDO' || stage === 'Venda perdida') {
       updatePayload.lost_reason = lostReason || 'Outro'
       updatePayload.close_date = new Date().toISOString()
