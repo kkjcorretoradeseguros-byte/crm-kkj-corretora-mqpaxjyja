@@ -65,9 +65,8 @@ begin
   if not found or v_rule_carrier is distinct from v_contract_carrier then
     raise exception 'Regra de comissão incompatível com contrato';
   end if;
-  if coalesce(v_recurring, false) then
-    raise exception 'Comissão recorrente ainda não suportada nesta operação';
-  end if;
+  -- Only fixed initial installments are recorded here. Recurring commissions
+  -- are reconciled per confirmed competence in a separate operation.
   if (v_min_lives is not null and (v_contract_lives is null or v_contract_lives < v_min_lives))
     or (v_max_lives is not null and (v_contract_lives is null or v_contract_lives > v_max_lives)) then
     raise exception 'Número de vidas fora da regra';
