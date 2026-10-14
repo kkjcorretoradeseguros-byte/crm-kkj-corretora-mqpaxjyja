@@ -23,6 +23,10 @@ export async function previewContractCommissions(params: {
   if (!Number.isFinite(params.mensalidade) || Number(contract.valor_mensal) !== params.mensalidade) {
     throw new Error('A mensalidade da previsão deve corresponder ao valor registrado no contrato')
   }
+  const { data: financial, error: financialError } = await supabase.from('contract_financials')
+    .select('id').eq('contract_id', params.contractId).maybeSingle()
+  if (financialError) throw new Error('Não foi possível verificar previsões anteriores: ' + financialError.message)
+  if (financial) throw new Error('Este contrato já possui previsão financeira registrada')
   const installments = buildFinancialInstallmentDrafts(params)
   const total = (field: 'valor_previsto' | 'imposto_retido' | 'valor_liquido' | 'repasse_previsto_vendedor') =>
     Math.round(installments.reduce((sum, row) => sum + row[field], 0) * 100) / 100
