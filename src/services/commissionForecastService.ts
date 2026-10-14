@@ -16,20 +16,32 @@ export async function previewContractCommissions(params: {
   if (!params.contractId?.trim()) throw new Error('Contrato obrigatório')
   const { data: userData, error: authError } = await supabase.auth.getUser()
   if (authError || !userData.user) throw new Error('Sessão expirada')
-  const { data: contract, error } = await supabase.from('contracts')
-    .select('id,status,valor_mensal').eq('id', params.contractId).single()
+  const { data: contract, error } = await supabase
+    .from('contracts')
+    .select('id,status,valor_mensal')
+    .eq('id', params.contractId)
+    .single()
   if (error || !contract) throw new Error(error?.message || 'Contrato não encontrado')
-  if (contract.status === 'cancelado') throw new Error('Contrato cancelado não pode gerar novas previsões')
-  if (!Number.isFinite(params.mensalidade) || Number(contract.valor_mensal) !== params.mensalidade) {
+  if (contract.status === 'cancelado')
+    throw new Error('Contrato cancelado não pode gerar novas previsões')
+  if (
+    !Number.isFinite(params.mensalidade) ||
+    Number(contract.valor_mensal) !== params.mensalidade
+  ) {
     throw new Error('A mensalidade da previsão deve corresponder ao valor registrado no contrato')
   }
-  const { data: financial, error: financialError } = await supabase.from('contract_financials')
-    .select('id').eq('contract_id', params.contractId).maybeSingle()
-  if (financialError) throw new Error('Não foi possível verificar previsões anteriores: ' + financialError.message)
+  const { data: financial, error: financialError } = await supabase
+    .from('contract_financials')
+    .select('id')
+    .eq('contract_id', params.contractId)
+    .maybeSingle()
+  if (financialError)
+    throw new Error('Não foi possível verificar previsões anteriores: ' + financialError.message)
   if (financial) throw new Error('Este contrato já possui previsão financeira registrada')
   const installments = buildFinancialInstallmentDrafts(params)
-  const total = (field: 'valor_previsto' | 'imposto_retido' | 'valor_liquido' | 'repasse_previsto_vendedor') =>
-    Math.round(installments.reduce((sum, row) => sum + row[field], 0) * 100) / 100
+  const total = (
+    field: 'valor_previsto' | 'imposto_retido' | 'valor_liquido' | 'repasse_previsto_vendedor',
+  ) => Math.round(installments.reduce((sum, row) => sum + row[field], 0) * 100) / 100
   return {
     contractId: params.contractId,
     installments,

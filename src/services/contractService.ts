@@ -217,8 +217,8 @@ export const contractService = {
       }
       if (options.status) {
         const statusToDb: Record<ContractStatus, string> = {
-          'Ativo': 'ativo',
-          'Cancelado': 'cancelado',
+          Ativo: 'ativo',
+          Cancelado: 'cancelado',
           'Em Implantação': 'em_implantacao',
           'Pendente Renovação': 'pendente_renovacao',
         }
@@ -286,17 +286,24 @@ export const contractService = {
     if (!data.carrier_id || typeof data.carrier_id !== 'string' || !data.carrier_id.trim()) {
       throw new Error('Selecione uma operadora para cadastrar o contrato')
     }
-    if (data.sale_value !== undefined && (!Number.isFinite(data.sale_value) || data.sale_value < 0)) {
+    if (
+      data.sale_value !== undefined &&
+      (!Number.isFinite(data.sale_value) || data.sale_value < 0)
+    ) {
       throw new Error('Valor do contrato inválido')
     }
-    if (data.lives_count !== undefined && (!Number.isInteger(data.lives_count) || data.lives_count < 1)) {
+    if (
+      data.lives_count !== undefined &&
+      (!Number.isInteger(data.lives_count) || data.lives_count < 1)
+    ) {
       throw new Error('Quantidade de vidas inválida')
     }
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
 
     const assignedTo = data.assigned_to || currentUserId
-    if (!currentUserId) throw new Error('Sessão expirada. Faça login novamente para cadastrar o contrato')
+    if (!currentUserId)
+      throw new Error('Sessão expirada. Faça login novamente para cadastrar o contrato')
     if (typeof assignedTo !== 'string' || !assignedTo.trim()) {
       throw new Error('Responsável pelo contrato obrigatório')
     }
@@ -308,7 +315,8 @@ export const contractService = {
       'Pendente Renovação': 'pendente_renovacao',
     }
     if (data.status && !statusMap[data.status]) throw new Error('Status de contrato inválido')
-    if (data.status === 'Cancelado') throw new Error('Use a ação de cancelamento para registrar a justificativa')
+    if (data.status === 'Cancelado')
+      throw new Error('Use a ação de cancelamento para registrar a justificativa')
     const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
     if (dbStatus === 'ativo' && !data.data_confirmacao_pagamento) {
       throw new Error('Confirme o pagamento antes de ativar o contrato')
@@ -355,7 +363,8 @@ export const contractService = {
           dados_adicionais: { contract_id: mapped.id },
           user_id: currentUserId,
         })
-        if (timelineError) console.warn('Falha ao registrar cadastro na timeline:', timelineError.message)
+        if (timelineError)
+          console.warn('Falha ao registrar cadastro na timeline:', timelineError.message)
       } catch (tlErr) {
         console.warn('Erro ao registrar histórico do contrato na timeline:', tlErr)
       }
@@ -366,28 +375,49 @@ export const contractService = {
 
   async updateContract(id: string, data: Partial<Contract>): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
-    if (data.sale_value !== undefined && (!Number.isFinite(data.sale_value) || data.sale_value < 0)) {
+    if (
+      data.sale_value !== undefined &&
+      (!Number.isFinite(data.sale_value) || data.sale_value < 0)
+    ) {
       throw new Error('Valor do contrato inválido')
     }
-    if (data.lives_count !== undefined && (!Number.isInteger(data.lives_count) || data.lives_count < 1)) {
+    if (
+      data.lives_count !== undefined &&
+      (!Number.isInteger(data.lives_count) || data.lives_count < 1)
+    ) {
       throw new Error('Quantidade de vidas inválida')
     }
-    if (data.carrier_id !== undefined && (typeof data.carrier_id !== 'string' || !data.carrier_id.trim())) {
+    if (
+      data.carrier_id !== undefined &&
+      (typeof data.carrier_id !== 'string' || !data.carrier_id.trim())
+    ) {
       throw new Error('Operadora inválida')
     }
-    if (data.status === 'Cancelado') throw new Error('Use a ação de cancelamento para registrar a justificativa')
-    if (data.status !== undefined && !['Ativo', 'Em Implantação', 'Pendente Renovação'].includes(data.status)) {
+    if (data.status === 'Cancelado')
+      throw new Error('Use a ação de cancelamento para registrar a justificativa')
+    if (
+      data.status !== undefined &&
+      !['Ativo', 'Em Implantação', 'Pendente Renovação'].includes(data.status)
+    ) {
       throw new Error('Status de contrato inválido')
     }
-    if (data.assigned_to !== undefined && (typeof data.assigned_to !== 'string' || !data.assigned_to.trim())) {
+    if (
+      data.assigned_to !== undefined &&
+      (typeof data.assigned_to !== 'string' || !data.assigned_to.trim())
+    ) {
       throw new Error('Responsável pelo contrato inválido')
     }
 
     if (data.status === 'Ativo') {
-      const { data: current, error: currentError } = await supabase.from('contracts')
-        .select('id, data_pagamento, status').eq('id', id).single()
-      if (currentError || !current) throw new Error(currentError?.message || 'Contrato não encontrado')
-      if (current.status === 'cancelado') throw new Error('Contrato cancelado não pode ser reativado por edição')
+      const { data: current, error: currentError } = await supabase
+        .from('contracts')
+        .select('id, data_pagamento, status')
+        .eq('id', id)
+        .single()
+      if (currentError || !current)
+        throw new Error(currentError?.message || 'Contrato não encontrado')
+      if (current.status === 'cancelado')
+        throw new Error('Contrato cancelado não pode ser reativado por edição')
       if (!data.data_confirmacao_pagamento && !current.data_pagamento) {
         throw new Error('Confirme o pagamento antes de ativar o contrato')
       }
@@ -414,8 +444,10 @@ export const contractService = {
       if (data.status === 'Ativo') payload.data_implantacao = new Date().toISOString().slice(0, 10)
     }
     if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date || null
-    if (data.data_vencimento_primeiro_pagamento !== undefined) payload.data_previsao_vigencia = data.data_vencimento_primeiro_pagamento || null
-    if (data.data_confirmacao_pagamento !== undefined) payload.data_pagamento = data.data_confirmacao_pagamento || null
+    if (data.data_vencimento_primeiro_pagamento !== undefined)
+      payload.data_previsao_vigencia = data.data_vencimento_primeiro_pagamento || null
+    if (data.data_confirmacao_pagamento !== undefined)
+      payload.data_pagamento = data.data_confirmacao_pagamento || null
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
       payload.valor_mensal = data.sale_value
@@ -453,10 +485,12 @@ export const contractService = {
   async cancelContract(id: string, motivo: string): Promise<Contract> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
     if (typeof id !== 'string' || !id.trim()) throw new Error('Contrato inválido')
-    if (typeof motivo !== 'string' || !motivo.trim()) throw new Error('Informe o motivo do cancelamento')
+    if (typeof motivo !== 'string' || !motivo.trim())
+      throw new Error('Informe o motivo do cancelamento')
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData?.user?.id || null
-    if (!currentUserId) throw new Error('Sessão expirada. Faça login novamente para cancelar o contrato')
+    if (!currentUserId)
+      throw new Error('Sessão expirada. Faça login novamente para cancelar o contrato')
 
     const { data: cancelledRow, error: cancellationError } = await supabase
       .from('contracts')
@@ -483,7 +517,8 @@ export const contractService = {
           dados_adicionais: { cancelado_por: currentUserId, motivo },
           user_id: currentUserId,
         })
-        if (timelineError) console.warn('Falha ao registrar cancelamento na timeline:', timelineError.message)
+        if (timelineError)
+          console.warn('Falha ao registrar cancelamento na timeline:', timelineError.message)
       } catch (err) {
         console.warn('Erro ao registrar cancelamento do contrato na timeline:', err)
       }

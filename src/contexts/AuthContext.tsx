@@ -158,30 +158,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: { subscription },
       } = supabase.auth.onAuthStateChange((_event, session) => {
         // Avoid awaiting Supabase queries inside the auth-state callback.
-        void Promise.resolve().then(async () => {
-        if (!isMounted) return
-        if (session?.user) {
-          setToken(session.access_token)
-          const profile = await fetchProfileForAuthUser(
-            session.user.id,
-            session.user.email || '',
-            (session.user.user_metadata?.nome as string) ||
-              (session.user.user_metadata?.name as string),
-          )
-          if (isMounted) {
-            setUser(profile)
-            persistProfile(profile)
-          }
-        } else {
-          setToken(null)
-          setUser(null)
-          persistProfile(null)
-        }
-        if (isMounted) setIsLoading(false)
-        }).catch((error) => {
-          console.error('Falha ao atualizar perfil após mudança de sessão:', error)
-          if (isMounted) setIsLoading(false)
-        })
+        void Promise.resolve()
+          .then(async () => {
+            if (!isMounted) return
+            if (session?.user) {
+              setToken(session.access_token)
+              const profile = await fetchProfileForAuthUser(
+                session.user.id,
+                session.user.email || '',
+                (session.user.user_metadata?.nome as string) ||
+                  (session.user.user_metadata?.name as string),
+              )
+              if (isMounted) {
+                setUser(profile)
+                persistProfile(profile)
+              }
+            } else {
+              setToken(null)
+              setUser(null)
+              persistProfile(null)
+            }
+            if (isMounted) setIsLoading(false)
+          })
+          .catch((error) => {
+            console.error('Falha ao atualizar perfil após mudança de sessão:', error)
+            if (isMounted) setIsLoading(false)
+          })
       })
 
       authSub = subscription

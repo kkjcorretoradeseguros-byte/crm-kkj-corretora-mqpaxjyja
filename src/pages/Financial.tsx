@@ -42,7 +42,18 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [adminInstallments, setAdminInstallments] = useState<Array<{id: string; contract_id: string; numero_parcela: number; total_parcelas: number; data_vencimento: string; valor_previsto: number; valor_recebido: number | null; status: string}>>([])
+  const [adminInstallments, setAdminInstallments] = useState<
+    Array<{
+      id: string
+      contract_id: string
+      numero_parcela: number
+      total_parcelas: number
+      data_vencimento: string
+      valor_previsto: number
+      valor_recebido: number | null
+      status: string
+    }>
+  >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
 
   const normalizedRole = user?.role?.toUpperCase()
@@ -65,7 +76,9 @@ export default function Financial() {
       if (isAdmin) {
         const { data: installments, error: installmentsError } = await supabase
           .from('commission_installments')
-          .select('id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status')
+          .select(
+            'id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status',
+          )
           .order('data_vencimento', { ascending: true })
           .limit(500)
         setAdminInstallments(installments || [])
@@ -178,27 +191,61 @@ export default function Financial() {
         <Card>
           <CardHeader>
             <CardTitle>Parcelas de comissão</CardTitle>
-            <CardDescription>Previsões registradas; valores previstos não representam recebimentos confirmados.</CardDescription>
+            <CardDescription>
+              Previsões registradas; valores previstos não representam recebimentos confirmados.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {installmentError ? <p role="alert">Falha ao carregar parcelas: {installmentError}</p> : (
+            {installmentError ? (
+              <p role="alert">Falha ao carregar parcelas: {installmentError}</p>
+            ) : (
               <Table>
-                <TableHeader><TableRow>
-                  <TableHead>Contrato</TableHead><TableHead>Parcela</TableHead><TableHead>Vencimento</TableHead>
-                  <TableHead>Previsto</TableHead><TableHead>Recebido</TableHead><TableHead>Status</TableHead>
-                </TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Contrato</TableHead>
+                    <TableHead>Parcela</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead>Previsto</TableHead>
+                    <TableHead>Recebido</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {adminInstallments.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell>{contracts.find((contract) => contract.id === item.contract_id)?.contract_number || item.contract_id.slice(0, 8)}</TableCell>
-                      <TableCell>{item.numero_parcela}/{item.total_parcelas}</TableCell>
+                      <TableCell>
+                        {contracts.find((contract) => contract.id === item.contract_id)
+                          ?.contract_number || item.contract_id.slice(0, 8)}
+                      </TableCell>
+                      <TableCell>
+                        {item.numero_parcela}/{item.total_parcelas}
+                      </TableCell>
                       <TableCell>{item.data_vencimento}</TableCell>
-                      <TableCell>{Number(item.valor_previsto).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                      <TableCell>{item.valor_recebido == null ? 'Não conciliado' : Number(item.valor_recebido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
+                      <TableCell>
+                        {Number(item.valor_previsto).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
+                      </TableCell>
+                      <TableCell>
+                        {item.valor_recebido == null
+                          ? 'Não conciliado'
+                          : Number(item.valor_recebido).toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                      </TableCell>
                       <TableCell>{item.status}</TableCell>
                     </TableRow>
                   ))}
-                  {!adminInstallments.length && <TableRow><TableCell colSpan={6}>Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir de um contrato e uma regra de comissão.</TableCell></TableRow>}
+                  {!adminInstallments.length && (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir
+                        de um contrato e uma regra de comissão.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             )}
@@ -395,10 +442,10 @@ export default function Financial() {
             <CardContent>
               <div className="text-2xl font-black text-blue-900 dark:text-blue-200">
                 R${' '}
-                {(meuFinanceiro
-                  ? meuFinanceiro.total_repasse_previsto
-                  : 0
-                ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {(meuFinanceiro ? meuFinanceiro.total_repasse_previsto : 0).toLocaleString(
+                  'pt-BR',
+                  { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+                )}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
                 Baseada nas parcelas financeiras registradas
@@ -731,7 +778,9 @@ export default function Financial() {
                     R$ {c.sale_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
-                    {c.commission_value == null ? 'A conciliar' : 'R$ ' + c.commission_value.toLocaleString('pt-BR')}
+                    {c.commission_value == null
+                      ? 'A conciliar'
+                      : 'R$ ' + c.commission_value.toLocaleString('pt-BR')}
                   </TableCell>
                   <TableCell>
                     <Badge

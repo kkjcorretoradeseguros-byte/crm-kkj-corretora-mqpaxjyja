@@ -521,7 +521,8 @@ export const opportunityService = {
         .select('funnel_type')
         .eq('id', id)
         .single()
-      if (currentError || !current) throw new Error(currentError?.message || 'Oportunidade não encontrada')
+      if (currentError || !current)
+        throw new Error(currentError?.message || 'Oportunidade não encontrada')
       const fType = (payload.funnel_type as string) || current.funnel_type
       const { data: stRow, error: stageError } = await supabase
         .from('pipeline_stages')

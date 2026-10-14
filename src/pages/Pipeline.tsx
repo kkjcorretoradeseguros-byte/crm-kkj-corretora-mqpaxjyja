@@ -262,7 +262,13 @@ export default function Pipeline() {
       // Ativar o contrato somente depois de salvar a confirmação do pagamento.
       await contractService.updateContract(ct.id, {
         status: 'Ativo',
-        notes: (ct.notes || '') + ' [Implantado em ' + new Date().toLocaleDateString('pt-BR') + ' por ' + (user?.name || 'Administração') + ']',
+        notes:
+          (ct.notes || '') +
+          ' [Implantado em ' +
+          new Date().toLocaleDateString('pt-BR') +
+          ' por ' +
+          (user?.name || 'Administração') +
+          ']',
       })
 
       await opportunityService.addTimelineEvent(
@@ -1687,37 +1693,69 @@ export default function Pipeline() {
         lostReasons={LOST_REASONS}
       />
 
-
-      <Dialog open={!!pendingPaymentDateOpp} onOpenChange={(open) => { if (!open && !savingPaymentDate) setPendingPaymentDateOpp(null) }}>
+      <Dialog
+        open={!!pendingPaymentDateOpp}
+        onOpenChange={(open) => {
+          if (!open && !savingPaymentDate) setPendingPaymentDateOpp(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Data prevista do primeiro pagamento</DialogTitle>
-            <DialogDescription>Informe a previsão antes de avançar. Esta data não confirma recebimento financeiro.</DialogDescription>
+            <DialogDescription>
+              Informe a previsão antes de avançar. Esta data não confirma recebimento financeiro.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
             <Label htmlFor="expected-first-payment-date">Data prevista</Label>
-            <Input id="expected-first-payment-date" type="date" value={expectedPaymentDate} onChange={(e) => setExpectedPaymentDate(e.target.value)} />
+            <Input
+              id="expected-first-payment-date"
+              type="date"
+              value={expectedPaymentDate}
+              onChange={(e) => setExpectedPaymentDate(e.target.value)}
+            />
           </div>
           <DialogFooter>
-            <Button variant="outline" disabled={savingPaymentDate} onClick={() => setPendingPaymentDateOpp(null)}>Cancelar</Button>
-            <Button disabled={savingPaymentDate || !expectedPaymentDate} onClick={async () => {
-              if (!pendingPaymentDateOpp || !expectedPaymentDate) return
-              setSavingPaymentDate(true)
-              try {
-                const found = await contractService.getContracts({ opportunity_id: pendingPaymentDateOpp.id })
-                const contract = found.items[0]
-                if (!contract) throw new Error('Nenhum contrato vinculado foi encontrado.')
-                await contractService.updateContract(contract.id, { data_vencimento_primeiro_pagamento: expectedPaymentDate })
-                await opportunityService.updateStage(pendingPaymentDateOpp.id, 'Aguardando pagamento', pendingPaymentDateOpp.stage)
-                setPendingPaymentDateOpp(null)
-                setExpectedPaymentDate('')
-                await fetchData()
-              } catch (err: any) {
-                alert('Não foi possível salvar a previsão: ' + (err?.message || 'erro inesperado'))
-              } finally {
-                setSavingPaymentDate(false)
-              }
-            }}>{savingPaymentDate ? 'Salvando...' : 'Salvar e avançar'}</Button>
+            <Button
+              variant="outline"
+              disabled={savingPaymentDate}
+              onClick={() => setPendingPaymentDateOpp(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={savingPaymentDate || !expectedPaymentDate}
+              onClick={async () => {
+                if (!pendingPaymentDateOpp || !expectedPaymentDate) return
+                setSavingPaymentDate(true)
+                try {
+                  const found = await contractService.getContracts({
+                    opportunity_id: pendingPaymentDateOpp.id,
+                  })
+                  const contract = found.items[0]
+                  if (!contract) throw new Error('Nenhum contrato vinculado foi encontrado.')
+                  await contractService.updateContract(contract.id, {
+                    data_vencimento_primeiro_pagamento: expectedPaymentDate,
+                  })
+                  await opportunityService.updateStage(
+                    pendingPaymentDateOpp.id,
+                    'Aguardando pagamento',
+                    pendingPaymentDateOpp.stage,
+                  )
+                  setPendingPaymentDateOpp(null)
+                  setExpectedPaymentDate('')
+                  await fetchData()
+                } catch (err: any) {
+                  alert(
+                    'Não foi possível salvar a previsão: ' + (err?.message || 'erro inesperado'),
+                  )
+                } finally {
+                  setSavingPaymentDate(false)
+                }
+              }}
+            >
+              {savingPaymentDate ? 'Salvando...' : 'Salvar e avançar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

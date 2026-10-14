@@ -91,22 +91,36 @@ export async function getApplicableCommissionRule(params: {
     .eq('carrier_id', params.carrierId)
   if (error) throw new Error('Erro ao consultar regras: ' + error.message)
   const today = new Date().toISOString().slice(0, 10)
-  if (params.livesCount != null && (!Number.isInteger(params.livesCount) || params.livesCount < 1)) throw new Error('Quantidade de vidas inválida')
-  const candidates = (data ?? []).filter(rule => {
+  if (params.livesCount != null && (!Number.isInteger(params.livesCount) || params.livesCount < 1))
+    throw new Error('Quantidade de vidas inválida')
+  const candidates = (data ?? []).filter((rule) => {
     if (rule.product_id && rule.product_id !== params.productId) return false
-    if (rule.contract_type && rule.contract_type.toLowerCase() !== params.modality?.toLowerCase()) return false
-    if (!params.modality || !rule.modalidade || rule.modalidade.toLowerCase() !== params.modality.toLowerCase()) return false
+    if (rule.contract_type && rule.contract_type.toLowerCase() !== params.modality?.toLowerCase())
+      return false
+    if (
+      !params.modality ||
+      !rule.modalidade ||
+      rule.modalidade.toLowerCase() !== params.modality.toLowerCase()
+    )
+      return false
     if (rule.data_inicio_vigencia && rule.data_inicio_vigencia > today) return false
     if (rule.data_fim_vigencia && rule.data_fim_vigencia < today) return false
     if (rule.min_lives != null && params.livesCount == null) return false
     if (rule.max_lives != null && params.livesCount == null) return false
-    if (params.livesCount != null && (params.livesCount < (rule.min_lives ?? 0) || params.livesCount > (rule.max_lives ?? Infinity))) return false
+    if (
+      params.livesCount != null &&
+      (params.livesCount < (rule.min_lives ?? 0) ||
+        params.livesCount > (rule.max_lives ?? Infinity))
+    )
+      return false
     return true
   })
   if (candidates.length !== 1) {
-    throw new Error(candidates.length === 0
-      ? 'Nenhuma regra comercial aplicável à operadora e ao produto'
-      : 'Há mais de uma regra comercial aplicável; revise as regras antes de calcular')
+    throw new Error(
+      candidates.length === 0
+        ? 'Nenhuma regra comercial aplicável à operadora e ao produto'
+        : 'Há mais de uma regra comercial aplicável; revise as regras antes de calcular',
+    )
   }
   return candidates[0] as CommissionRule
 }
@@ -146,7 +160,9 @@ export const commissionRuleService = {
             : [],
       }))
     } catch (error) {
-      throw error instanceof Error ? error : new Error('Falha inesperada ao carregar regras de comissão')
+      throw error instanceof Error
+        ? error
+        : new Error('Falha inesperada ao carregar regras de comissão')
     }
   },
 
@@ -167,27 +183,51 @@ export const commissionRuleService = {
     }
 
     if (!rule.carrier_id?.trim()) throw new Error('Operadora obrigatória para a regra')
-    if (rule.data_inicio_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_inicio_vigencia)) throw new Error('Data inicial inválida')
-    if (rule.data_fim_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_fim_vigencia)) throw new Error('Data final inválida')
+    if (rule.data_inicio_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_inicio_vigencia))
+      throw new Error('Data inicial inválida')
+    if (rule.data_fim_vigencia && !/^\d{4}-\d{2}-\d{2}$/.test(rule.data_fim_vigencia))
+      throw new Error('Data final inválida')
     if (!rule.nome?.trim()) throw new Error('Nome da regra obrigatório')
-    if (rule.min_lives != null && (!Number.isInteger(rule.min_lives) || rule.min_lives < 1)) throw new Error('Mínimo de vidas inválido')
-    if (rule.max_lives != null && (!Number.isInteger(rule.max_lives) || rule.max_lives < (rule.min_lives ?? 1))) throw new Error('Máximo de vidas inválido')
+    if (rule.min_lives != null && (!Number.isInteger(rule.min_lives) || rule.min_lives < 1))
+      throw new Error('Mínimo de vidas inválido')
+    if (
+      rule.max_lives != null &&
+      (!Number.isInteger(rule.max_lives) || rule.max_lives < (rule.min_lives ?? 1))
+    )
+      throw new Error('Máximo de vidas inválido')
     if (!Array.isArray(rule.cronograma_parcelas) || rule.cronograma_parcelas.length === 0) {
       throw new Error('Informe ao menos uma parcela da comissão')
     }
     const months = new Set<number>()
     for (const installment of rule.cronograma_parcelas) {
-      if (!Number.isInteger(installment.month) || installment.month < 1 || installment.month > 1200 ||
-          !Number.isFinite(installment.pct) || installment.pct < 0 || installment.pct > 100 ||
-          months.has(installment.month)) throw new Error('Cronograma de comissão inválido')
+      if (
+        !Number.isInteger(installment.month) ||
+        installment.month < 1 ||
+        installment.month > 1200 ||
+        !Number.isFinite(installment.pct) ||
+        installment.pct < 0 ||
+        installment.pct > 100 ||
+        months.has(installment.month)
+      )
+        throw new Error('Cronograma de comissão inválido')
       months.add(installment.month)
     }
-    for (const rate of [rule.aliquota_imposto_pct ?? 15, rule.repasse_vendedor_pct ?? 50, rule.repasse_vendedor_proprio_pct ?? 100]) {
-      if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new Error('Percentual de comissão inválido')
+    for (const rate of [
+      rule.aliquota_imposto_pct ?? 15,
+      rule.repasse_vendedor_pct ?? 50,
+      rule.repasse_vendedor_proprio_pct ?? 100,
+    ]) {
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100)
+        throw new Error('Percentual de comissão inválido')
     }
-    if (rule.has_recurring && (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 ||
-        (rule.recurring_percentage ?? 0) > 100 || !Number.isInteger(rule.recurring_start_month) ||
-        (rule.recurring_start_month ?? 0) <= Math.max(...months))) {
+    if (
+      rule.has_recurring &&
+      (!Number.isFinite(rule.recurring_percentage) ||
+        (rule.recurring_percentage ?? 0) <= 0 ||
+        (rule.recurring_percentage ?? 0) > 100 ||
+        !Number.isInteger(rule.recurring_start_month) ||
+        (rule.recurring_start_month ?? 0) <= Math.max(...months))
+    ) {
       throw new Error('Vitalício incompatível com o cronograma')
     }
 
@@ -195,14 +235,22 @@ export const commissionRuleService = {
       if (!date) continue
       const [year, month, day] = date.split('-').map(Number)
       const parsed = new Date(Date.UTC(year, month - 1, day))
-      if (year < 1900 || year > 9999 || parsed.getUTCFullYear() !== year ||
-          parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) {
+      if (
+        year < 1900 ||
+        year > 9999 ||
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== month - 1 ||
+        parsed.getUTCDate() !== day
+      ) {
         throw new Error('Data de vigência inexistente')
       }
     }
 
-    if (rule.data_inicio_vigencia && rule.data_fim_vigencia &&
-        rule.data_fim_vigencia < rule.data_inicio_vigencia) {
+    if (
+      rule.data_inicio_vigencia &&
+      rule.data_fim_vigencia &&
+      rule.data_fim_vigencia < rule.data_inicio_vigencia
+    ) {
       throw new Error('Vigência final anterior à inicial')
     }
 
