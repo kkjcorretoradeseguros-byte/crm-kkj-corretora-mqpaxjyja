@@ -7,16 +7,16 @@ export interface SpecialRuleSchedule {
   modalidade: string
   parcelas: number[] // Ex: [100, 100, 100, 50, 50]
   vitalicioPercentual?: number // Ex: 2%
-  vitalicioAPartirDe?: number // Ex: a partir da 4ª
+  vitalicioAPartirDe?: number // Vitalício exclusivo da KKJ, a partir da 2ª competência
   totalPercentual: number
   semVitalicio: boolean
 }
 
 // 9. REGRAS ESPECIAIS SAÚDE PME CONFORME PRESCRIÇÃO DO CLIENTE:
 // - Bradesco Saúde: 100/100/100/50/50 (total 400%, sem vitalício)
-// - Amil: 100/100/100 + 2% vitalício a partir da 4ª (total 300% + recorrência)
-// - SulAmérica: idêntica à Amil (100/100/100 + 2% vitalício a partir da 4ª)
-// - Porto Seguro: idêntica à Amil (100/100/100 + 2% vitalício a partir da 4ª)
+// - Amil: 100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência (total 300% + recorrência)
+// - SulAmérica: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
+// - Porto Seguro: idêntica à Amil (100/100/100 + 2% vitalício exclusivo da KKJ a partir da 2ª competência)
 // - Alice: 100/100/100 (total 300%, sem vitalício)
 // - MedSênior: 100/50/50 (total 200%, sem vitalício)
 // - Hapvida: 100/100/100/50 (total 350%, sem vitalício)
@@ -48,7 +48,7 @@ export const SPECIAL_PME_RULES: Record<string, SpecialRuleSchedule> = {
     modalidade: 'PME',
     parcelas: [100, 100, 100],
     vitalicioPercentual: 2,
-    vitalicioAPartirDe: 4,
+    vitalicioAPartirDe: 2,
     totalPercentual: 300,
     semVitalicio: false,
   },
@@ -252,6 +252,56 @@ export function buildFinancialInstallmentDrafts(params: {
       status: 'previsto' as const,
     }
   })
+}
+
+
+
+export interface RecurringCommissionCompetence {
+  competencia: string
+  valor_base_mensalidade: number
+  percentual_aplicado: number
+  comissao_bruta_kkj: number
+  imposto_estimado: number
+  comissao_liquida_kkj: number
+  repasse_vendedor: 0
+  repasse_gestor: 0
+  tipo_parcela: 'vitalicio_kkj'
+}
+
+/** Calculates one confirmed monthly competence of the KKJ-only lifetime commission.
+ * Seller and manager payouts remain governed exclusively by the existing initial commission schedule.
+ * This helper creates a single competence at a time; it does not fabricate future receipts.
+ */
+export function calculateRecurringCommissionForCompetence(params: {
+  rule: DatabaseCommissionRule
+  mensalidade: number
+  competencia: string
+}): RecurringCommissionCompetence {
+  const { rule, mensalidade, competencia } = params
+  if (!rule?.has_recurring) throw new Error('Regra sem comissão vitalícia')
+  if (!Number.isFinite(rule.recurring_percentage) || (rule.recurring_percentage ?? 0) <= 0 || (rule.recurring_percentage ?? 0) > 100) {
+    throw new Error('Percentual de vitalício inválido')
+  }
+  if (!Number.isInteger(rule.recurring_start_month) || (rule.recurring_start_month ?? 0) < 2) {
+    throw new Error('O vitalício deve começar a partir da segunda competência')
+  }
+  if (!Number.isFinite(mensalidade) || mensalidade <= 0) throw new Error('Mensalidade inválida')
+  if (!/^\\d{4}-\\d{2}$/.test(competencia)) throw new Error('Competência inválida; use AAAA-MM')
+  const [year, month] = competencia.split('-').map(Number)
+  if (year < 1900 || year > 9998 || month < 1 || month > 12) throw new Error('Competência inválida')
+  const comissao = Math.round(mensalidade * (rule.recurring_percentage ?? 0)) / 100
+  const imposto = Math.round(comissao * rule.aliquota_imposto_pct) / 100
+  return {
+    competencia,
+    valor_base_mensalidade: mensalidade,
+    percentual_aplicado: rule.recurring_percentage!,
+    comissao_bruta_kkj: Math.round(comissao * 100) / 100,
+    imposto_estimado: Math.round(imposto * 100) / 100,
+    comissao_liquida_kkj: Math.round((comissao - imposto) * 100) / 100,
+    repasse_vendedor: 0,
+    repasse_gestor: 0,
+    tipo_parcela: 'vitalicio_kkj',
+  }
 }
 
 export const commissionEngine = {
