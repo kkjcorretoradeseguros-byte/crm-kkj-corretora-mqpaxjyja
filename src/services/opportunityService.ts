@@ -619,8 +619,46 @@ export const opportunityService = {
     return mapped
   },
 
-  async getPipelineStages(pipelineType?: PipelineType) {
-    if (!isSupabaseConfigured) return []
+  async getPipelineStages(pipelineType?: PipelineType): Promise<
+    Array<{
+      id: string
+      nome: string
+      ordem: number
+      funnel_type: string
+      is_fechamento?: boolean
+      e_saida?: boolean
+      ativo?: boolean
+    }>
+  > {
+    if (!isSupabaseConfigured) {
+      // Fallback padrão caso offline / sem conexão
+      if (pipelineType === 'POS_VENDA') {
+        return [
+          { id: 'pos-1', nome: 'Documentação', ordem: 1, funnel_type: 'pos_venda' },
+          { id: 'pos-2', nome: 'Implantação', ordem: 2, funnel_type: 'pos_venda' },
+          { id: 'pos-3', nome: 'Aguardando pagamento', ordem: 3, funnel_type: 'pos_venda' },
+          { id: 'pos-4', nome: 'Implantado', ordem: 4, funnel_type: 'pos_venda' },
+          { id: 'pos-5', nome: 'Cliente ativo', ordem: 5, funnel_type: 'pos_venda' },
+        ]
+      }
+      return [
+        { id: 'vendas-1', nome: 'Novo Lead', ordem: 1, funnel_type: 'vendas' },
+        { id: 'vendas-2', nome: 'Contato realizado', ordem: 2, funnel_type: 'vendas' },
+        { id: 'vendas-3', nome: 'Qualificado', ordem: 3, funnel_type: 'vendas' },
+        { id: 'vendas-4', nome: 'Cotação', ordem: 4, funnel_type: 'vendas' },
+        { id: 'vendas-5', nome: 'Follow-up', ordem: 5, funnel_type: 'vendas' },
+        { id: 'vendas-6', nome: 'Negociação', ordem: 6, funnel_type: 'vendas' },
+        { id: 'vendas-7', nome: 'Repescagem', ordem: 7, funnel_type: 'vendas' },
+        {
+          id: 'vendas-8',
+          nome: 'Venda ganha',
+          ordem: 8,
+          funnel_type: 'vendas',
+          is_fechamento: true,
+        },
+        { id: 'vendas-9', nome: 'Perdido', ordem: 9, funnel_type: 'vendas', e_saida: true },
+      ]
+    }
     try {
       let query = supabase
         .from('pipeline_stages')
@@ -638,7 +676,15 @@ export const opportunityService = {
         console.warn('Erro ao carregar pipeline_stages:', error.message)
         return []
       }
-      return data || []
+      return (data || []) as Array<{
+        id: string
+        nome: string
+        ordem: number
+        funnel_type: string
+        is_fechamento?: boolean
+        e_saida?: boolean
+        ativo?: boolean
+      }>
     } catch {
       return []
     }
