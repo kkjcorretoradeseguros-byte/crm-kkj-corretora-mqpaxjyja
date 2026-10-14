@@ -310,6 +310,9 @@ export const contractService = {
     if (data.status && !statusMap[data.status]) throw new Error('Status de contrato inválido')
     if (data.status === 'Cancelado') throw new Error('Use a ação de cancelamento para registrar a justificativa')
     const dbStatus = (data.status && statusMap[data.status]) || 'em_implantacao'
+    if (dbStatus === 'ativo' && !data.data_confirmacao_pagamento) {
+      throw new Error('Confirme o pagamento antes de ativar o contrato')
+    }
 
     const insertPayload: Record<string, unknown> = {
       opportunity_id: data.opportunity_id || null,
@@ -378,6 +381,16 @@ export const contractService = {
     }
     if (data.assigned_to !== undefined && (typeof data.assigned_to !== 'string' || !data.assigned_to.trim())) {
       throw new Error('Responsável pelo contrato inválido')
+    }
+
+    if (data.status === 'Ativo') {
+      const { data: current, error: currentError } = await supabase.from('contracts')
+        .select('id, data_pagamento, status').eq('id', id).single()
+      if (currentError || !current) throw new Error(currentError?.message || 'Contrato não encontrado')
+      if (current.status === 'cancelado') throw new Error('Contrato cancelado não pode ser reativado por edição')
+      if (!data.data_confirmacao_pagamento && !current.data_pagamento) {
+        throw new Error('Confirme o pagamento antes de ativar o contrato')
+      }
     }
 
     const payload: Record<string, unknown> = {
