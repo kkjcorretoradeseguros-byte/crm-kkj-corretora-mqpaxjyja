@@ -349,6 +349,11 @@ export default function Pipeline() {
 
   // Quick move via select dropdown
   const handleQuickMove = async (opp: Opportunity, targetStage: string) => {
+    if (pipelineType === 'POS_VENDA' && targetStage === 'Aguardando pagamento') {
+      setPendingPaymentDateOpp(opp)
+      setExpectedPaymentDate('')
+      return
+    }
     if (targetStage === 'Venda perdida' || targetStage === 'Perdido') {
       setPendingLostOpp(opp)
       setIsLostModalOpen(true)
