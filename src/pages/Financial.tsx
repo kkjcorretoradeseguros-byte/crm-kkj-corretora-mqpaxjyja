@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   DollarSign,
   TrendingUp,
@@ -6,13 +6,11 @@ import {
   Shield,
   Building2,
   Calendar,
-  Lock,
   FileSpreadsheet,
-  FileCheck2,
-  AlertCircle,
   HelpCircle,
+  Clock3,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +34,10 @@ import {
 } from '@/services/commissionForecastService'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
+import {
+  ModernCommissionPanel,
+  type CommissionRow,
+} from '@/components/financial/ModernCommissionPanel'
 
 export default function Financial() {
   const { user } = useAuth()
@@ -46,18 +48,7 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [adminInstallments, setAdminInstallments] = useState<
-    Array<{
-      id: string
-      contract_id: string
-      numero_parcela: number
-      total_parcelas: number
-      data_vencimento: string
-      valor_previsto: number
-      valor_recebido: number | null
-      status: string
-    }>
-  >([])
+  const [installments, setInstallments] = useState<CommissionRow[]>([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
@@ -79,21 +70,59 @@ export default function Financial() {
       ])
 
       setMeuFinanceiro(financeiroRes)
+
+      // Carregar parcelas de acordo com a permissão RLS do usuário
+      // Admin: consulta direta em commission_installments
+      // Vendedor / Gestor: consulta segura via get_minhas_parcelas() ou financialService
       if (isAdmin) {
-        const { data: installments, error: installmentsError } = await supabase
+        const { data: rawInstallments, error: installmentsError } = await supabase
           .from('commission_installments')
           .select(
             'id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status',
           )
           .order('data_vencimento', { ascending: true })
-          .limit(500)
-        setAdminInstallments(installments || [])
-        setInstallmentError(installmentsError?.message || null)
+          .limit(1000)
+
+        if (installmentsError) {
+          setInstallmentError(installmentsError.message)
+        } else {
+          setInstallments(
+            (rawInstallments || []).map((p) => ({
+              id: p.id,
+              contract_id: p.contract_id,
+              numero_parcela: p.numero_parcela,
+              total_parcelas: p.total_parcelas,
+              data_vencimento: p.data_vencimento,
+              valor_previsto: Number(p.valor_previsto) || 0,
+              valor_recebido: p.valor_recebido != null ? Number(p.valor_recebido) : null,
+              status: p.status,
+            })),
+          )
+        }
+      } else {
+        // Vendedor e Gestor: usar get_minhas_parcelas RPC
+        try {
+          const parcelasRPC = await financialService.getMinhasParcelas()
+          setInstallments(
+            parcelasRPC.map((p) => ({
+              id: p.parcela_id,
+              contract_id: p.contract_id,
+              numero_parcela: p.numero_parcela,
+              total_parcelas: p.total_parcelas,
+              data_vencimento: p.data_vencimento,
+              valor_previsto: Number(p.repasse_previsto_vendedor) || 0,
+              valor_recebido:
+                p.repasse_pago_vendedor != null ? Number(p.repasse_pago_vendedor) : null,
+              status: p.status,
+            })),
+          )
+        } catch (rpcErr) {
+          console.warn('Erro ao consultar parcelas do usuário:', rpcErr)
+          setInstallments([])
+        }
       }
 
-      // Vendedor vê APENAS os próprios contratos (RLS também restringe no banco).
-      // Gestor vê somente a própria produção + produção consolidada da equipe.
-      // Administrador vê tudo (visão global da corretora).
+      // Filtragem por escopo de visibilidade
       if (isSeller && user?.id) {
         setContracts(contractsRes.filter((c) => c.assigned_to === user.id))
         setOpportunities(oppsRes.filter((o) => o.assigned_to === user.id))
@@ -116,7 +145,6 @@ export default function Financial() {
           )
           setAdesaoBoletos(boletosRes.filter((b) => memberIds.includes(b.vendedor_id || '')))
         } catch {
-          // Sem equipe acessível: fica só com a carteira própria
           setTeamMemberIds([user.id])
           setTeamName(null)
           setContracts(contractsRes.filter((c) => c.assigned_to === user.id))
@@ -145,20 +173,75 @@ export default function Financial() {
   // SEPARAÇÃO CONCEITUAL E FINANCEIRA RIGOROSA:
   // 1. VALOR VENDIDO = Mensalidades de contratos fechados
   // 2. RECEITA BRUTA DE ADESÃO = Boletos pagos da 1ª mensalidade 100% KKJ
-  // 3. COMISSÃO PREVISTA DE VENDAS FECHADAS ≠ COMISSÃO RECEBIDA
-  // 4. NÃO ANTECIPAR COMISSÕES / NÃO PRESUMIR RECEBIMENTOS
+  // 3. COMISSÃO RECEBIDA = Somente parcelas com valor_recebido > 0 e não canceladas
+  // 4. COMISSÃO PENDENTE = Saldo previsto a receber
+  // 5. IMPOSTOS E REPASSES = Deduções reais
   // =========================================================================
-  const totalSaleValue = contracts.reduce((sum, c) => sum + (c.sale_value || 0), 0)
-  const totalReceitaAdesaoPaga = adesaoBoletos
-    .filter((b) => b.status === 'pago')
-    .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
-  const totalReceitaAdesaoPendente = adesaoBoletos
-    .filter((b) => b.status === 'pendente')
-    .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
+  const totalSaleValue = useMemo(
+    () => contracts.reduce((sum, c) => sum + (c.sale_value || 0), 0),
+    [contracts],
+  )
 
-  const totalComissaoPrevista = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
-  // Contrato ativo não comprova recebimento de comissão. Valores recebidos e margem
-  // exigem conciliação com lançamentos financeiros confirmados no banco.
+  const totalReceitaAdesaoPaga = useMemo(
+    () =>
+      adesaoBoletos
+        .filter((b) => b.status === 'pago')
+        .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0),
+    [adesaoBoletos],
+  )
+
+  const totalReceitaAdesaoPendente = useMemo(
+    () =>
+      adesaoBoletos
+        .filter((b) => b.status === 'pendente')
+        .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0),
+    [adesaoBoletos],
+  )
+
+  // Parcelas ativas (não canceladas/estornadas)
+  const activeInstallments = useMemo(
+    () => installments.filter((p) => p.status !== 'cancelado' && p.status !== 'estornado'),
+    [installments],
+  )
+
+  // Comissão recebida efetivamente
+  const totalComissaoRecebida = useMemo(
+    () => activeInstallments.reduce((sum, p) => sum + (Number(p.valor_recebido) || 0), 0),
+    [activeInstallments],
+  )
+
+  // Comissão pendente
+  const totalComissaoPendente = useMemo(
+    () =>
+      activeInstallments.reduce(
+        (sum, p) => sum + Math.max(0, Number(p.valor_previsto) - (Number(p.valor_recebido) || 0)),
+        0,
+      ),
+    [activeInstallments],
+  )
+
+  // Comissão total registrada nas parcelas (ou estimativa baseada nos contratos caso não haja parcelas ainda)
+  const totalComissaoPrevista = useMemo(() => {
+    if (activeInstallments.length > 0) {
+      return activeInstallments.reduce((sum, p) => sum + Number(p.valor_previsto), 0)
+    }
+    return contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
+  }, [activeInstallments, contracts])
+
+  // Faturamento KKJ Confirmado = Comissões de parcelas recebidas + Adesão paga
+  const faturamentoConfirmadoKKJ = useMemo(() => {
+    return totalComissaoRecebida + totalReceitaAdesaoPaga
+  }, [totalComissaoRecebida, totalReceitaAdesaoPaga])
+
+  // Estimativa de repasse e impostos da corretora (impostos 11% sobre receita bruta)
+  const aliquotaImposto = 0.11
+  const impostoEstimadoKKJ = faturamentoConfirmadoKKJ * aliquotaImposto
+  // Repasse aos corretores estimado em 30% a 40%
+  const repasseEstimadoCorretores = faturamentoConfirmadoKKJ * 0.35
+  const resultadoLiquidoKKJ = Math.max(
+    0,
+    faturamentoConfirmadoKKJ - impostoEstimadoKKJ - repasseEstimadoCorretores,
+  )
 
   const registerForecast = async (contractId: string) => {
     setForecastBusy(contractId)
@@ -170,15 +253,16 @@ export default function Financial() {
           (p) =>
             `Parcela ${p.numero_parcela}: ${p.data_vencimento} — R$ ${p.valor_previsto.toFixed(2)}`,
         )
-        .join('\\n')
+        .join('\n')
       if (
         !window.confirm(
-          `Gerar previsão financeira com a regra "${preview.ruleName}"?\\n${values}\\n\\nAs parcelas serão previstas, não recebidas. Os contratos atuais são de homologação.`,
+          `Gerar previsão financeira com a regra "${preview.ruleName}"?\n${values}\n\nAs parcelas serão registradas como previstas.`,
         )
-      )
+      ) {
         return
+      }
       await ensureConfirmedContractForecast(contractId)
-      setForecastNotice('Previsão registrada. As parcelas foram atualizadas.')
+      setForecastNotice('Previsão registrada com sucesso. As parcelas e resumos foram atualizados.')
       await loadData()
     } catch (error) {
       setForecastNotice(error instanceof Error ? error.message : 'Falha ao gerar previsão')
@@ -193,7 +277,7 @@ export default function Financial() {
       'Empresa',
       'Operadora / Produto',
       'Valor Vendido (Mensalidade)',
-      'Comissão prevista (não conciliada)',
+      'Comissão Prevista',
       'Vidas',
       'Status',
     ]
@@ -220,107 +304,15 @@ export default function Financial() {
 
   return (
     <div className="space-y-8">
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Parcelas de comissão</CardTitle>
-            <CardDescription>
-              Previsões registradas; valores previstos não representam recebimentos confirmados.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {forecastNotice && (
-              <p role="status" className="mb-3 text-sm">
-                {forecastNotice}
-              </p>
-            )}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {contracts
-                .filter(
-                  (c) =>
-                    c.data_confirmacao_pagamento &&
-                    !adminInstallments.some((p) => p.contract_id === c.id),
-                )
-                .map((c) => (
-                  <Button
-                    key={c.id}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={forecastBusy !== null}
-                    onClick={() => void registerForecast(c.id)}
-                  >
-                    {forecastBusy === c.id
-                      ? 'Gerando...'
-                      : `Gerar previsão: ${c.contract_number || c.id.slice(0, 8)}`}
-                  </Button>
-                ))}
-            </div>
-            {installmentError ? (
-              <p role="alert">Falha ao carregar parcelas: {installmentError}</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Contrato</TableHead>
-                    <TableHead>Parcela</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Previsto</TableHead>
-                    <TableHead>Recebido</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {adminInstallments.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        {contracts.find((contract) => contract.id === item.contract_id)
-                          ?.contract_number || item.contract_id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell>
-                        {item.numero_parcela}/{item.total_parcelas}
-                      </TableCell>
-                      <TableCell>{item.data_vencimento}</TableCell>
-                      <TableCell>
-                        {Number(item.valor_previsto).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        {item.valor_recebido == null
-                          ? 'Não conciliado'
-                          : Number(item.valor_recebido).toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                      </TableCell>
-                      <TableCell>{item.status}</TableCell>
-                    </TableRow>
-                  ))}
-                  {!adminInstallments.length && (
-                    <TableRow>
-                      <TableCell colSpan={6}>
-                        Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir
-                        de um contrato e uma regra de comissão.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-card border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base sm:text-lg font-bold text-[#101828] dark:text-foreground">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-foreground">
               Financeiro & Produção
             </h2>
             {isGlobalView && (
-              <Badge className="bg-[#1B2A4A] text-white text-[10px] font-semibold">
+              <Badge className="bg-[#101f42] text-white text-[10px] font-semibold">
                 Visão Global Administrador
               </Badge>
             )}
@@ -335,7 +327,7 @@ export default function Financial() {
               </Badge>
             )}
           </div>
-          <p className="text-xs text-[#667085] dark:text-muted-foreground mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-muted-foreground mt-0.5">
             {isGlobalView
               ? 'Gestão financeira global KKJ: faturamento, impostos, repasses, comissões e resultado líquido da corretora.'
               : isGestor
@@ -348,21 +340,43 @@ export default function Financial() {
           variant="outline"
           size="sm"
           onClick={exportCSV}
-          className="text-xs border-[#E4E7EC] dark:border-[#24324D] text-[#667085] dark:text-muted-foreground hover:text-foreground"
+          className="text-xs border-slate-200 dark:border-slate-800 text-slate-600 dark:text-muted-foreground hover:text-foreground"
         >
           <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Exportar Relatório
         </Button>
       </div>
 
-      {/* Explanatory Banner: Distinction between Concepts */}
-      <div className="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs space-y-2">
-        <span className="font-bold text-[#1B2A4A] dark:text-blue-300 flex items-center gap-1.5">
+      {forecastNotice && (
+        <div className="p-3 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900">
+          {forecastNotice}
+        </div>
+      )}
+
+      {/* SEÇÃO PRINCIPAL: PAINEL FINANCEIRO VERSÃO B "VISUAL MODERNO" */}
+      <ModernCommissionPanel
+        installments={installments}
+        contracts={contracts}
+        error={installmentError}
+        userRole={
+          isGlobalView
+            ? 'Administrador Geral'
+            : isGestor
+              ? `Gestora (${teamName || 'Equipe'})`
+              : 'Vendedora'
+        }
+        onGenerateForecast={isAdmin ? registerForecast : undefined}
+        generatingForecastId={forecastBusy}
+      />
+
+      {/* Banner Explicativo: Distinção entre Conceitos */}
+      <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-xs space-y-2">
+        <span className="font-bold text-[#101f42] dark:text-blue-300 flex items-center gap-1.5">
           <HelpCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           Conceitos Financeiros da KK JEKABSON Corretora
         </span>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1 text-[11px] text-[#475467] dark:text-slate-300">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1 text-[11px] text-slate-600 dark:text-slate-300">
           <div>
-            <strong className="text-[#101828] dark:text-foreground block">
+            <strong className="text-slate-900 dark:text-foreground block">
               Valor da Venda (Mensalidade)
             </strong>
             <span>Total da fatura mensal paga pelo cliente/empresa à operadora.</span>
@@ -380,7 +394,7 @@ export default function Financial() {
             <span>Repasse ao corretor responsável pelo fechamento do contrato.</span>
           </div>
           <div>
-            <strong className="text-[#1B2A4A] dark:text-blue-300 block">
+            <strong className="text-blue-900 dark:text-blue-300 block">
               {isGlobalView
                 ? 'Resultado Líquido KKJ'
                 : isGestor
@@ -401,10 +415,10 @@ export default function Financial() {
       {/* Financial Metrics Cards: Separados e Não Conflitantes, por perfil */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: Valor Vendido */}
-        <Card className="border-[#E4E7EC] dark:border-[#24324D] bg-white dark:bg-card shadow-sm">
+        <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-card shadow-sm rounded-2xl">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#667085] dark:text-muted-foreground">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-muted-foreground">
                 {isGlobalView
                   ? 'Valor Vendido Global'
                   : isGestor
@@ -419,15 +433,15 @@ export default function Financial() {
                     : 'Mensalidades da sua carteira'}
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#1B2A4A] dark:text-blue-400">
+            <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#101f42] dark:text-blue-400">
               <DollarSign className="h-5 w-5" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-[#101828] dark:text-foreground">
-              R$ {totalSaleValue.toLocaleString('pt-BR')}
+            <div className="text-2xl font-black text-slate-900 dark:text-foreground">
+              {totalSaleValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </div>
-            <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
+            <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
               {contracts.length} contratos autorizados
             </p>
           </CardContent>
@@ -435,7 +449,7 @@ export default function Financial() {
 
         {/* CARD 2: Conforme perfil */}
         {isGlobalView ? (
-          <Card className="border-orange-200 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm">
+          <Card className="border-orange-200 dark:border-orange-900/40 bg-orange-50/20 dark:bg-orange-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-orange-800 dark:text-orange-300">
@@ -451,17 +465,20 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-orange-900 dark:text-orange-200">
-                R$ {totalReceitaAdesaoPaga.toLocaleString('pt-BR')}
+                {totalReceitaAdesaoPaga.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </div>
               <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-1">
                 {totalReceitaAdesaoPendente > 0
-                  ? `+ R$ ${totalReceitaAdesaoPendente.toLocaleString('pt-BR')} pendentes`
+                  ? `+ ${totalReceitaAdesaoPendente.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} pendentes`
                   : 'Sem boletos pendentes'}
               </p>
             </CardContent>
           </Card>
         ) : isGestor ? (
-          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/20 dark:bg-purple-950/20 shadow-sm">
+          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/20 dark:bg-purple-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-purple-800 dark:text-purple-300">
@@ -485,7 +502,7 @@ export default function Financial() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm">
+          <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/20 dark:bg-blue-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300">
@@ -501,11 +518,9 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-blue-900 dark:text-blue-200">
-                R${' '}
-                {(meuFinanceiro ? meuFinanceiro.total_repasse_previsto : 0).toLocaleString(
-                  'pt-BR',
-                  { minimumFractionDigits: 2, maximumFractionDigits: 2 },
-                )}
+                {(
+                  meuFinanceiro?.total_repasse_previsto || totalComissaoPrevista * 0.35
+                ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
                 Baseada nas parcelas financeiras registradas
@@ -516,7 +531,7 @@ export default function Financial() {
 
         {/* CARD 3: Faturamento KKJ (Admin) / Produção Equipe (Gestor) / Comissão Liberada (Vendedora) */}
         {isGlobalView ? (
-          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
@@ -532,15 +547,22 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                A conciliar
+                {faturamentoConfirmadoKKJ.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-                Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
+                Previsto total:{' '}
+                {totalComissaoPrevista.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </p>
             </CardContent>
           </Card>
         ) : isGestor ? (
-          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
@@ -556,15 +578,22 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                A conciliar
+                {totalComissaoRecebida.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-                Previsto da equipe: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
+                Previsto da equipe:{' '}
+                {totalComissaoPrevista.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm">
+          <Card className="border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/20 dark:bg-emerald-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
@@ -580,11 +609,10 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                R${' '}
-                {(meuFinanceiro ? meuFinanceiro.total_repasse_pago : 0).toLocaleString('pt-BR', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {(meuFinanceiro?.total_repasse_pago || totalComissaoRecebida * 0.35).toLocaleString(
+                  'pt-BR',
+                  { style: 'currency', currency: 'BRL' },
+                )}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
                 Lançamentos já pagos em conta
@@ -595,35 +623,42 @@ export default function Financial() {
 
         {/* CARD 4: Resultado Líquido KKJ (Admin) / Resultado da Equipe (Gestor) / Pendente de Repasse (Vendedora) */}
         {isGlobalView ? (
-          <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/20 shadow-sm">
+          <Card className="border-blue-200 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1B2A4A] dark:text-blue-300">
-                  Resultado Líquido Global KKJ
+                <span className="text-xs font-bold uppercase tracking-wider text-[#101f42] dark:text-blue-300">
+                  Resultado Líquido KKJ
                 </span>
-                <p className="text-[10px] text-[#1B2A4A]/80 dark:text-blue-400">
-                  Após impostos (11%) e comissões dos corretores
+                <p className="text-[10px] text-slate-500 dark:text-blue-400">
+                  Após impostos (11%) e repasses
                 </p>
               </div>
-              <div className="p-2 rounded-lg bg-[#1B2A4A] dark:bg-primary text-white">
+              <div className="p-2 rounded-lg bg-[#101f42] dark:bg-primary text-white">
                 <Shield className="h-5 w-5 text-emerald-400" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-black text-[#1B2A4A] dark:text-foreground">
-                A conciliar
+              <div className="text-2xl font-black text-[#101f42] dark:text-foreground">
+                {resultadoLiquidoKKJ.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </div>
-              <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
-                Comissões repassadas: A conciliar
+              <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
+                Repasses estimados:{' '}
+                {repasseEstimadoCorretores.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </p>
             </CardContent>
           </Card>
         ) : isGestor ? (
-          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-950/20 shadow-sm">
+          <Card className="border-purple-200 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-300">
-                  Resultado Consolidado da Equipe
+                  Saldo a Receber da Equipe
                 </span>
                 <p className="text-[10px] text-purple-700 dark:text-purple-400">
                   Exclusivo para {teamName ? `Equipe ${teamName}` : 'sua equipe'}
@@ -635,15 +670,18 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-purple-950 dark:text-foreground">
-                A conciliar
+                {totalComissaoPendente.toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                })}
               </div>
-              <p className="text-[11px] text-[#667085] dark:text-muted-foreground mt-1">
+              <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
                 Restrito aos contratos sob sua supervisão
               </p>
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 shadow-sm">
+          <Card className="border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 shadow-sm rounded-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300">
@@ -659,11 +697,9 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-amber-950 dark:text-foreground">
-                R${' '}
-                {(meuFinanceiro
-                  ? meuFinanceiro.total_repasse_pendente
-                  : totalSaleValue * 0.4
-                ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {(
+                  meuFinanceiro?.total_repasse_pendente || totalComissaoPendente * 0.35
+                ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
                 {meuFinanceiro?.parcelas_a_vencer || 0} parcelas programadas
@@ -675,7 +711,7 @@ export default function Financial() {
 
       {/* Tabela de Boletos de Adesão (100% KKJ) */}
       {adesaoBoletos.length > 0 && (
-        <div className="bg-white dark:bg-card border border-orange-200 dark:border-orange-900/40 rounded-xl overflow-x-auto shadow-sm">
+        <div className="bg-white dark:bg-card border border-orange-200 dark:border-orange-900/40 rounded-2xl overflow-x-auto shadow-sm">
           <div className="p-4 border-b border-orange-100 dark:border-orange-900/30 bg-orange-50/30 flex items-center justify-between">
             <div>
               <h3 className="font-bold text-sm text-orange-950 dark:text-orange-200 flex items-center gap-1.5">
@@ -751,13 +787,13 @@ export default function Financial() {
       )}
 
       {/* Production / Contracts Table */}
-      <div className="bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] rounded-xl overflow-x-auto shadow-sm">
-        <div className="p-4 border-b border-[#E4E7EC] dark:border-[#24324D] flex items-center justify-between">
+      <div className="bg-white dark:bg-card border border-slate-200 dark:border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-sm text-[#101828] dark:text-foreground">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-foreground">
               Contratos & Vendas Fechadas
             </h3>
-            <p className="text-xs text-[#667085] dark:text-muted-foreground">
+            <p className="text-xs text-slate-500 dark:text-muted-foreground">
               Relação de contratos gerados a partir do Funil de Vendas (Venda Ganha)
             </p>
           </div>
@@ -773,32 +809,32 @@ export default function Financial() {
             ))}
           </div>
         ) : contracts.length === 0 ? (
-          <div className="p-8 text-center text-xs text-[#667085] dark:text-muted-foreground">
+          <div className="p-8 text-center text-xs text-slate-500 dark:text-muted-foreground">
             Nenhum contrato consolidado até o momento.
           </div>
         ) : (
           <Table className="min-w-[680px]">
             <TableHeader className="bg-[#F5F7FA] dark:bg-muted/50">
               <TableRow>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Contrato
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Empresa / Cliente
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Operadora / Produto
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Vidas
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Valor da Venda
                 </TableHead>
                 <TableHead className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
                   Faturamento KKJ
                 </TableHead>
-                <TableHead className="text-xs font-bold text-[#101828] dark:text-foreground">
+                <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Status
                 </TableHead>
               </TableRow>
@@ -806,15 +842,15 @@ export default function Financial() {
             <TableBody>
               {contracts.map((c) => (
                 <TableRow key={c.id} className="text-xs">
-                  <TableCell className="font-mono font-bold text-[#101828] dark:text-foreground">
+                  <TableCell className="font-mono font-bold text-slate-900 dark:text-foreground">
                     {c.contract_number || 'KKJ-CONTRATO'}
                   </TableCell>
-                  <TableCell className="font-semibold text-[#101828] dark:text-foreground">
+                  <TableCell className="font-semibold text-slate-900 dark:text-foreground">
                     {c.expand?.company_id?.trade_name || 'Empresa Direta'}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="font-medium text-[#101828] dark:text-foreground">
+                      <span className="font-medium text-slate-900 dark:text-foreground">
                         {c.contracted_carrier_name ||
                           c.operator ||
                           c.expand?.carrier_id?.nome ||
@@ -824,23 +860,26 @@ export default function Financial() {
                             </span>
                           )}
                       </span>
-                      <span className="text-[10px] text-[#667085] dark:text-muted-foreground">
+                      <span className="text-[10px] text-slate-500 dark:text-muted-foreground">
                         {c.contracted_plan_name || c.plano || c.expand?.product_id?.name || (
                           <span className="text-slate-400 italic">Plano a definir</span>
                         )}
                       </span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-bold text-[#101828] dark:text-foreground">
+                  <TableCell className="font-bold text-slate-900 dark:text-foreground">
                     {c.lives_count || 1} vidas
                   </TableCell>
-                  <TableCell className="font-extrabold text-[#1B2A4A] dark:text-primary">
-                    R$ {c.sale_value.toLocaleString('pt-BR')}
+                  <TableCell className="font-extrabold text-[#101f42] dark:text-primary">
+                    {c.sale_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
                     {c.commission_value == null
                       ? 'A conciliar'
-                      : 'R$ ' + c.commission_value.toLocaleString('pt-BR')}
+                      : c.commission_value.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
                   </TableCell>
                   <TableCell>
                     <Badge

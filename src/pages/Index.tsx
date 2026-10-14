@@ -109,32 +109,62 @@ export default function Index() {
   useEffect(() => {
     let active = true
     async function loadPendingCommissions() {
-      if (!isAdmin) {
-        setPendingCommissions(null)
-        return
-      }
-      const { data, error } = await supabase
-        .from('commission_installments')
-        .select('valor_previsto,valor_recebido,data_vencimento,status')
-        .not('status', 'in', '("cancelado","estornado")')
-      if (!active) return
-      if (error) {
+      try {
+        if (isAdmin) {
+          // Administrador: consulta consolidados de commission_installments
+          const { data, error } = await supabase
+            .from('commission_installments')
+            .select('valor_previsto,valor_recebido,data_vencimento,status')
+            .not('status', 'in', '("cancelado","estornado")')
+          if (!active) return
+          if (error) {
+            setCommissionLoadError(true)
+            setPendingCommissions(null)
+            return
+          }
+          const pending = (data || [])
+            .map((row) => ({
+              value: Math.max(0, Number(row.valor_previsto || 0) - Number(row.valor_recebido || 0)),
+              date: row.data_vencimento,
+            }))
+            .filter((row) => row.value > 0)
+          setPendingCommissions({
+            amount: pending.reduce((sum, row) => sum + row.value, 0),
+            count: pending.length,
+            next: pending.map((row) => row.date).sort()[0] || null,
+          })
+          setCommissionLoadError(false)
+        } else {
+          // Gestor e Vendedor: respeitar RLS chamando get_minhas_parcelas() ou get_meu_financeiro()
+          const { data, error } = await supabase.rpc('get_minhas_parcelas')
+          if (!active) return
+          if (error) {
+            setCommissionLoadError(true)
+            setPendingCommissions(null)
+            return
+          }
+          const pending = (data || [])
+            .filter((p: any) => p.status !== 'cancelado' && p.status !== 'estornado')
+            .map((p: any) => ({
+              value: Math.max(
+                0,
+                Number(p.repasse_previsto_vendedor || 0) - Number(p.repasse_pago_vendedor || 0),
+              ),
+              date: p.data_vencimento,
+            }))
+            .filter((p: any) => p.value > 0)
+          setPendingCommissions({
+            amount: pending.reduce((sum: number, p: any) => sum + p.value, 0),
+            count: pending.length,
+            next: pending.map((p: any) => p.date).sort()[0] || null,
+          })
+          setCommissionLoadError(false)
+        }
+      } catch {
+        if (!active) return
         setCommissionLoadError(true)
         setPendingCommissions(null)
-        return
       }
-      const pending = (data || [])
-        .map((row) => ({
-          value: Math.max(0, Number(row.valor_previsto || 0) - Number(row.valor_recebido || 0)),
-          date: row.data_vencimento,
-        }))
-        .filter((row) => row.value > 0)
-      setPendingCommissions({
-        amount: pending.reduce((sum, row) => sum + row.value, 0),
-        count: pending.length,
-        next: pending.map((row) => row.date).sort()[0] || null,
-      })
-      setCommissionLoadError(false)
     }
     void loadPendingCommissions()
     return () => {
@@ -431,39 +461,43 @@ export default function Index() {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in pb-10">
-      {isAdmin && (
-        <Link
-          to="/financial"
-          className="block rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md dark:border-blue-900 dark:bg-card"
-          aria-label="Ver comissões a receber no Financeiro"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                <Wallet size={18} className="text-blue-600" /> Comissões a receber — KKJ
-              </p>
-              <p className="mt-2 text-3xl font-bold text-[#101f42] dark:text-white">
-                {commissionLoadError
-                  ? 'Indisponível'
-                  : pendingCommissions
-                    ? pendingCommissions.amount.toLocaleString('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      })
-                    : 'Carregando...'}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {pendingCommissions
-                  ? `${pendingCommissions.count} parcelas pendentes${pendingCommissions.next ? ' · próximo vencimento ' + pendingCommissions.next.split('-').reverse().join('/') : ''}`
-                  : 'Valores das parcelas iniciais registradas'}
-              </p>
+      <Link
+        to="/financeiro"
+        className="block rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md dark:border-blue-900 dark:bg-card"
+        aria-label="Ver comissões a receber no Financeiro"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                <Wallet size={18} className="text-blue-600 dark:text-blue-400" /> Comissões a
+                receber — KKJ
+              </span>
+              <span className="rounded-full bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                {isAdmin ? 'Visão Global Corretora' : isManager ? 'Equipe' : 'Minha Carteira'}
+              </span>
             </div>
-            <span className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-              Abrir Financeiro →
-            </span>
+            <p className="mt-2 text-3xl font-black text-[#101f42] dark:text-white">
+              {commissionLoadError
+                ? 'Indisponível'
+                : pendingCommissions
+                  ? pendingCommissions.amount.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })
+                  : 'Carregando...'}
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {pendingCommissions
+                ? `${pendingCommissions.count} parcelas pendentes${pendingCommissions.next ? ' · próximo vencimento ' + pendingCommissions.next.split('-').reverse().join('/') : ''}`
+                : 'Atualização automática com base nos contratos e cronograma financeiro'}
+            </p>
           </div>
-        </Link>
-      )}
+          <span className="rounded-xl bg-[#101f42] px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#1a3163] transition dark:bg-blue-600 dark:hover:bg-blue-500">
+            Abrir Financeiro →
+          </span>
+        </div>
+      </Link>
       {/* Top Banner KKJ */}
       <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[#0F1C34] via-[#152747] to-[#1E3A66] border border-[#203960]/40 text-white flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-md relative overflow-hidden">
         <div className="flex items-center gap-3.5 relative z-10">

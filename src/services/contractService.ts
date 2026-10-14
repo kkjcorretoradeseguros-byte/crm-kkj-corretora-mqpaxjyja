@@ -617,6 +617,18 @@ export const contractService = {
       usuario_confirmou_pagamento_id: currentUserId,
     })
 
+    // Automação: Gerar previsão e cronograma financeiro automaticamente
+    // considerando a 1ª comissão como recebida pela KKJ (regra operacional simplificada KKJ)
+    try {
+      const { ensureConfirmedContractForecast } = await import('./commissionForecastService')
+      await ensureConfirmedContractForecast(contractId)
+    } catch (forecastErr) {
+      console.warn(
+        'Aviso: cronograma automático de comissão não pôde ser gerado imediatamente:',
+        forecastErr,
+      )
+    }
+
     if (updated.opportunity_id) {
       try {
         await supabase.from('opportunity_timeline').insert({
