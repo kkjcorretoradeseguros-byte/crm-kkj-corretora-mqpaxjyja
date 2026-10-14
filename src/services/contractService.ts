@@ -110,11 +110,11 @@ const SELECT_EXPAND = `
   data_pagamento,
   data_implantacao,
   data_renovacao,
-  data_vencimento_primeiro_pagamento,
-  data_confirmacao_pagamento,
-  usuario_confirmou_pagamento_id,
-  usuario_implantacao_id,
-  primeira_competencia,
+
+
+
+
+
   observacoes,
   responsavel_id,
   created_at,
@@ -147,8 +147,8 @@ function mapContractRow(r: ContractDbRow): Contract {
     status: uiStatus,
     start_date: r.data_inicio_vigencia || undefined,
     data_vencimento_primeiro_pagamento:
-      r.data_vencimento_primeiro_pagamento || r.data_previsao_vigencia || undefined,
-    data_confirmacao_pagamento: r.data_confirmacao_pagamento || r.data_pagamento || undefined,
+      r.data_previsao_vigencia || undefined,
+    data_confirmacao_pagamento: r.data_pagamento || undefined,
     data_implantacao: r.data_implantacao || undefined,
     usuario_confirmou_pagamento_id: r.usuario_confirmou_pagamento_id || undefined,
     usuario_implantacao_id: r.usuario_implantacao_id || undefined,
@@ -446,7 +446,7 @@ export const contractService = {
     if (data.status === 'Ativo') {
       const { data: current, error: currentError } = await supabase
         .from('contracts')
-        .select('id, data_pagamento, data_confirmacao_pagamento, status')
+        .select('id, data_pagamento, status')
         .eq('id', id)
         .single()
       if (currentError || !current)
@@ -455,7 +455,6 @@ export const contractService = {
         throw new Error('Contrato cancelado não pode ser reativado por edição')
       const isConfirmed =
         Boolean(data.data_confirmacao_pagamento) ||
-        Boolean(current.data_confirmacao_pagamento) ||
         Boolean(current.data_pagamento)
       if (!isConfirmed) {
         throw new Error(
@@ -492,21 +491,9 @@ export const contractService = {
     if (data.start_date !== undefined) payload.data_inicio_vigencia = data.start_date || null
     if (data.data_vencimento_primeiro_pagamento !== undefined) {
       payload.data_previsao_vigencia = data.data_vencimento_primeiro_pagamento || null
-      payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
     }
     if (data.data_confirmacao_pagamento !== undefined) {
       payload.data_pagamento = data.data_confirmacao_pagamento || null
-      payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
-    }
-    if (data.usuario_confirmou_pagamento_id !== undefined) {
-      payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
-    }
-    if (data.usuario_implantacao_id !== undefined) {
-      payload.usuario_implantacao_id = data.usuario_implantacao_id || null
-    }
-    if (data.primeira_competencia !== undefined || data.first_installment_reference !== undefined) {
-      payload.primeira_competencia =
-        data.primeira_competencia || data.first_installment_reference || null
     }
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
