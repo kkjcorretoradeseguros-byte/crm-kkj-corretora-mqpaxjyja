@@ -80,3 +80,47 @@ export async function persistContractCommissionForecast(params: {
   if (typeof data !== 'string' || !data) throw new Error('Resposta financeira inválida')
   return data
 }
+
+/**
+ * Resolve uma única regra ativa compatível com o contrato, sem escolher
+ * silenciosamente entre condições comerciais concorrentes.
+ * A data de pagamento já registrada é a referência das competências.
+ */
+export async function previewConfirmedContractCommissions(contractId: string) {
+  if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
+  const { data: contract, error: contractError } = await supabase
+    .from('contracts')
+    .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento')
+    .eq('id', contractId)
+    .single()
+  if (contractError || !contract) throw new Error(contractError?.message || 'Contrato não encontrado')
+  if (!contract.data_pagamento) throw new Error('Confirme primeiro o pagamento do cliente')
+  const { data: rules, error: rulesError } = await supabase
+    .from('commission_rules')
+    .select('id,nome,carrier_id,product_id,min_lives,max_lives,data_inicio_vigencia,data_fim_vigencia,cronograma_parcelas,aliquota_imposto_pct,repasse_vendedor_pct,repasse_vendedor_proprio_pct,has_recurring,recurring_percentage,recurring_start_month')
+    .eq('carrier_id', contract.carrier_id)
+    .eq('ativo', true)
+  if (rulesError) throw new Error('Falha ao consultar regras de comissão: ' + rulesError.message)
+  const lives = Number(contract.qtd_vidas)
+  const applicable = (rules || []).filter((rule) =>
+    (!rule.product_id || rule.product_id === contract.product_id) &&
+    (rule.min_lives == null || lives >= Number(rule.min_lives)) &&
+    (rule.max_lives == null || lives <= Number(rule.max_lives)) &&
+    (!rule.data_inicio_vigencia || contract.data_pagamento >= rule.data_inicio_vigencia) &&
+    (!rule.data_fim_vigencia || contract.data_pagamento <= rule.data_fim_vigencia),
+  )
+  if (applicable.length !== 1) {
+    throw new Error(applicable.length === 0
+      ? 'Nenhuma regra de comissão aplicável ao contrato'
+      : 'Mais de uma regra aplicável: seleção administrativa necessária')
+  }
+  const rule = applicable[0]
+  const preview = await previewContractCommissions({
+    contractId,
+    rule: rule as DatabaseCommissionRule,
+    mensalidade: Number(contract.valor_mensal),
+    leadOrigin: 'kkj',
+    firstDueDate: contract.data_pagamento,
+  })
+  return { ...preview, ruleId: rule.id, ruleName: rule.nome }
+}
