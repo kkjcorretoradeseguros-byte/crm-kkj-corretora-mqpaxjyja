@@ -59,7 +59,7 @@ export function ModernCommissionPanel({ installments, contracts, error }: {
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl bg-white/10 p-3"><p className="flex items-center gap-2 text-xs text-slate-200"><CheckCircle2 size={16}/> Recebido</p><p className="mt-1 text-xl font-bold text-emerald-300">{currency(received)}</p></div>
         <div className="rounded-xl bg-white/10 p-3"><p className="flex items-center gap-2 text-xs text-slate-200"><Clock3 size={16}/> A receber</p><p className="mt-1 text-xl font-bold">{currency(pending)}</p></div>
-        <div className="rounded-xl bg-white/10 p-3"><p className="flex items-center gap-2 text-xs text-slate-200"><CalendarDays size={16}/> Próximo mês previsto</p><p className="mt-1 text-xl font-bold">{currency(next?.pending || 0)}</p><p className="text-xs text-slate-300">{next ? next.key.split('-').reverse().join('/') : 'Sem pendências'}</p></div>
+        <div className="rounded-xl bg-white/10 p-3"><p className="flex items-center gap-2 text-xs text-slate-200"><CalendarDays size={16}/> Próximo vencimento</p><p className="mt-1 text-xl font-bold">{currency(next?.pending || 0)}</p><p className="text-xs text-slate-300">{next ? next.key.split('-').reverse().join('/') : 'Sem pendências'}</p></div>
       </div>
     </div>
     <div className={card}>
