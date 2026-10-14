@@ -30,7 +30,6 @@ import { opportunityService } from '@/services/opportunityService'
 import { adesaoService } from '@/services/adesaoService'
 import { teamService } from '@/services/teamService'
 import { financialService, type FinancialCommissionSummary } from '@/services/financialService'
-import { previewConfirmedContractCommissions, ensureConfirmedContractForecast } from '@/services/commissionForecastService'
 import { useAuth } from '@/contexts/AuthContext'
 import { ModernCommissionPanel } from '@/components/financial/ModernCommissionPanel'
 import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
@@ -57,8 +56,6 @@ export default function Financial() {
     }>
   >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
-  const [forecastBusy, setForecastBusy] = useState<string | null>(null)
-  const [forecastNotice, setForecastNotice] = useState<string | null>(null)
 
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
@@ -154,30 +151,13 @@ export default function Financial() {
     .filter((b) => b.status === 'pendente')
     .reduce((sum, b) => sum + (b.receita_bruta_kkj || 0), 0)
 
-  const totalComissaoPrevista = contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
+  const totalComissaoPrevista = isAdmin
+    ? adminInstallments.reduce((sum, row) => sum + Number(row.valor_previsto || 0), 0)
+    : contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
+  const totalComissaoRecebida = adminInstallments.reduce((sum, row) => sum + Number(row.valor_recebido || 0), 0)
+  const totalComissaoAReceber = Math.max(0, totalComissaoPrevista - totalComissaoRecebida)
   // Contrato ativo não comprova recebimento de comissão. Valores recebidos e margem
   // exigem conciliação com lançamentos financeiros confirmados no banco.
-
-  const registerForecast = async (contractId: string) => {
-    setForecastBusy(contractId)
-    setForecastNotice(null)
-    try {
-      const preview = await previewConfirmedContractCommissions(contractId)
-      const values = preview.installments
-        .map((p) => `Parcela ${p.numero_parcela}: ${p.data_vencimento} — R$ ${p.valor_previsto.toFixed(2)}`)
-        .join('\\n')
-      if (!window.confirm(
-        `Gerar previsão financeira com a regra "${preview.ruleName}"?\\n${values}\\n\\nAs parcelas serão previstas, não recebidas. Os contratos atuais são de homologação.`,
-      )) return
-      await ensureConfirmedContractForecast(contractId)
-      setForecastNotice('Previsão registrada. As parcelas foram atualizadas.')
-      await loadData()
-    } catch (error) {
-      setForecastNotice(error instanceof Error ? error.message : 'Falha ao gerar previsão')
-    } finally {
-      setForecastBusy(null)
-    }
-  }
 
   const exportCSV = () => {
     const headers = [
@@ -439,10 +419,10 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                A conciliar
+                {totalComissaoRecebida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-                Previsto: R$ {totalComissaoPrevista.toLocaleString('pt-BR')}
+                A receber: {totalComissaoAReceber.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
             </CardContent>
           </Card>
