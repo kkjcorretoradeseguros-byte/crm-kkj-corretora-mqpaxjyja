@@ -63,3 +63,6 @@ jobs:
           psql -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public, auth TO authenticated;"
           output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
           echo "$output" | grep -q 'Acesso administrativo necessário'
+          psql -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT ''00000000-0000-0000-0000-000000000003''::uuid';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'Acesso administrativo necessário'
