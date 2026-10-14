@@ -32,6 +32,7 @@ import { teamService } from '@/services/teamService'
 import { financialService, type FinancialCommissionSummary } from '@/services/financialService'
 import { previewConfirmedContractCommissions, ensureConfirmedContractForecast } from '@/services/commissionForecastService'
 import { useAuth } from '@/contexts/AuthContext'
+import { ModernCommissionPanel } from '@/components/financial/ModernCommissionPanel'
 import type { Contract, Opportunity, AdesaoBoleto } from '@/types/crm'
 
 export default function Financial() {
@@ -212,77 +213,11 @@ export default function Financial() {
   return (
     <div className="space-y-8">
       {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Parcelas de comissão</CardTitle>
-            <CardDescription>
-              Previsões registradas; valores previstos não representam recebimentos confirmados.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {forecastNotice && <p role="status" className="mb-3 text-sm">{forecastNotice}</p>}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {contracts.filter((c) => c.data_confirmacao_pagamento && !adminInstallments.some((p) => p.contract_id === c.id)).map((c) => (
-                <Button key={c.id} type="button" size="sm" variant="outline" disabled={forecastBusy !== null} onClick={() => void registerForecast(c.id)}>
-                  {forecastBusy === c.id ? 'Gerando...' : `Gerar previsão: ${c.contract_number || c.id.slice(0, 8)}`}
-                </Button>
-              ))}
-            </div>
-            {installmentError ? (
-              <p role="alert">Falha ao carregar parcelas: {installmentError}</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Contrato</TableHead>
-                    <TableHead>Parcela</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Previsto</TableHead>
-                    <TableHead>Recebido</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {adminInstallments.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        {contracts.find((contract) => contract.id === item.contract_id)
-                          ?.contract_number || item.contract_id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell>
-                        {item.numero_parcela}/{item.total_parcelas}
-                      </TableCell>
-                      <TableCell>{item.data_vencimento}</TableCell>
-                      <TableCell>
-                        {Number(item.valor_previsto).toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        {item.valor_recebido == null
-                          ? 'Não conciliado'
-                          : Number(item.valor_recebido).toLocaleString('pt-BR', {
-                              style: 'currency',
-                              currency: 'BRL',
-                            })}
-                      </TableCell>
-                      <TableCell>{item.status}</TableCell>
-                    </TableRow>
-                  ))}
-                  {!adminInstallments.length && (
-                    <TableRow>
-                      <TableCell colSpan={6}>
-                        Nenhuma parcela de comissão registrada. A previsão deve ser gerada a partir
-                        de um contrato e uma regra de comissão.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        <ModernCommissionPanel
+          installments={adminInstallments}
+          contracts={contracts}
+          error={installmentError}
+        />
       )}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-xl bg-white dark:bg-card border border-[#E4E7EC] dark:border-[#24324D] shadow-sm">
