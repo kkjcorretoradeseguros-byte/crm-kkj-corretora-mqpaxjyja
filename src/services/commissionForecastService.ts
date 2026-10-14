@@ -17,9 +17,12 @@ export async function previewContractCommissions(params: {
   const { data: userData, error: authError } = await supabase.auth.getUser()
   if (authError || !userData.user) throw new Error('Sessão expirada')
   const { data: contract, error } = await supabase.from('contracts')
-    .select('id,status').eq('id', params.contractId).single()
+    .select('id,status,valor_mensal').eq('id', params.contractId).single()
   if (error || !contract) throw new Error(error?.message || 'Contrato não encontrado')
   if (contract.status === 'cancelado') throw new Error('Contrato cancelado não pode gerar novas previsões')
+  if (!Number.isFinite(params.mensalidade) || Number(contract.valor_mensal) !== params.mensalidade) {
+    throw new Error('A mensalidade da previsão deve corresponder ao valor registrado no contrato')
+  }
   const installments = buildFinancialInstallmentDrafts(params)
   const total = (field: 'valor_previsto' | 'imposto_retido' | 'valor_liquido' | 'repasse_previsto_vendedor') =>
     Math.round(installments.reduce((sum, row) => sum + row[field], 0) * 100) / 100
