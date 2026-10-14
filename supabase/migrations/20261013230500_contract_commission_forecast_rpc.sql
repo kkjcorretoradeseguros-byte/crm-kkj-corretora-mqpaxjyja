@@ -33,6 +33,8 @@ declare
   v_rule_end date;
   v_required_field text;
   v_recurring boolean;
+  v_recurring_start_month integer;
+  v_recurring_percentage numeric;
   v_min_lives integer;
   v_max_lives integer;
   v_contract_lives integer;
@@ -57,13 +59,19 @@ begin
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
   select carrier_id, aliquota_imposto_pct, cronograma_parcelas,
-    data_inicio_vigencia, data_fim_vigencia, product_id, has_recurring, min_lives, max_lives,
+    data_inicio_vigencia, data_fim_vigencia, product_id, has_recurring, min_lives, max_lives, recurring_start_month, recurring_percentage,
     case when p_lead_origin = 'vendedor' then repasse_vendedor_proprio_pct else repasse_vendedor_pct end
     into v_rule_carrier, v_rule_tax, v_rule_schedule, v_rule_start, v_rule_end,
-      v_rule_product, v_recurring, v_min_lives, v_max_lives, v_split_rate
+      v_rule_product, v_recurring, v_min_lives, v_max_lives, v_recurring_start_month, v_recurring_percentage, v_split_rate
     from public.commission_rules where id = p_rule_id and ativo;
   if not found or v_rule_carrier is distinct from v_contract_carrier then
     raise exception 'Regra de comissão incompatível com contrato';
+  end if;
+  if coalesce(v_recurring, false) and (
+    v_recurring_start_month is null or v_recurring_start_month < 4 or
+    v_recurring_percentage is null or v_recurring_percentage <= 0 or v_recurring_percentage > 100
+  ) then
+    raise exception 'Configuração de vitalício inválida';
   end if;
   -- Only fixed initial installments are recorded here. Recurring commissions
   -- are reconciled per confirmed competence in a separate operation.
