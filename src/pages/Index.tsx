@@ -63,7 +63,11 @@ export default function Index() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [usersList, setUsersList] = useState<User[]>([])
-  const [pendingCommissions, setPendingCommissions] = useState<{ amount: number; count: number; next: string | null } | null>(null)
+  const [pendingCommissions, setPendingCommissions] = useState<{
+    amount: number
+    count: number
+    next: string | null
+  } | null>(null)
   const [commissionLoadError, setCommissionLoadError] = useState(false)
 
   // Filters
@@ -119,10 +123,12 @@ export default function Index() {
         setPendingCommissions(null)
         return
       }
-      const pending = (data || []).map((row) => ({
-        value: Math.max(0, Number(row.valor_previsto || 0) - Number(row.valor_recebido || 0)),
-        date: row.data_vencimento,
-      })).filter((row) => row.value > 0)
+      const pending = (data || [])
+        .map((row) => ({
+          value: Math.max(0, Number(row.valor_previsto || 0) - Number(row.valor_recebido || 0)),
+          date: row.data_vencimento,
+        }))
+        .filter((row) => row.value > 0)
       setPendingCommissions({
         amount: pending.reduce((sum, row) => sum + row.value, 0),
         count: pending.length,
@@ -131,7 +137,9 @@ export default function Index() {
       setCommissionLoadError(false)
     }
     void loadPendingCommissions()
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [isAdmin])
 
   // Helper date filtering
@@ -424,14 +432,35 @@ export default function Index() {
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in pb-10">
       {isAdmin && (
-        <Link to="/financial" className="block rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md dark:border-blue-900 dark:bg-card" aria-label="Ver comissões a receber no Financeiro">
+        <Link
+          to="/financial"
+          className="block rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow-md dark:border-blue-900 dark:bg-card"
+          aria-label="Ver comissões a receber no Financeiro"
+        >
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><Wallet size={18} className="text-blue-600"/> Comissões a receber — KKJ</p>
-              <p className="mt-2 text-3xl font-bold text-[#101f42] dark:text-white">{commissionLoadError ? 'Indisponível' : pendingCommissions ? pendingCommissions.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Carregando...'}</p>
-              <p className="mt-1 text-xs text-slate-500">{pendingCommissions ? `${pendingCommissions.count} parcelas pendentes${pendingCommissions.next ? ' · próximo vencimento ' + pendingCommissions.next.split('-').reverse().join('/') : ''}` : 'Valores das parcelas iniciais registradas'}</p>
+              <p className="flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                <Wallet size={18} className="text-blue-600" /> Comissões a receber — KKJ
+              </p>
+              <p className="mt-2 text-3xl font-bold text-[#101f42] dark:text-white">
+                {commissionLoadError
+                  ? 'Indisponível'
+                  : pendingCommissions
+                    ? pendingCommissions.amount.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })
+                    : 'Carregando...'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {pendingCommissions
+                  ? `${pendingCommissions.count} parcelas pendentes${pendingCommissions.next ? ' · próximo vencimento ' + pendingCommissions.next.split('-').reverse().join('/') : ''}`
+                  : 'Valores das parcelas iniciais registradas'}
+              </p>
             </div>
-            <span className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">Abrir Financeiro →</span>
+            <span className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              Abrir Financeiro →
+            </span>
           </div>
         </Link>
       )}
