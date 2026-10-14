@@ -284,7 +284,9 @@ export const contractService = {
     if (opportunityError) throw new Error(opportunityError.message)
     if (opportunity?.funnel_type !== 'pos_venda') return null
     if (!opportunity.company_id || !opportunity.contact_id || !opportunity.carrier_id) {
-      throw new Error('Pós-venda sem empresa, contato e operadora para localizar o contrato com segurança')
+      throw new Error(
+        'Pós-venda sem empresa, contato e operadora para localizar o contrato com segurança',
+      )
     }
     const { data: matches, error } = await supabase
       .from('contracts')
@@ -296,7 +298,8 @@ export const contractService = {
       .limit(2)
     if (error) throw new Error('Falha ao localizar contrato do pós-venda: ' + error.message)
     if (!matches?.length) return null
-    if (matches.length !== 1) throw new Error('Múltiplos contratos correspondentes; selecione o contrato explicitamente')
+    if (matches.length !== 1)
+      throw new Error('Múltiplos contratos correspondentes; selecione o contrato explicitamente')
     return this.getContractById(matches[0].id)
   },
 
