@@ -341,10 +341,13 @@ export function ModernCommissionPanel({
               {nextPendingInstallment
                 ? currency(
                     activeRows
-                      .filter((row) => row.data_vencimento === nextPendingInstallment.data_vencimento)
+                      .filter(
+                        (row) => row.data_vencimento === nextPendingInstallment.data_vencimento,
+                      )
                       .reduce(
                         (sum, row) =>
-                          sum + Math.max(0, Number(row.valor_previsto) - Number(row.valor_recebido || 0)),
+                          sum +
+                          Math.max(0, Number(row.valor_previsto) - Number(row.valor_recebido || 0)),
                         0,
                       ),
                   )

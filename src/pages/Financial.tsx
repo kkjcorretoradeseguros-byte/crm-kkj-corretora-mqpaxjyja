@@ -48,7 +48,12 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [installments, setInstallments] = useState<(CommissionRow & { imposto_retido?: number | null; repasse_previsto_vendedor?: number | null })[]>([])
+  const [installments, setInstallments] = useState<
+    (CommissionRow & {
+      imposto_retido?: number | null
+      repasse_previsto_vendedor?: number | null
+    })[]
+  >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
@@ -96,7 +101,8 @@ export default function Financial() {
               valor_previsto: Number(p.valor_previsto) || 0,
               valor_recebido: p.valor_recebido != null ? Number(p.valor_recebido) : null,
               imposto_retido: p.imposto_retido == null ? null : Number(p.imposto_retido),
-              repasse_previsto_vendedor: p.repasse_previsto_vendedor == null ? null : Number(p.repasse_previsto_vendedor),
+              repasse_previsto_vendedor:
+                p.repasse_previsto_vendedor == null ? null : Number(p.repasse_previsto_vendedor),
               status: p.status,
             })),
           )
@@ -299,7 +305,9 @@ export default function Financial() {
       `"${c.expand?.company_id?.trade_name || ''}"`,
       `"${c.operator || c.expand?.product_id?.name || ''}"`,
       c.sale_value,
-      activeInstallments.filter((p) => p.contract_id === c.id).reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0),
+      activeInstallments
+        .filter((p) => p.contract_id === c.id)
+        .reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0),
       c.lives_count || 1,
       `"${c.status}"`,
     ])
@@ -652,10 +660,12 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-[#101f42] dark:text-foreground">
-                {resultadoLiquidoKKJ == null ? 'A apurar' : resultadoLiquidoKKJ.toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}
+                {resultadoLiquidoKKJ == null
+                  ? 'A apurar'
+                  : resultadoLiquidoKKJ.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
                 Repasses previstos sobre parcelas recebidas:{' '}
@@ -888,7 +898,10 @@ export default function Financial() {
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
                     {activeInstallments.some((p) => p.contract_id === c.id)
-                      ? activeInstallments.filter((p) => p.contract_id === c.id).reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      ? activeInstallments
+                          .filter((p) => p.contract_id === c.id)
+                          .reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0)
+                          .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                       : 'Sem parcelas registradas'}
                   </TableCell>
                   <TableCell>
