@@ -340,11 +340,13 @@ export function ModernCommissionPanel({
             <p className="mt-2 text-2xl font-black text-white">
               {nextPendingInstallment
                 ? currency(
-                    Math.max(
-                      0,
-                      Number(nextPendingInstallment.valor_previsto) -
-                        Number(nextPendingInstallment.valor_recebido || 0),
-                    ),
+                    activeRows
+                      .filter((row) => row.data_vencimento === nextPendingInstallment.data_vencimento)
+                      .reduce(
+                        (sum, row) =>
+                          sum + Math.max(0, Number(row.valor_previsto) - Number(row.valor_recebido || 0)),
+                        0,
+                      ),
                   )
                 : currency(0)}
             </p>
