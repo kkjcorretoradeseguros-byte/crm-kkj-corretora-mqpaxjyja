@@ -813,8 +813,14 @@ export default function Index() {
                 'Negociação',
                 'Venda ganha',
               ].map((stageName, idx) => {
-                const oppsInStage = salesOpps.filter((o) => o.stage === stageName)
-                const stageValue = oppsInStage.reduce((sum, o) => sum + (o.sale_value || 0), 0)
+                const isWonStage = stageName === 'Venda ganha'
+                const oppsInStage = isWonStage ? [] : salesOpps.filter((o) => o.stage === stageName)
+                // A etapa ganha usa contratos efetivados, evitando contar oportunidades
+                // duplicadas ou marcadas como ganhas sem contrato.
+                const stageCount = isWonStage ? filteredContracts.length : oppsInStage.length
+                const stageValue = isWonStage
+                  ? totalSoldValue
+                  : oppsInStage.reduce((sum, o) => sum + (o.sale_value || 0), 0)
 
                 return (
                   <div
@@ -829,7 +835,7 @@ export default function Index() {
                       {stageName}
                     </div>
                     <div className="text-xl font-black text-[#101828] dark:text-foreground">
-                      {oppsInStage.length}
+                      {stageCount}
                     </div>
                     <div className="text-[11px] font-semibold text-[#1B2A4A] dark:text-primary mt-1 truncate">
                       {stageValue > 0 ? `R$ ${stageValue.toLocaleString('pt-BR')}` : 'R$ 0'}
