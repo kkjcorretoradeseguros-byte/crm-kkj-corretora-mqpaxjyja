@@ -48,7 +48,7 @@ export default function Financial() {
   const [teamName, setTeamName] = useState<string | null>(null)
   const [meuFinanceiro, setMeuFinanceiro] = useState<FinancialCommissionSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [installments, setInstallments] = useState<CommissionRow[]>([])
+  const [installments, setInstallments] = useState<(CommissionRow & { imposto_retido?: number | null; repasse_previsto_vendedor?: number | null })[]>([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
@@ -78,7 +78,7 @@ export default function Financial() {
         const { data: rawInstallments, error: installmentsError } = await supabase
           .from('commission_installments')
           .select(
-            'id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status',
+            'id,contract_id,numero_parcela,total_parcelas,data_vencimento,valor_previsto,valor_recebido,status,imposto_retido,repasse_previsto_vendedor',
           )
           .order('data_vencimento', { ascending: true })
           .limit(1000)
@@ -95,6 +95,8 @@ export default function Financial() {
               data_vencimento: p.data_vencimento,
               valor_previsto: Number(p.valor_previsto) || 0,
               valor_recebido: p.valor_recebido != null ? Number(p.valor_recebido) : null,
+              imposto_retido: p.imposto_retido == null ? null : Number(p.imposto_retido),
+              repasse_previsto_vendedor: p.repasse_previsto_vendedor == null ? null : Number(p.repasse_previsto_vendedor),
               status: p.status,
             })),
           )
@@ -233,15 +235,26 @@ export default function Financial() {
     return totalComissaoRecebida + totalReceitaAdesaoPaga
   }, [totalComissaoRecebida, totalReceitaAdesaoPaga])
 
-  // Estimativa de repasse e impostos da corretora (impostos 11% sobre receita bruta)
-  const aliquotaImposto = 0.11
-  const impostoEstimadoKKJ = faturamentoConfirmadoKKJ * aliquotaImposto
-  // Repasse aos corretores estimado em 30% a 40%
-  const repasseEstimadoCorretores = faturamentoConfirmadoKKJ * 0.35
-  const resultadoLiquidoKKJ = Math.max(
-    0,
-    faturamentoConfirmadoKKJ - impostoEstimadoKKJ - repasseEstimadoCorretores,
+  // Deduções calculadas pelas regras comerciais gravadas em cada parcela.
+  // Rateio proporcional apenas para a parte já recebida; não implica repasse pago.
+  const deductionsAvailable = activeInstallments
+    .filter((p) => Number(p.valor_recebido || 0) > 0)
+    .every((p) => p.imposto_retido != null && p.repasse_previsto_vendedor != null)
+  const deductions = activeInstallments.reduce(
+    (acc, p) => {
+      const planned = Number(p.valor_previsto || 0)
+      const received = Number(p.valor_recebido || 0)
+      const fraction = planned > 0 ? Math.min(1, received / planned) : 0
+      acc.taxes += Number(p.imposto_retido || 0) * fraction
+      acc.repasse += Number(p.repasse_previsto_vendedor || 0) * fraction
+      return acc
+    },
+    { taxes: 0, repasse: 0 },
   )
+  const repasseEstimadoCorretores = deductions.repasse
+  const resultadoLiquidoKKJ = deductionsAvailable
+    ? faturamentoConfirmadoKKJ - deductions.taxes - deductions.repasse
+    : null
 
   const registerForecast = async (contractId: string) => {
     setForecastBusy(contractId)
@@ -286,7 +299,7 @@ export default function Financial() {
       `"${c.expand?.company_id?.trade_name || ''}"`,
       `"${c.operator || c.expand?.product_id?.name || ''}"`,
       c.sale_value,
-      c.commission_value == null ? 'A conciliar' : c.commission_value,
+      activeInstallments.filter((p) => p.contract_id === c.id).reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0),
       c.lives_count || 1,
       `"${c.status}"`,
     ])
@@ -420,14 +433,14 @@ export default function Financial() {
             <div>
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-muted-foreground">
                 {isGlobalView
-                  ? 'Valor Vendido Global'
+                  ? 'Mensalidades dos Contratos'
                   : isGestor
                     ? 'Valor Vendido (Equipe)'
                     : 'Meu Valor Vendido'}
               </span>
               <p className="text-[10px] text-muted-foreground">
                 {isGlobalView
-                  ? 'Mensalidades totais da corretora'
+                  ? 'Mensalidades dos contratos exibidos'
                   : isGestor
                     ? 'Mensalidades da equipe + própria'
                     : 'Mensalidades da sua carteira'}
@@ -630,7 +643,7 @@ export default function Financial() {
                   Resultado Líquido KKJ
                 </span>
                 <p className="text-[10px] text-slate-500 dark:text-blue-400">
-                  Após impostos (11%) e repasses
+                  Após impostos e repasses previstos nas regras
                 </p>
               </div>
               <div className="p-2 rounded-lg bg-[#101f42] dark:bg-primary text-white">
@@ -639,13 +652,13 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-[#101f42] dark:text-foreground">
-                {resultadoLiquidoKKJ.toLocaleString('pt-BR', {
+                {resultadoLiquidoKKJ == null ? 'A apurar' : resultadoLiquidoKKJ.toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL',
                 })}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
-                Repasses estimados:{' '}
+                Repasses previstos sobre parcelas recebidas:{' '}
                 {repasseEstimadoCorretores.toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL',
@@ -874,12 +887,9 @@ export default function Financial() {
                     {c.sale_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
-                    {c.commission_value == null
-                      ? 'A conciliar'
-                      : c.commission_value.toLocaleString('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        })}
+                    {activeInstallments.some((p) => p.contract_id === c.id)
+                      ? activeInstallments.filter((p) => p.contract_id === c.id).reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : 'Sem parcelas registradas'}
                   </TableCell>
                   <TableCell>
                     <Badge
