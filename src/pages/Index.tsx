@@ -305,17 +305,10 @@ export default function Index() {
     [filteredOpps],
   )
 
-  // 1. Valor vendido (Soma de contratos + vendas ganhas)
-  const wonSalesOpps = useMemo(
-    () => salesOpps.filter((o) => o.stage === 'Venda ganha'),
-    [salesOpps],
-  )
-  const contractsSaleTotal = filteredContracts.reduce((sum, c) => sum + (c.sale_value || 0), 0)
-  const wonOppsSaleTotal = wonSalesOpps.reduce((sum, o) => sum + (o.sale_value || 0), 0)
-  const totalSoldValue = contractsSaleTotal + wonOppsSaleTotal
-  const totalLivesWon =
-    filteredContracts.reduce((sum, c) => sum + (c.lives_count || 0), 0) +
-    wonSalesOpps.reduce((sum, o) => sum + (o.health_data?.lives_count || 0), 0)
+  // 1. Vendas efetivadas: contratos são a fonte única de verdade.
+  // Oportunidades ganhas e cópias no pós-venda não representam novas vendas.
+  const totalSoldValue = filteredContracts.reduce((sum, c) => sum + (c.sale_value || 0), 0)
+  const totalLivesWon = filteredContracts.reduce((sum, c) => sum + (c.lives_count || 0), 0)
 
   // 2. Leads (Etapas iniciais de prospecção e qualificação no funil comercial)
   // 'Novo Lead', 'Contato realizado', 'Qualificado'
@@ -343,7 +336,7 @@ export default function Index() {
 
   // 4. Implantação (Contratos em implantação ou pós-venda nas etapas de doc/implantação)
   const activeImplementationContracts = useMemo(
-    () => filteredContracts.filter((c) => c.status === 'Em Implantação' || c.status === 'Ativo'),
+    () => filteredContracts.filter((c) => c.status === 'Em Implantação'),
     [filteredContracts],
   )
   const implementationPostSales = useMemo(
@@ -375,8 +368,8 @@ export default function Index() {
         label: 'Valor vendido',
         color: '#00E8A2', // verde-esmeralda
         valueFormatted: `R$ ${totalSoldValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        detail: `${wonSalesOpps.length + filteredContracts.length} contratos fechados (${totalLivesWon} vidas)`,
-        count: wonSalesOpps.length + filteredContracts.length,
+        detail: `${filteredContracts.length} contratos fechados (${totalLivesWon} vidas)`,
+        count: filteredContracts.length,
         targetRoute: '/financeiro',
         percentage: 20,
       },
@@ -405,7 +398,7 @@ export default function Index() {
         label: 'Implantação',
         color: '#FF7955', // coral
         valueFormatted: `${implementationCount} em processo`,
-        detail: `${activeImplementationContracts.length} apólices / ${implementationPostSales.length} pós-venda`,
+        detail: `${activeImplementationContracts.length} contratos em implantação / ${implementationPostSales.length} pendências no pós-venda`,
         count: implementationCount,
         targetRoute: '/pipeline?funnel=POS_VENDA',
         percentage: 20,
@@ -423,7 +416,6 @@ export default function Index() {
     ],
     [
       totalSoldValue,
-      wonSalesOpps.length,
       filteredContracts.length,
       totalLivesWon,
       leadsCount,
