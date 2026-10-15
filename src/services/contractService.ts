@@ -108,6 +108,11 @@ const SELECT_EXPAND = `
   data_inicio_vigencia,
   data_previsao_vigencia,
   data_pagamento,
+  data_confirmacao_pagamento,
+  data_vencimento_primeiro_pagamento,
+  primeira_competencia,
+  usuario_confirmou_pagamento_id,
+  usuario_implantacao_id,
   data_implantacao,
   data_renovacao,
 
@@ -146,8 +151,8 @@ function mapContractRow(r: ContractDbRow): Contract {
     plano: r.plano || undefined,
     status: uiStatus,
     start_date: r.data_inicio_vigencia || undefined,
-    data_vencimento_primeiro_pagamento: r.data_previsao_vigencia || undefined,
-    data_confirmacao_pagamento: r.data_pagamento || undefined,
+    data_vencimento_primeiro_pagamento: r.data_vencimento_primeiro_pagamento || r.data_previsao_vigencia || undefined,
+    data_confirmacao_pagamento: r.data_confirmacao_pagamento || r.data_pagamento || undefined,
     data_implantacao: r.data_implantacao || undefined,
     usuario_confirmou_pagamento_id: r.usuario_confirmou_pagamento_id || undefined,
     usuario_implantacao_id: r.usuario_implantacao_id || undefined,
@@ -526,6 +531,10 @@ export const contractService = {
       payload.data_pagamento = data.data_confirmacao_pagamento || null
       payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
     }
+    if (data.data_vencimento_primeiro_pagamento !== undefined) payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
+    if (data.primeira_competencia !== undefined) payload.primeira_competencia = data.primeira_competencia || null
+    if (data.usuario_confirmou_pagamento_id !== undefined) payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
+    if (data.usuario_implantacao_id !== undefined) payload.usuario_implantacao_id = data.usuario_implantacao_id || null
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
       payload.valor_mensal = data.sale_value
