@@ -524,6 +524,7 @@ export const contractService = {
     }
     if (data.data_confirmacao_pagamento !== undefined) {
       payload.data_pagamento = data.data_confirmacao_pagamento || null
+      payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
     }
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
