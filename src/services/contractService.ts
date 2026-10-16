@@ -486,7 +486,7 @@ export const contractService = {
     if (data.status === 'Ativo') {
       const { data: current, error: currentError } = await supabase
         .from('contracts')
-        .select('id, data_pagamento, status')
+        .select('id, data_pagamento, data_confirmacao_pagamento, status')
         .eq('id', id)
         .single()
       if (currentError || !current)
@@ -494,7 +494,7 @@ export const contractService = {
       if (current.status === 'cancelado')
         throw new Error('Contrato cancelado não pode ser reativado por edição')
       const isConfirmed =
-        Boolean(data.data_confirmacao_pagamento) || Boolean(current.data_pagamento)
+        Boolean(data.data_confirmacao_pagamento) || Boolean(current.data_pagamento) || Boolean(current.data_confirmacao_pagamento)
       if (!isConfirmed) {
         throw new Error(
           'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
