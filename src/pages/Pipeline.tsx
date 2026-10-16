@@ -409,6 +409,10 @@ export default function Pipeline() {
     email: string
   }) => {
     if (!vendaGanhaTargetOpp) return
+    if (!Number.isFinite(data.contractedValue) || data.contractedValue <= 0 || !Number.isInteger(data.livesCount) || data.livesCount < 1) {
+      alert('Informe mensalidade positiva e quantidade de vidas válida.')
+      return
+    }
     if (data.isPaymentConfirmed && !data.paymentConfirmedDate) {
       alert('Informe a data do pagamento confirmado.')
       return
