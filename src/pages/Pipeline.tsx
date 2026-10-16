@@ -463,6 +463,19 @@ export default function Pipeline() {
         : `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
 
       if (activeContract) {
+        // Não alterar a origem comercial após a geração do financeiro:
+        // o snapshot de comissões mantém os percentuais da origem anterior.
+        const { data: existingFinancial, error: financialCheckError } = await supabase
+          .from('contract_financials')
+          .select('id')
+          .eq('contract_id', activeContract.id)
+          .maybeSingle()
+        if (financialCheckError) {
+          throw new Error('Não foi possível verificar o financeiro existente: ' + financialCheckError.message)
+        }
+        if (existingFinancial && activeContract.origem_comercial_lead !== data.origem_comercial_lead) {
+          throw new Error('Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.')
+        }
         activeContract = await contractService.updateContract(activeContract.id, {
           company_id: companyId,
           contact_id: contactId,
@@ -493,6 +506,7 @@ export default function Pipeline() {
           contact_id: contactId,
           carrier_id: data.contractedCarrierId,
           product_id: vendaGanhaTargetOpp.product_id,
+          origem_comercial_lead: data.origem_comercial_lead,
           plano: data.contractedPlan,
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
