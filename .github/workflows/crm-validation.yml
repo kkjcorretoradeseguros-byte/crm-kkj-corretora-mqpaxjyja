@@ -73,3 +73,11 @@ jobs:
           echo "$output" | grep -q 'relation "public.contracts" does not exist'
           if echo "$output" | grep -q 'Acesso administrativo necessário'; then exit 1; fi
           psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
+          # Validate the new commercial-origin migration on disposable fixture data.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM public.contracts WHERE origem_comercial_lead IS NOT NULL;" | grep -qx 0
+          psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'kkj' WHERE id = '00000000-0000-0000-0000-000000000001';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'invalida' WHERE id = '00000000-0000-0000-0000-000000000001';" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'contracts_origem_comercial_lead_check'
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT origem_comercial_lead FROM public.contracts WHERE id = '00000000-0000-0000-0000-000000000001';" | grep -qx kkj
