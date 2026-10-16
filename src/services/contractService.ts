@@ -517,7 +517,23 @@ export const contractService = {
         .maybeSingle()
       if (financialError) throw new Error(financialError.message)
       if (financial) {
-        throw new Error('Contrato com financeiro gerado: alterações comerciais exigem revisão administrativa.')
+        const { data: saved, error: savedError } = await supabase
+          .from('contracts')
+          .select('carrier_id,product_id,valor_mensal,qtd_vidas,origem_comercial_lead,primeira_competencia,data_confirmacao_pagamento')
+          .eq('id', id).single()
+        if (savedError || !saved) throw new Error(savedError?.message || 'Contrato não encontrado')
+        const values = [
+          [data.carrier_id, saved.carrier_id],
+          [data.product_id, saved.product_id],
+          [data.sale_value, saved.valor_mensal],
+          [data.lives_count, saved.qtd_vidas],
+          [data.origem_comercial_lead, saved.origem_comercial_lead],
+          [data.primeira_competencia, saved.primeira_competencia],
+          [data.data_confirmacao_pagamento, saved.data_confirmacao_pagamento],
+        ]
+        if (values.some(([incoming, current]) =>
+          incoming !== undefined && String(incoming ?? '') !== String(current ?? '')
+        )) throw new Error('Contrato com financeiro gerado: alteração comercial exige revisão administrativa.')
       }
     }
 
