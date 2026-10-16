@@ -59,3 +59,14 @@ test('commission preview rejects invalid lives and monthly premiums', () => {
   assert.match(preview, /Number\(contract\.valor_mensal\) > 0/)
   assert.ok(preview.indexOf('Number.isInteger(lives)') < preview.indexOf('const applicable ='))
 })
+
+test('reprocessing a won sale preserves active contract status', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  assert.match(fn, /status: activeContract\.status === 'Ativo' \? 'Ativo' : 'Em Implantação'/)
+})
+
+test('direct commission preview rejects zero premium', () => {
+  const forecast = readFileSync(new URL('../src/services/commissionForecastService.ts', import.meta.url), 'utf8')
+  const preview = forecast.slice(forecast.indexOf('export async function previewContractCommissions'), forecast.indexOf('export async function persistContractCommissionForecast'))
+  assert.match(preview, /params\.mensalidade <= 0/)
+})
