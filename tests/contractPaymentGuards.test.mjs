@@ -95,3 +95,9 @@ test('winning sale requires a date for confirmed payment before any write', () =
   const companyWrite = fn.indexOf('companyService.updateCompany(')
   assert.ok(dateGuard >= 0 && dateGuard < companyWrite)
 })
+
+test('winning sale rejects invalid premium and lives before writing', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  assert.ok(fn.indexOf('!Number.isFinite(data.contractedValue)') < fn.indexOf('companyService.updateCompany('))
+  assert.ok(fn.indexOf('!Number.isInteger(data.livesCount)') < fn.indexOf('companyService.updateCompany('))
+})
