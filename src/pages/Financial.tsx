@@ -71,7 +71,10 @@ export default function Financial() {
         contractService.getAllContracts(),
         opportunityService.getAllOpportunities(),
         adesaoService.getBoletos(),
-        financialService.getMeuFinanceiro().catch(() => null),
+        financialService.getMeuFinanceiro().catch((err) => {
+          setInstallmentError(err instanceof Error ? err.message : 'Falha ao consultar resumo financeiro')
+          return null
+        }),
       ])
 
       setMeuFinanceiro(financeiroRes)
@@ -125,7 +128,8 @@ export default function Financial() {
             })),
           )
         } catch (rpcErr) {
-          console.warn('Erro ao consultar parcelas do usuário:', rpcErr)
+          console.error('Erro ao consultar parcelas do usuário:', rpcErr)
+          setInstallmentError(rpcErr instanceof Error ? rpcErr.message : 'Falha ao consultar parcelas')
           setInstallments([])
         }
       }
