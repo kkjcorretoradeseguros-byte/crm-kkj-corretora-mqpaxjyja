@@ -28,6 +28,7 @@ interface VendaGanhaModalProps {
   companies: Company[]
   contacts: Contact[]
   onConfirm: (data: {
+    origem_comercial_lead: 'kkj' | 'vendedor'
     contractedCarrierId: string
     contractedCarrierName: string
     contractedPlan: string
@@ -56,6 +57,7 @@ export function VendaGanhaModal({
   contacts,
   onConfirm,
 }: VendaGanhaModalProps) {
+  const [origemComercialLead, setOrigemComercialLead] = useState<'kkj' | 'vendedor' | ''>('')
   const [carrierId, setCarrierId] = useState('')
   const [contractedPlan, setContractedPlan] = useState('')
   const [contractedValue, setContractedValue] = useState('')
@@ -99,6 +101,7 @@ export function VendaGanhaModal({
       setPhone(cont?.phone || '')
       setEmail(cont?.email || '')
 
+      setOrigemComercialLead('')
       setCarrierId(opportunity.carrier_id || carriers[0]?.id || '')
       setContractedPlan(opportunity.suggested_plan || '')
       setContractedValue(opportunity.sale_value ? String(opportunity.sale_value) : '')
@@ -114,6 +117,7 @@ export function VendaGanhaModal({
 
   // Validações
   const validateForm = () => {
+    if (!origemComercialLead) return 'Informe se o lead foi gerado pela KKJ ou pelo vendedor.'
     if (!contactName.trim()) return 'Nome do cliente / titular é obrigatório.'
     if (modalidade !== 'PF' && !companyName.trim()) {
       return 'Razão Social / Nome da Empresa é obrigatório para esta modalidade.'
@@ -174,6 +178,7 @@ export function VendaGanhaModal({
 
     try {
       await onConfirm({
+        origem_comercial_lead: origemComercialLead as 'kkj' | 'vendedor',
         contractedCarrierId: carrierId,
         contractedCarrierName: carrierName,
         contractedPlan: contractedPlan.trim(),
@@ -220,6 +225,21 @@ export function VendaGanhaModal({
               <span>{errorMsg}</span>
             </div>
           )}
+
+          <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
+            <Label htmlFor="origem-comercial-lead" className="text-xs">Origem comercial do lead *</Label>
+            <select
+              id="origem-comercial-lead"
+              className="w-full h-9 rounded-md border border-slate-300 bg-white px-2 text-xs"
+              value={origemComercialLead}
+              onChange={(e) => setOrigemComercialLead(e.target.value as 'kkj' | 'vendedor' | '')}
+              required
+            >
+              <option value="">Selecione a origem comercial</option>
+              <option value="kkj">Lead fornecido pela KKJ</option>
+              <option value="vendedor">Lead próprio / indicação do vendedor</option>
+            </select>
+          </div>
 
           {/* Dados Cadastrais Obrigatórios */}
           <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
