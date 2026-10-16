@@ -409,7 +409,12 @@ export default function Pipeline() {
     email: string
   }) => {
     if (!vendaGanhaTargetOpp) return
-    if (!Number.isFinite(data.contractedValue) || data.contractedValue <= 0 || !Number.isInteger(data.livesCount) || data.livesCount < 1) {
+    if (
+      !Number.isFinite(data.contractedValue) ||
+      data.contractedValue <= 0 ||
+      !Number.isInteger(data.livesCount) ||
+      data.livesCount < 1
+    ) {
       alert('Informe mensalidade positiva e quantidade de vidas válida.')
       return
     }
@@ -428,7 +433,9 @@ export default function Pipeline() {
       })
 
       if (existingContracts.totalItems > 1) {
-        throw new Error('Há mais de um contrato vinculado a esta oportunidade. Selecione o contrato correto antes de reprocessar a venda.')
+        throw new Error(
+          'Há mais de um contrato vinculado a esta oportunidade. Selecione o contrato correto antes de reprocessar a venda.',
+        )
       }
 
       let activeContract = existingContracts.items[0]
@@ -441,18 +448,29 @@ export default function Pipeline() {
           .eq('contract_id', activeContract.id)
           .maybeSingle()
         if (financialCheckError) {
-          throw new Error('Não foi possível verificar o financeiro existente: ' + financialCheckError.message)
+          throw new Error(
+            'Não foi possível verificar o financeiro existente: ' + financialCheckError.message,
+          )
         }
-        if (existingFinancial && activeContract.origem_comercial_lead !== data.origem_comercial_lead) {
-          throw new Error('Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.')
+        if (
+          existingFinancial &&
+          activeContract.origem_comercial_lead !== data.origem_comercial_lead
+        ) {
+          throw new Error(
+            'Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.',
+          )
         }
-        if (existingFinancial && (
-          activeContract.carrier_id !== data.contractedCarrierId ||
-          Number(activeContract.sale_value) !== data.contractedValue ||
-          Number(activeContract.lives_count || 1) !== data.livesCount ||
-          (activeContract.first_installment_reference || '').slice(0, 7) !== data.firstInstallmentRef.slice(0, 7)
-        )) {
-          throw new Error('Contrato com financeiro existente: dados que afetam as comissões exigem revisão administrativa.')
+        if (
+          existingFinancial &&
+          (activeContract.carrier_id !== data.contractedCarrierId ||
+            Number(activeContract.sale_value) !== data.contractedValue ||
+            Number(activeContract.lives_count || 1) !== data.livesCount ||
+            (activeContract.first_installment_reference || '').slice(0, 7) !==
+              data.firstInstallmentRef.slice(0, 7))
+        ) {
+          throw new Error(
+            'Contrato com financeiro existente: dados que afetam as comissões exigem revisão administrativa.',
+          )
         }
       }
 
@@ -549,7 +567,8 @@ export default function Pipeline() {
       // Nessa situação, concluir também o recebimento inicial e a previsão financeira.
       // A rotina é idempotente e não marca o repasse ao vendedor como pago.
       if (data.isPaymentConfirmed) {
-        const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
+        const { ensureConfirmedContractForecast } =
+          await import('@/services/commissionForecastService')
         await ensureConfirmedContractForecast(activeContract.id)
       }
 

@@ -389,9 +389,13 @@ export default function SettingsPage() {
       )
       setRuleMinLives(rule.min_lives ? String(rule.min_lives) : '1')
       setRuleMaxLives(rule.max_lives ? String(rule.max_lives) : '')
-      setRuleRepassePct(rule.repasse_vendedor_pct != null ? String(rule.repasse_vendedor_pct) : '50')
+      setRuleRepassePct(
+        rule.repasse_vendedor_pct != null ? String(rule.repasse_vendedor_pct) : '50',
+      )
       setRuleRepasseProprioPct(
-        rule.repasse_vendedor_proprio_pct != null ? String(rule.repasse_vendedor_proprio_pct) : '100',
+        rule.repasse_vendedor_proprio_pct != null
+          ? String(rule.repasse_vendedor_proprio_pct)
+          : '100',
       )
       setRuleImpostoPct(rule.aliquota_imposto_pct ? String(rule.aliquota_imposto_pct) : '11')
       setRuleDataInicio(rule.data_inicio_vigencia || new Date().toISOString().slice(0, 10))
@@ -463,7 +467,8 @@ export default function SettingsPage() {
         min_lives: parseInt(ruleMinLives, 10) || 1,
         max_lives: ruleMaxLives ? parseInt(ruleMaxLives, 10) : null,
         repasse_vendedor_pct: ruleRepassePct.trim() === '' ? 50 : Number(ruleRepassePct),
-        repasse_vendedor_proprio_pct: ruleRepasseProprioPct.trim() === '' ? 100 : Number(ruleRepasseProprioPct),
+        repasse_vendedor_proprio_pct:
+          ruleRepasseProprioPct.trim() === '' ? 100 : Number(ruleRepasseProprioPct),
         aliquota_imposto_pct: parseFloat(ruleImpostoPct) || 11,
         data_inicio_vigencia: ruleDataInicio,
         data_fim_vigencia: ruleDataFim || null,

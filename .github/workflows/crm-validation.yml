@@ -87,4 +87,3 @@ jobs:
           psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'persist_contract_commission_forecast';" | grep -qx 1
           psql -v ON_ERROR_STOP=1 -c "DROP TABLE public.contracts;"
           psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
-

@@ -153,7 +153,8 @@ function mapContractRow(r: ContractDbRow): Contract {
     plano: r.plano || undefined,
     status: uiStatus,
     start_date: r.data_inicio_vigencia || undefined,
-    data_vencimento_primeiro_pagamento: r.data_vencimento_primeiro_pagamento || r.data_previsao_vigencia || undefined,
+    data_vencimento_primeiro_pagamento:
+      r.data_vencimento_primeiro_pagamento || r.data_previsao_vigencia || undefined,
     data_confirmacao_pagamento: r.data_confirmacao_pagamento || r.data_pagamento || undefined,
     origem_comercial_lead: r.origem_comercial_lead || null,
     data_implantacao: r.data_implantacao || undefined,
@@ -494,7 +495,9 @@ export const contractService = {
       if (current.status === 'cancelado')
         throw new Error('Contrato cancelado não pode ser reativado por edição')
       const isConfirmed =
-        Boolean(data.data_confirmacao_pagamento) || Boolean(current.data_pagamento) || Boolean(current.data_confirmacao_pagamento)
+        Boolean(data.data_confirmacao_pagamento) ||
+        Boolean(current.data_pagamento) ||
+        Boolean(current.data_confirmacao_pagamento)
       if (!isConfirmed) {
         throw new Error(
           'Não é possível implantar este contrato. O primeiro pagamento ainda não foi confirmado.',
@@ -502,7 +505,8 @@ export const contractService = {
       }
     }
 
-    const protectedChange = data.carrier_id !== undefined ||
+    const protectedChange =
+      data.carrier_id !== undefined ||
       data.sale_value !== undefined ||
       data.lives_count !== undefined ||
       data.origem_comercial_lead !== undefined ||
@@ -519,8 +523,11 @@ export const contractService = {
       if (financial) {
         const { data: saved, error: savedError } = await supabase
           .from('contracts')
-          .select('carrier_id,product_id,valor_mensal,qtd_vidas,origem_comercial_lead,primeira_competencia,data_confirmacao_pagamento')
-          .eq('id', id).single()
+          .select(
+            'carrier_id,product_id,valor_mensal,qtd_vidas,origem_comercial_lead,primeira_competencia,data_confirmacao_pagamento',
+          )
+          .eq('id', id)
+          .single()
         if (savedError || !saved) throw new Error(savedError?.message || 'Contrato não encontrado')
         const values = [
           [data.carrier_id, saved.carrier_id],
@@ -531,9 +538,18 @@ export const contractService = {
           [data.primeira_competencia, saved.primeira_competencia],
           [data.data_confirmacao_pagamento, saved.data_confirmacao_pagamento],
         ]
-        if (values.some(([incoming, current]) =>
-          incoming !== undefined && (typeof incoming === 'number' ? (current === null || current === undefined || Number(incoming) !== Number(current)) : String(incoming ?? '') !== String(current ?? ''))
-        )) throw new Error('Contrato com financeiro gerado: alteração comercial exige revisão administrativa.')
+        if (
+          values.some(
+            ([incoming, current]) =>
+              incoming !== undefined &&
+              (typeof incoming === 'number'
+                ? current === null || current === undefined || Number(incoming) !== Number(current)
+                : String(incoming ?? '') !== String(current ?? '')),
+          )
+        )
+          throw new Error(
+            'Contrato com financeiro gerado: alteração comercial exige revisão administrativa.',
+          )
       }
     }
 
@@ -570,10 +586,14 @@ export const contractService = {
       payload.data_pagamento = data.data_confirmacao_pagamento || null
       payload.data_confirmacao_pagamento = data.data_confirmacao_pagamento || null
     }
-    if (data.data_vencimento_primeiro_pagamento !== undefined) payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
-    if (data.primeira_competencia !== undefined) payload.primeira_competencia = data.primeira_competencia || null
-    if (data.usuario_confirmou_pagamento_id !== undefined) payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
-    if (data.usuario_implantacao_id !== undefined) payload.usuario_implantacao_id = data.usuario_implantacao_id || null
+    if (data.data_vencimento_primeiro_pagamento !== undefined)
+      payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
+    if (data.primeira_competencia !== undefined)
+      payload.primeira_competencia = data.primeira_competencia || null
+    if (data.usuario_confirmou_pagamento_id !== undefined)
+      payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
+    if (data.usuario_implantacao_id !== undefined)
+      payload.usuario_implantacao_id = data.usuario_implantacao_id || null
     if (data.renewal_date !== undefined) payload.data_renovacao = data.renewal_date || null
     if (data.sale_value !== undefined) {
       payload.valor_mensal = data.sale_value
@@ -582,7 +602,8 @@ export const contractService = {
     if (data.lives_count !== undefined) payload.qtd_vidas = data.lives_count || null
     if (data.notes !== undefined) payload.observacoes = data.notes || null
     if (data.assigned_to !== undefined) payload.responsavel_id = data.assigned_to || null
-    if (data.origem_comercial_lead !== undefined) payload.origem_comercial_lead = data.origem_comercial_lead
+    if (data.origem_comercial_lead !== undefined)
+      payload.origem_comercial_lead = data.origem_comercial_lead
 
     const { data: updated, error } = await supabase
       .from('contracts')

@@ -227,7 +227,9 @@ export function VendaGanhaModal({
           )}
 
           <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
-            <Label htmlFor="origem-comercial-lead" className="text-xs">Origem comercial do lead *</Label>
+            <Label htmlFor="origem-comercial-lead" className="text-xs">
+              Origem comercial do lead *
+            </Label>
             <select
               id="origem-comercial-lead"
               className="w-full h-9 rounded-md border border-slate-300 bg-white px-2 text-xs"
