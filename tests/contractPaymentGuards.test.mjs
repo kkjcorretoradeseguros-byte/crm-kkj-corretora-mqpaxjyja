@@ -101,3 +101,10 @@ test('winning sale rejects invalid premium and lives before writing', () => {
   assert.ok(fn.indexOf('!Number.isFinite(data.contractedValue)') < fn.indexOf('companyService.updateCompany('))
   assert.ok(fn.indexOf('!Number.isInteger(data.livesCount)') < fn.indexOf('companyService.updateCompany('))
 })
+
+test('direct commission preview rejects nonfinite or mismatched premiums', () => {
+  const forecast = readFileSync(new URL('../src/services/commissionForecastService.ts', import.meta.url), 'utf8')
+  const preview = forecast.slice(forecast.indexOf('export async function previewContractCommissions'), forecast.indexOf('export async function persistContractCommissionForecast'))
+  assert.match(preview, /!Number\.isFinite\(params\.mensalidade\)/)
+  assert.match(preview, /Number\(contract\.valor_mensal\) !== params\.mensalidade/)
+})
