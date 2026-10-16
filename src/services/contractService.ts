@@ -502,6 +502,25 @@ export const contractService = {
       }
     }
 
+    const protectedChange = data.carrier_id !== undefined ||
+      data.sale_value !== undefined ||
+      data.lives_count !== undefined ||
+      data.origem_comercial_lead !== undefined ||
+      data.primeira_competencia !== undefined ||
+      data.data_confirmacao_pagamento !== undefined ||
+      data.product_id !== undefined
+    if (protectedChange) {
+      const { data: financial, error: financialError } = await supabase
+        .from('contract_financials')
+        .select('id')
+        .eq('contract_id', id)
+        .maybeSingle()
+      if (financialError) throw new Error(financialError.message)
+      if (financial) {
+        throw new Error('Contrato com financeiro gerado: alterações comerciais exigem revisão administrativa.')
+      }
+    }
+
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
