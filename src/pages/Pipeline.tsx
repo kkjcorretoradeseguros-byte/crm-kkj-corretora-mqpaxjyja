@@ -415,6 +415,14 @@ export default function Pipeline() {
     }
 
     try {
+      const existingContracts = await contractService.getContracts({
+        opportunity_id: vendaGanhaTargetOpp.id,
+      })
+
+      if (existingContracts.totalItems > 1) {
+        throw new Error('Há mais de um contrato vinculado a esta oportunidade. Selecione o contrato correto antes de reprocessar a venda.')
+      }
+
       let companyId = vendaGanhaTargetOpp.company_id
       if (companyId) {
         await companyService.updateCompany(companyId, {
@@ -447,14 +455,6 @@ export default function Pipeline() {
           company_id: companyId,
         })
         contactId = newCont.id
-      }
-
-      const existingContracts = await contractService.getContracts({
-        opportunity_id: vendaGanhaTargetOpp.id,
-      })
-
-      if (existingContracts.totalItems > 1) {
-        throw new Error('Há mais de um contrato vinculado a esta oportunidade. Selecione o contrato correto antes de reprocessar a venda.')
       }
 
       let activeContract = existingContracts.items[0]
