@@ -510,6 +510,14 @@ export default function Pipeline() {
         })
       }
 
+      // O cadastro da venda pode já conter a confirmação do primeiro pagamento.
+      // Nessa situação, concluir também o recebimento inicial e a previsão financeira.
+      // A rotina é idempotente e não marca o repasse ao vendedor como pago.
+      if (data.isPaymentConfirmed) {
+        const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
+        await ensureConfirmedContractForecast(activeContract.id)
+      }
+
       await opportunityService.addTimelineEvent(
         vendaGanhaTargetOpp.id,
         'venda_contrato',
