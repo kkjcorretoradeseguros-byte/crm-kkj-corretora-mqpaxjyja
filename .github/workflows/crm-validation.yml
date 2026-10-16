@@ -72,12 +72,16 @@ jobs:
           output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
           echo "$output" | grep -q 'relation "public.contracts" does not exist'
           if echo "$output" | grep -q 'Acesso administrativo necessário'; then exit 1; fi
-          psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
+          # Create a minimal contracts fixture and exercise the origin migration first.
+          psql -v ON_ERROR_STOP=1 -c "CREATE TABLE public.contracts (id uuid primary key); INSERT INTO public.contracts VALUES ('00000000-0000-0000-0000-000000000099');"
           # Validate the new commercial-origin migration on disposable fixture data.
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
           psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM public.contracts WHERE origem_comercial_lead IS NOT NULL;" | grep -qx 0
-          psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'kkj' WHERE id = '00000000-0000-0000-0000-000000000001';"
-          output=$(psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'invalida' WHERE id = '00000000-0000-0000-0000-000000000001';" 2>&1) && exit 1 || true
+          psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'kkj' WHERE id = '00000000-0000-0000-0000-000000000099';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'invalida' WHERE id = '00000000-0000-0000-0000-000000000099';" 2>&1) && exit 1 || true
           echo "$output" | grep -q 'contracts_origem_comercial_lead_check'
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
-          psql -v ON_ERROR_STOP=1 -Atc "SELECT origem_comercial_lead FROM public.contracts WHERE id = '00000000-0000-0000-0000-000000000001';" | grep -qx kkj
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT origem_comercial_lead FROM public.contracts WHERE id = '00000000-0000-0000-0000-000000000099';" | grep -qx kkj
+          psql -v ON_ERROR_STOP=1 -c "DROP TABLE public.contracts;"
+          psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
+
