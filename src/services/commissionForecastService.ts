@@ -90,12 +90,13 @@ export async function previewConfirmedContractCommissions(contractId: string) {
   if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
   const { data: contract, error: contractError } = await supabase
     .from('contracts')
-    .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento')
+    .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento,data_confirmacao_pagamento')
     .eq('id', contractId)
     .single()
   if (contractError || !contract)
     throw new Error(contractError?.message || 'Contrato não encontrado')
-  if (!contract.data_pagamento) throw new Error('Confirme primeiro o pagamento do cliente')
+  const paymentDate = contract.data_confirmacao_pagamento || contract.data_pagamento
+  if (!paymentDate) throw new Error('Confirme primeiro o pagamento do cliente')
   const { data: rules, error: rulesError } = await supabase
     .from('commission_rules')
     .select(
@@ -110,8 +111,8 @@ export async function previewConfirmedContractCommissions(contractId: string) {
       (!rule.product_id || rule.product_id === contract.product_id) &&
       (rule.min_lives == null || lives >= Number(rule.min_lives)) &&
       (rule.max_lives == null || lives <= Number(rule.max_lives)) &&
-      (!rule.data_inicio_vigencia || contract.data_pagamento >= rule.data_inicio_vigencia) &&
-      (!rule.data_fim_vigencia || contract.data_pagamento <= rule.data_fim_vigencia),
+      (!rule.data_inicio_vigencia || paymentDate >= rule.data_inicio_vigencia) &&
+      (!rule.data_fim_vigencia || paymentDate <= rule.data_fim_vigencia),
   )
   if (applicable.length !== 1) {
     throw new Error(
@@ -138,14 +139,14 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     rule: rule as DatabaseCommissionRule,
     mensalidade: Number(contract.valor_mensal),
     leadOrigin: 'kkj',
-    firstDueDate: contract.data_pagamento,
+    firstDueDate: paymentDate,
   })
   return {
     ...preview,
     ruleId: selected.id,
     ruleName: selected.nome,
     rule,
-    firstDueDate: contract.data_pagamento,
+    firstDueDate: paymentDate,
     mensalidade: Number(contract.valor_mensal),
   }
 }
