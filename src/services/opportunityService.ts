@@ -744,7 +744,7 @@ export const opportunityService = {
       }).eq('id', id)
       if (error) throw new Error(error.message)
     }
-    const updated = await this.getOpportunityById(id)
+    const updated = (stage.toLowerCase() === 'perdido' || stage.toLowerCase() === 'venda perdida') ? await this.getOpportunityById(id) : await this.updateOpportunity(id, updatePayload)
 
     try {
       const conteudoTimeline =
