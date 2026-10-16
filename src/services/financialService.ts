@@ -33,7 +33,7 @@ export const financialService = {
   async getMeuFinanceiro(): Promise<FinancialCommissionSummary | null> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    try {
+    {
       const { data, error } = await supabase.rpc('get_meu_financeiro')
       if (error) {
         throw new Error('Erro ao consultar resumo financeiro: ' + error.message)
@@ -53,8 +53,6 @@ export const financialService = {
         parcelas_a_vencer: Number(row.parcelas_a_vencer || 0),
         parcelas_vencidas: Number(row.parcelas_vencidas || 0),
       }
-    } catch (err) {
-      throw err
     }
   },
 
@@ -65,7 +63,7 @@ export const financialService = {
   async getMinhasParcelas(mes?: number, ano?: number): Promise<FinancialInstallmentItem[]> {
     if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
-    try {
+    {
       const { data, error } = await supabase.rpc('get_minhas_parcelas', {
         p_mes: mes ?? null,
         p_ano: ano ?? null,
@@ -92,8 +90,6 @@ export const financialService = {
         data_repasse: item.data_repasse ? String(item.data_repasse) : null,
         status: String(item.status || 'previsto'),
       }))
-    } catch (err) {
-      throw err
     }
   },
 }
