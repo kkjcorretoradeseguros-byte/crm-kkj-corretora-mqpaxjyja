@@ -82,6 +82,9 @@ jobs:
           echo "$output" | grep -q 'contracts_origem_comercial_lead_check'
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
           psql -v ON_ERROR_STOP=1 -Atc "SELECT origem_comercial_lead FROM public.contracts WHERE id = '00000000-0000-0000-0000-000000000099';" | grep -qx kkj
+          # Simulate upgrading the already-installed RPC without touching production.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016182000_upgrade_contract_commission_origin_guard.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'persist_contract_commission_forecast';" | grep -qx 1
           psql -v ON_ERROR_STOP=1 -c "DROP TABLE public.contracts;"
           psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
 
