@@ -389,6 +389,7 @@ export default function Pipeline() {
 
   // Conclusão auditada de Venda Ganha
   const handleConfirmVendaGanha = async (data: {
+    origem_comercial_lead: 'kkj' | 'vendedor'
     contractedCarrierId: string
     contractedCarrierName: string
     contractedPlan: string
@@ -470,6 +471,7 @@ export default function Pipeline() {
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
           start_date: data.hiringDate,
+          origem_comercial_lead: data.origem_comercial_lead,
           data_vencimento_primeiro_pagamento: data.firstPaymentDueDate,
           data_confirmacao_pagamento: data.isPaymentConfirmed
             ? data.paymentConfirmedDate
