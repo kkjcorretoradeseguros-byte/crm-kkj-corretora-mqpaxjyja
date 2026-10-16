@@ -44,3 +44,10 @@ test('commercial lead origin migration keeps legacy contracts unclassified', () 
   assert.match(migration, /origem_comercial_lead is null/)
   assert.doesNotMatch(migration, /update\s+public\.contracts\s+set\s+origem_comercial_lead/i)
 })
+
+test('non-admin users cannot confirm client payment in winning sale flow', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  const guard = fn.indexOf("data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR'")
+  const companyWrite = fn.indexOf('companyService.updateCompany(')
+  assert.ok(guard >= 0 && guard < companyWrite)
+})
