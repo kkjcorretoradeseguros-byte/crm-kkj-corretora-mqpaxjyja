@@ -49,6 +49,7 @@ import { carrierService } from '@/services/carrierService'
 import { taskService } from '@/services/taskService'
 import { userService } from '@/services/userService'
 import { contractService } from '@/services/contractService'
+import { supabase } from '@/lib/supabase/client'
 import { tagService } from '@/services/tagService'
 import { useAuth } from '@/contexts/AuthContext'
 import { OpportunityDetailModal } from '@/components/OpportunityDetailModal'
@@ -389,6 +390,7 @@ export default function Pipeline() {
 
   // Conclusão auditada de Venda Ganha
   const handleConfirmVendaGanha = async (data: {
+    origem_comercial_lead: 'kkj' | 'vendedor'
     contractedCarrierId: string
     contractedCarrierName: string
     contractedPlan: string
@@ -407,8 +409,53 @@ export default function Pipeline() {
     email: string
   }) => {
     if (!vendaGanhaTargetOpp) return
+    if (!Number.isFinite(data.contractedValue) || data.contractedValue <= 0 || !Number.isInteger(data.livesCount) || data.livesCount < 1) {
+      alert('Informe mensalidade positiva e quantidade de vidas válida.')
+      return
+    }
+    if (data.isPaymentConfirmed && !data.paymentConfirmedDate) {
+      alert('Informe a data do pagamento confirmado.')
+      return
+    }
+    if (data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR') {
+      alert('A confirmação de pagamento exige perfil administrador.')
+      return
+    }
 
     try {
+      const existingContracts = await contractService.getContracts({
+        opportunity_id: vendaGanhaTargetOpp.id,
+      })
+
+      if (existingContracts.totalItems > 1) {
+        throw new Error('Há mais de um contrato vinculado a esta oportunidade. Selecione o contrato correto antes de reprocessar a venda.')
+      }
+
+      let activeContract = existingContracts.items[0]
+      if (activeContract) {
+        // Não alterar a origem comercial após a geração do financeiro:
+        // o snapshot de comissões mantém os percentuais da origem anterior.
+        const { data: existingFinancial, error: financialCheckError } = await supabase
+          .from('contract_financials')
+          .select('id')
+          .eq('contract_id', activeContract.id)
+          .maybeSingle()
+        if (financialCheckError) {
+          throw new Error('Não foi possível verificar o financeiro existente: ' + financialCheckError.message)
+        }
+        if (existingFinancial && activeContract.origem_comercial_lead !== data.origem_comercial_lead) {
+          throw new Error('Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.')
+        }
+        if (existingFinancial && (
+          activeContract.carrier_id !== data.contractedCarrierId ||
+          Number(activeContract.sale_value) !== data.contractedValue ||
+          Number(activeContract.lives_count || 1) !== data.livesCount ||
+          (activeContract.first_installment_reference || '').slice(0, 7) !== data.firstInstallmentRef.slice(0, 7)
+        )) {
+          throw new Error('Contrato com financeiro existente: dados que afetam as comissões exigem revisão administrativa.')
+        }
+      }
+
       let companyId = vendaGanhaTargetOpp.company_id
       if (companyId) {
         await companyService.updateCompany(companyId, {
@@ -443,20 +490,6 @@ export default function Pipeline() {
         contactId = newCont.id
       }
 
-      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
-        stage: 'Venda ganha',
-        company_id: companyId,
-        contact_id: contactId,
-        carrier_id: data.contractedCarrierId,
-        value: data.contractedValue,
-        sale_value: data.contractedValue,
-      })
-
-      const existingContracts = await contractService.getContracts({
-        opportunity_id: vendaGanhaTargetOpp.id,
-      })
-
-      let activeContract = existingContracts.items[0]
       const contractNum = activeContract
         ? activeContract.contract_number
         : `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
@@ -470,6 +503,7 @@ export default function Pipeline() {
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
           start_date: data.hiringDate,
+          origem_comercial_lead: data.origem_comercial_lead,
           data_vencimento_primeiro_pagamento: data.firstPaymentDueDate,
           data_confirmacao_pagamento: data.isPaymentConfirmed
             ? data.paymentConfirmedDate
@@ -479,7 +513,7 @@ export default function Pipeline() {
             : undefined,
           primeira_competencia: data.firstInstallmentRef,
           first_installment_reference: data.firstInstallmentRef,
-          status: 'Em Implantação',
+          status: activeContract.status === 'Ativo' ? 'Ativo' : 'Em Implantação',
           assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
           notes: `Venda Ganha reprocessada em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef} | 1º Vencimento: ${data.firstPaymentDueDate}`,
         })
@@ -491,6 +525,7 @@ export default function Pipeline() {
           contact_id: contactId,
           carrier_id: data.contractedCarrierId,
           product_id: vendaGanhaTargetOpp.product_id,
+          origem_comercial_lead: data.origem_comercial_lead,
           plano: data.contractedPlan,
           sale_value: data.contractedValue,
           lives_count: data.livesCount,
@@ -509,6 +544,23 @@ export default function Pipeline() {
           notes: `Venda Ganha concluída em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef} | 1º Vencimento: ${data.firstPaymentDueDate}`,
         })
       }
+
+      // O cadastro da venda pode já conter a confirmação do primeiro pagamento.
+      // Nessa situação, concluir também o recebimento inicial e a previsão financeira.
+      // A rotina é idempotente e não marca o repasse ao vendedor como pago.
+      if (data.isPaymentConfirmed) {
+        const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
+        await ensureConfirmedContractForecast(activeContract.id)
+      }
+
+      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
+        stage: 'Venda ganha',
+        company_id: companyId,
+        contact_id: contactId,
+        carrier_id: data.contractedCarrierId,
+        value: data.contractedValue,
+        sale_value: data.contractedValue,
+      })
 
       await opportunityService.addTimelineEvent(
         vendaGanhaTargetOpp.id,

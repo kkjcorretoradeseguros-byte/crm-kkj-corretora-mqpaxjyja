@@ -3,6 +3,7 @@ create table public.contracts (
   id uuid primary key, status text not null, carrier_id uuid not null,
   valor_mensal numeric not null, product_id uuid, qtd_vidas integer not null
 );
+\i supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
 create table public.commission_rules (
   id uuid primary key, carrier_id uuid not null, aliquota_imposto_pct numeric,
   cronograma_parcelas jsonb, data_inicio_vigencia date, data_fim_vigencia date,
@@ -44,9 +45,43 @@ insert into public.commission_rules values (
   '[{"month":1,"pct":100}]'::jsonb, null, null, null,
   false, 1, null, null, null, 100, 50, true
 );
+-- Legacy contracts without attested origin must not generate financial snapshots.
+create or replace function public.is_admin() returns boolean language sql stable as 'select true';
+do $missing_origin$
+begin
+  execute 'set local role authenticated';
+  begin
+    perform public.persist_contract_commission_forecast(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000002',
+      'kkj', '[]'::jsonb
+    );
+    raise exception 'Missing commercial origin was incorrectly accepted';
+  exception when others then
+    if sqlerrm <> 'Origem comercial divergente do contrato' then raise; end if;
+  end;
+end $missing_origin$;
+-- The contract must attest commercial origin before the commission snapshot.
+update public.contracts set origem_comercial_lead = 'kkj'
+where id = '00000000-0000-0000-0000-000000000001';
 -- Administrator identity is mocked in this disposable database.
 create or replace function public.is_admin() returns boolean
 language sql stable as 'select true';
+-- A mismatched origin must be denied before any financial snapshot is created.
+do $origin_mismatch$
+begin
+  execute 'set local role authenticated';
+  begin
+    perform public.persist_contract_commission_forecast(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000002',
+      'vendedor', '[]'::jsonb
+    );
+    raise exception 'Mismatched commercial origin was incorrectly accepted';
+  exception when others then
+    if sqlerrm <> 'Origem comercial divergente do contrato' then raise; end if;
+  end;
+end $origin_mismatch$;
 set role authenticated;
 select public.persist_contract_commission_forecast(
   '00000000-0000-0000-0000-000000000001',
@@ -65,6 +100,22 @@ begin
     raise exception 'Incorrect financial forecast amount';
   end if;
 end $$;
+-- Once the snapshot exists, commercial origin is immutable even via direct SQL.
+\i supabase/migrations/20261016181000_lock_contract_origin_after_forecast.sql
+do $immutable_origin$
+begin
+  begin
+    update public.contracts set origem_comercial_lead = 'vendedor'
+    where id = '00000000-0000-0000-0000-000000000001';
+    raise exception 'Commercial origin was changed after financial snapshot';
+  exception when others then
+    if sqlerrm <> 'Origem comercial bloqueada após previsão financeira' then raise; end if;
+  end;
+  if (select origem_comercial_lead from public.contracts
+      where id = '00000000-0000-0000-0000-000000000001') <> 'kkj' then
+    raise exception 'Commercial origin changed despite guard';
+  end if;
+end $immutable_origin$;
 -- Duplicate calls must fail without creating extra records.
 do $$
 begin

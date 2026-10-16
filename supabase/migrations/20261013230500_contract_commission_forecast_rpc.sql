@@ -44,6 +44,7 @@ declare
   v_first_due date;
   v_expected_due date;
   v_authorized_origin text;
+  v_contract_origin text;
 begin
   if p_lead_origin not in ('kkj','vendedor') or p_lead_origin is null then
     raise exception 'Origem do lead inválida';
@@ -58,6 +59,12 @@ begin
     where id = p_contract_id for update;
   if not found then raise exception 'Contrato inexistente'; end if;
   if v_status = 'cancelado' then raise exception 'Contrato cancelado'; end if;
+  -- The commercial origin must be attested on the contract, not only supplied by the caller.
+  select origem_comercial_lead into v_contract_origin from public.contracts where id = p_contract_id;
+  if v_contract_origin is null or v_contract_origin not in ('kkj', 'vendedor')
+     or v_contract_origin <> p_lead_origin then
+    raise exception 'Origem comercial divergente do contrato';
+  end if;
   select carrier_id, aliquota_imposto_pct, cronograma_parcelas,
     data_inicio_vigencia, data_fim_vigencia, product_id, has_recurring, min_lives, max_lives, recurring_start_month, recurring_percentage,
     case when p_lead_origin = 'vendedor' then repasse_vendedor_proprio_pct else repasse_vendedor_pct end

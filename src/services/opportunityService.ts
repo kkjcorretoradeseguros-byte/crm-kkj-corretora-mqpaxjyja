@@ -813,27 +813,12 @@ export const opportunityService = {
       .select('id, status, numero_contrato')
       .eq('opportunity_id', id)
 
+    // Contratos e seus lançamentos financeiros exigem cancelamento auditável.
+    // Não excluir em cascata pelo cliente: operações separadas podem apagar histórico parcialmente.
     if (contracts && contracts.length > 0) {
-      // Se houver contrato ativo ou vinculado, verificar boletos pagos/repasse
-      const contractIds = contracts.map((c) => c.id)
-      const { data: boletos } = await supabase
-        .from('boletos_adesao')
-        .select('id, status')
-        .in('contract_id', contractIds)
-        .eq('status', 'pago')
-
-      if (boletos && boletos.length > 0) {
-        throw new Error(
-          'Exclusão bloqueada: Esta oportunidade possui contrato com boleto/receita financeira paga e confirmada. Use o cancelamento auditável em vez de excluir.',
-        )
-      }
-
-      // Se for registro sem movimentação financeira efetiva (ex: teste ou cancelado),
-      // limpa os vínculos para permitir a remoção administrativa segura
-      await supabase.from('commission_installments').delete().in('contract_id', contractIds)
-      await supabase.from('boletos_adesao').delete().in('contract_id', contractIds)
-      await supabase.from('post_sales_requests').delete().in('contract_id', contractIds)
-      await supabase.from('contracts').delete().in('id', contractIds)
+      throw new Error(
+        'Exclusão bloqueada: esta oportunidade possui contrato vinculado. Use o cancelamento auditável.',
+      )
     }
 
     // Limpa tarefas, timeline e sugestões de cotação associadas

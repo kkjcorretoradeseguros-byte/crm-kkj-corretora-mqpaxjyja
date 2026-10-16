@@ -1,7 +1,7 @@
 name: CRM validation
 on:
   push:
-    branches: [audit/auth-session-hardening-20261013]
+    branches: [audit/auth-session-hardening-20261013, fix/contract-fields-audit-20261015]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -72,4 +72,19 @@ jobs:
           output=$(psql -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT public.persist_contract_commission_forecast('00000000-0000-0000-0000-000000000001'::uuid,'00000000-0000-0000-0000-000000000002'::uuid,'kkj','[]'::jsonb);" 2>&1) && exit 1 || true
           echo "$output" | grep -q 'relation "public.contracts" does not exist'
           if echo "$output" | grep -q 'Acesso administrativo necessário'; then exit 1; fi
+          # Create a minimal contracts fixture and exercise the origin migration first.
+          psql -v ON_ERROR_STOP=1 -c "CREATE TABLE public.contracts (id uuid primary key); INSERT INTO public.contracts VALUES ('00000000-0000-0000-0000-000000000099');"
+          # Validate the new commercial-origin migration on disposable fixture data.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM public.contracts WHERE origem_comercial_lead IS NOT NULL;" | grep -qx 0
+          psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'kkj' WHERE id = '00000000-0000-0000-0000-000000000099';"
+          output=$(psql -v ON_ERROR_STOP=1 -c "UPDATE public.contracts SET origem_comercial_lead = 'invalida' WHERE id = '00000000-0000-0000-0000-000000000099';" 2>&1) && exit 1 || true
+          echo "$output" | grep -q 'contracts_origem_comercial_lead_check'
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT origem_comercial_lead FROM public.contracts WHERE id = '00000000-0000-0000-0000-000000000099';" | grep -qx kkj
+          # Simulate upgrading the already-installed RPC without touching production.
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261016182000_upgrade_contract_commission_origin_guard.sql
+          psql -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'persist_contract_commission_forecast';" | grep -qx 1
+          psql -v ON_ERROR_STOP=1 -c "DROP TABLE public.contracts;"
           psql -v ON_ERROR_STOP=1 -f tests/sql/commission_forecast_integration.sql
+
