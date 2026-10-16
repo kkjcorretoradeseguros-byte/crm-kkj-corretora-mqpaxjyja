@@ -31,13 +31,12 @@ export const financialService = {
    * Vendedor enxerga seus contratos; gestor enxerga subordinados de sua equipe ativa; admin enxerga tudo.
    */
   async getMeuFinanceiro(): Promise<FinancialCommissionSummary | null> {
-    if (!isSupabaseConfigured) return null
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     try {
       const { data, error } = await supabase.rpc('get_meu_financeiro')
       if (error) {
-        console.warn('Erro ao chamar RPC get_meu_financeiro:', error.message)
-        return null
+        throw new Error('Erro ao consultar resumo financeiro: ' + error.message)
       }
 
       if (!data) return null
@@ -55,8 +54,7 @@ export const financialService = {
         parcelas_vencidas: Number(row.parcelas_vencidas || 0),
       }
     } catch (err) {
-      console.warn('Falha inesperada ao consultar RPC get_meu_financeiro:', err)
-      return null
+      throw err
     }
   },
 
@@ -65,7 +63,7 @@ export const financialService = {
    * Suporta filtros opcionais de mês e ano para conciliação.
    */
   async getMinhasParcelas(mes?: number, ano?: number): Promise<FinancialInstallmentItem[]> {
-    if (!isSupabaseConfigured) return []
+    if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
 
     try {
       const { data, error } = await supabase.rpc('get_minhas_parcelas', {
@@ -74,11 +72,10 @@ export const financialService = {
       })
 
       if (error) {
-        console.warn('Erro ao chamar RPC get_minhas_parcelas:', error.message)
-        return []
+        throw new Error('Erro ao consultar parcelas: ' + error.message)
       }
 
-      if (!data || !Array.isArray(data)) return []
+      if (!Array.isArray(data)) throw new Error('Resposta inválida da consulta de parcelas')
 
       return data.map((item: Record<string, unknown>) => ({
         parcela_id: String(item.parcela_id || ''),
@@ -96,8 +93,7 @@ export const financialService = {
         status: String(item.status || 'previsto'),
       }))
     } catch (err) {
-      console.warn('Falha inesperada ao consultar RPC get_minhas_parcelas:', err)
-      return []
+      throw err
     }
   },
 }
