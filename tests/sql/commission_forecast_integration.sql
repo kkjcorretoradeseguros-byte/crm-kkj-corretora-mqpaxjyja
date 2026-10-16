@@ -3,6 +3,7 @@ create table public.contracts (
   id uuid primary key, status text not null, carrier_id uuid not null,
   valor_mensal numeric not null, product_id uuid, qtd_vidas integer not null
 );
+\i supabase/migrations/20261016155500_contract_commercial_lead_origin.sql
 create table public.commission_rules (
   id uuid primary key, carrier_id uuid not null, aliquota_imposto_pct numeric,
   cronograma_parcelas jsonb, data_inicio_vigencia date, data_fim_vigencia date,
