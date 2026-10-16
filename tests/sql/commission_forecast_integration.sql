@@ -51,6 +51,21 @@ where id = '00000000-0000-0000-0000-000000000001';
 -- Administrator identity is mocked in this disposable database.
 create or replace function public.is_admin() returns boolean
 language sql stable as 'select true';
+-- A mismatched origin must be denied before any financial snapshot is created.
+do $origin_mismatch$
+begin
+  execute 'set local role authenticated';
+  begin
+    perform public.persist_contract_commission_forecast(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000002',
+      'vendedor', '[]'::jsonb
+    );
+    raise exception 'Mismatched commercial origin was incorrectly accepted';
+  exception when others then
+    if sqlerrm <> 'Origem comercial divergente do contrato' then raise; end if;
+  end;
+end $origin_mismatch$;
 set role authenticated;
 select public.persist_contract_commission_forecast(
   '00000000-0000-0000-0000-000000000001',
