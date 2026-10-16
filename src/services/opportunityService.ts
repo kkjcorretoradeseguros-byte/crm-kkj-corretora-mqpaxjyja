@@ -342,6 +342,7 @@ export const opportunityService = {
       let query = supabase
         .from('opportunities')
         .select(SELECT_OPP_EXPAND)
+        .is('archived_at', null)
         .order('created_at', { ascending: false })
 
       if (pipelineType) {
