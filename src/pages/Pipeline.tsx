@@ -498,7 +498,7 @@ export default function Pipeline() {
             : undefined,
           primeira_competencia: data.firstInstallmentRef,
           first_installment_reference: data.firstInstallmentRef,
-          status: 'Em Implantação',
+          status: activeContract.status === 'Ativo' ? 'Ativo' : 'Em Implantação',
           assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
           notes: `Venda Ganha reprocessada em ${new Date().toLocaleDateString('pt-BR')}. Ref 1ª Mensalidade: ${data.firstInstallmentRef} | 1º Vencimento: ${data.firstPaymentDueDate}`,
         })
