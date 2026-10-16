@@ -45,6 +45,22 @@ insert into public.commission_rules values (
   '[{"month":1,"pct":100}]'::jsonb, null, null, null,
   false, 1, null, null, null, 100, 50, true
 );
+-- Legacy contracts without attested origin must not generate financial snapshots.
+create or replace function public.is_admin() returns boolean language sql stable as 'select true';
+do $missing_origin$
+begin
+  execute 'set local role authenticated';
+  begin
+    perform public.persist_contract_commission_forecast(
+      '00000000-0000-0000-0000-000000000001',
+      '00000000-0000-0000-0000-000000000002',
+      'kkj', '[]'::jsonb
+    );
+    raise exception 'Missing commercial origin was incorrectly accepted';
+  exception when others then
+    if sqlerrm <> 'Origem comercial divergente do contrato' then raise; end if;
+  end;
+end $missing_origin$;
 -- The contract must attest commercial origin before the commission snapshot.
 update public.contracts set origem_comercial_lead = 'kkj'
 where id = '00000000-0000-0000-0000-000000000001';
