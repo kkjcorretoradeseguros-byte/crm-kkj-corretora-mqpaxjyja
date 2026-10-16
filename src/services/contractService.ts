@@ -532,7 +532,7 @@ export const contractService = {
           [data.data_confirmacao_pagamento, saved.data_confirmacao_pagamento],
         ]
         if (values.some(([incoming, current]) =>
-          incoming !== undefined && (typeof incoming === 'number' ? Number(incoming) !== Number(current) : String(incoming ?? '') !== String(current ?? ''))
+          incoming !== undefined && (typeof incoming === 'number' ? (current === null || current === undefined || Number(incoming) !== Number(current)) : String(incoming ?? '') !== String(current ?? ''))
         )) throw new Error('Contrato com financeiro gerado: alteração comercial exige revisão administrativa.')
       }
     }
