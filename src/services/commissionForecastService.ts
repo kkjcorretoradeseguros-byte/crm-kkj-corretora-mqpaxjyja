@@ -90,11 +90,15 @@ export async function previewConfirmedContractCommissions(contractId: string) {
   if (!isSupabaseConfigured) throw new Error('Supabase não configurado')
   const { data: contract, error: contractError } = await supabase
     .from('contracts')
-    .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento,data_confirmacao_pagamento')
+    .select('id,carrier_id,product_id,qtd_vidas,valor_mensal,data_pagamento,data_confirmacao_pagamento,origem_comercial_lead')
     .eq('id', contractId)
     .single()
   if (contractError || !contract)
     throw new Error(contractError?.message || 'Contrato não encontrado')
+  const leadOrigin = contract.origem_comercial_lead
+  if (leadOrigin !== 'kkj' && leadOrigin !== 'vendedor') {
+    throw new Error('Defina a origem comercial do lead antes de gerar comissões')
+  }
   const paymentDate = contract.data_confirmacao_pagamento || contract.data_pagamento
   if (!paymentDate) throw new Error('Confirme primeiro o pagamento do cliente')
   const { data: rules, error: rulesError } = await supabase
@@ -138,7 +142,7 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     contractId,
     rule: rule as DatabaseCommissionRule,
     mensalidade: Number(contract.valor_mensal),
-    leadOrigin: 'kkj',
+    leadOrigin,
     firstDueDate: paymentDate,
   })
   return {
@@ -148,6 +152,7 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     rule,
     firstDueDate: paymentDate,
     mensalidade: Number(contract.valor_mensal),
+    leadOrigin,
   }
 }
 
@@ -169,7 +174,7 @@ export async function ensureConfirmedContractForecast(contractId: string) {
     ruleId: preview.ruleId,
     rule: preview.rule,
     mensalidade: preview.mensalidade,
-    leadOrigin: 'kkj',
+    leadOrigin: preview.leadOrigin,
     firstDueDate: preview.firstDueDate,
   })
   await confirmFirstCommissionReceipt(contractId)
