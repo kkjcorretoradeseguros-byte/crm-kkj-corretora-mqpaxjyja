@@ -79,3 +79,12 @@ test('winning sale rejects multiple contracts instead of picking the first', () 
   const companyWrite = fn.indexOf('companyService.updateCompany(')
   assert.ok(guard >= 0 && selection > guard && companyWrite > guard)
 })
+
+test('existing commission snapshot is checked before customer updates', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  const financialCheck = fn.indexOf(".from('contract_financials')")
+  const companyWrite = fn.indexOf('companyService.updateCompany(')
+  const contactWrite = fn.indexOf('contactService.updateContact(')
+  assert.ok(financialCheck >= 0 && financialCheck < companyWrite && financialCheck < contactWrite)
+  assert.equal(fn.indexOf(".from('contract_financials')", financialCheck + 1), -1)
+})
