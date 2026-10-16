@@ -477,6 +477,14 @@ export default function Pipeline() {
         if (existingFinancial && activeContract.origem_comercial_lead !== data.origem_comercial_lead) {
           throw new Error('Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.')
         }
+        if (existingFinancial && (
+          activeContract.carrier_id !== data.contractedCarrierId ||
+          Number(activeContract.sale_value) !== data.contractedValue ||
+          Number(activeContract.lives_count || 1) !== data.livesCount ||
+          (activeContract.first_installment_reference || '').slice(0, 7) !== data.firstInstallmentRef.slice(0, 7)
+        )) {
+          throw new Error('Contrato com financeiro existente: dados que afetam as comissões exigem revisão administrativa.')
+        }
         activeContract = await contractService.updateContract(activeContract.id, {
           company_id: companyId,
           contact_id: contactId,
