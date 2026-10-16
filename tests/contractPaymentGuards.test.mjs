@@ -21,3 +21,15 @@ test('winning opportunity is updated only after contract persistence', () => {
   assert.ok(fn.indexOf('contractService.updateContract(') < fn.indexOf('opportunityService.updateOpportunity('))
   assert.ok(fn.indexOf('contractService.createContract(') < fn.indexOf('opportunityService.updateOpportunity('))
 })
+
+test('financial snapshots accept equivalent numeric values', () => {
+  assert.match(contract, /typeof incoming === 'number'/)
+  assert.match(contract, /Number\(incoming\) !== Number\(current\)/)
+})
+
+test('first commission receipt follows financial persistence', () => {
+  const forecast = readFileSync(new URL('../src/services/commissionForecastService.ts', import.meta.url), 'utf8')
+  const ensure = forecast.slice(forecast.indexOf('export async function ensureConfirmedContractForecast'))
+  assert.ok(ensure.indexOf('persistContractCommissionForecast(') < ensure.lastIndexOf('confirmFirstCommissionReceipt(contractId)'))
+  assert.match(ensure, /\.rpc\('confirm_first_commission_receipt'/)
+})
