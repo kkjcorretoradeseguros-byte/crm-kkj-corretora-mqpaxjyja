@@ -71,7 +71,10 @@ export default function Financial() {
         contractService.getAllContracts(),
         opportunityService.getAllOpportunities(),
         adesaoService.getBoletos(),
-        financialService.getMeuFinanceiro().catch(() => null),
+        financialService.getMeuFinanceiro().catch((err) => {
+          setInstallmentError(err instanceof Error ? err.message : 'Falha ao consultar resumo financeiro')
+          return null
+        }),
       ])
 
       setMeuFinanceiro(financeiroRes)
@@ -125,7 +128,8 @@ export default function Financial() {
             })),
           )
         } catch (rpcErr) {
-          console.warn('Erro ao consultar parcelas do usuário:', rpcErr)
+          console.error('Erro ao consultar parcelas do usuário:', rpcErr)
+          setInstallmentError(rpcErr instanceof Error ? rpcErr.message : 'Falha ao consultar parcelas')
           setInstallments([])
         }
       }
@@ -540,7 +544,7 @@ export default function Financial() {
             <CardContent>
               <div className="text-2xl font-black text-blue-900 dark:text-blue-200">
                 {(
-                  meuFinanceiro?.total_repasse_previsto || totalComissaoPrevista * 0.35
+                  meuFinanceiro?.total_repasse_previsto ?? 0
                 ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
@@ -630,7 +634,7 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                {(meuFinanceiro?.total_repasse_pago || totalComissaoRecebida * 0.35).toLocaleString(
+                {(meuFinanceiro?.total_repasse_pago ?? 0).toLocaleString(
                   'pt-BR',
                   { style: 'currency', currency: 'BRL' },
                 )}
@@ -721,7 +725,7 @@ export default function Financial() {
             <CardContent>
               <div className="text-2xl font-black text-amber-950 dark:text-foreground">
                 {(
-                  meuFinanceiro?.total_repasse_pendente || totalComissaoPendente * 0.35
+                  meuFinanceiro?.total_repasse_pendente ?? 0
                 ).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </div>
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
