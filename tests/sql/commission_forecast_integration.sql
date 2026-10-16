@@ -100,6 +100,22 @@ begin
     raise exception 'Incorrect financial forecast amount';
   end if;
 end $$;
+-- Once the snapshot exists, commercial origin is immutable even via direct SQL.
+\i supabase/migrations/20261016181000_lock_contract_origin_after_forecast.sql
+do $immutable_origin$
+begin
+  begin
+    update public.contracts set origem_comercial_lead = 'vendedor'
+    where id = '00000000-0000-0000-0000-000000000001';
+    raise exception 'Commercial origin was changed after financial snapshot';
+  exception when others then
+    if sqlerrm <> 'Origem comercial bloqueada após previsão financeira' then raise; end if;
+  end;
+  if (select origem_comercial_lead from public.contracts
+      where id = '00000000-0000-0000-0000-000000000001') <> 'kkj' then
+    raise exception 'Commercial origin changed despite guard';
+  end if;
+end $immutable_origin$;
 -- Duplicate calls must fail without creating extra records.
 do $$
 begin
