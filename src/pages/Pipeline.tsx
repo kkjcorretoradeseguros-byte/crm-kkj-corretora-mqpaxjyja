@@ -409,6 +409,10 @@ export default function Pipeline() {
     email: string
   }) => {
     if (!vendaGanhaTargetOpp) return
+    if (data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR') {
+      alert('A confirmação de pagamento exige perfil administrador.')
+      return
+    }
 
     try {
       let companyId = vendaGanhaTargetOpp.company_id
