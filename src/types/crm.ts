@@ -430,6 +430,7 @@ export interface Contract {
   plano?: string
   start_date?: string
   end_date?: string
+  origem_comercial_lead?: 'kkj' | 'vendedor' | null // Responsável pela geração do lead
   first_installment_reference?: string // Referência da 1ª mensalidade
   hiring_date?: string // Data de contratação
   data_vencimento_primeiro_pagamento?: string // Vencimento do 1º boleto / pagamento
