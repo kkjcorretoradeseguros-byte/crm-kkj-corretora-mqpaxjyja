@@ -445,15 +445,6 @@ export default function Pipeline() {
         contactId = newCont.id
       }
 
-      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
-        stage: 'Venda ganha',
-        company_id: companyId,
-        contact_id: contactId,
-        carrier_id: data.contractedCarrierId,
-        value: data.contractedValue,
-        sale_value: data.contractedValue,
-      })
-
       const existingContracts = await contractService.getContracts({
         opportunity_id: vendaGanhaTargetOpp.id,
       })
@@ -542,6 +533,15 @@ export default function Pipeline() {
         const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
         await ensureConfirmedContractForecast(activeContract.id)
       }
+
+      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
+        stage: 'Venda ganha',
+        company_id: companyId,
+        contact_id: contactId,
+        carrier_id: data.contractedCarrierId,
+        value: data.contractedValue,
+        sale_value: data.contractedValue,
+      })
 
       await opportunityService.addTimelineEvent(
         vendaGanhaTargetOpp.id,
