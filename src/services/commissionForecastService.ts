@@ -26,6 +26,7 @@ export async function previewContractCommissions(params: {
     throw new Error('Contrato cancelado não pode gerar novas previsões')
   if (
     !Number.isFinite(params.mensalidade) ||
+    params.mensalidade <= 0 ||
     Number(contract.valor_mensal) !== params.mensalidade
   ) {
     throw new Error('A mensalidade da previsão deve corresponder ao valor registrado no contrato')
