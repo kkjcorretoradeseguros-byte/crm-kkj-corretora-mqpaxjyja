@@ -33,3 +33,14 @@ test('first commission receipt follows financial persistence', () => {
   assert.ok(ensure.indexOf('persistContractCommissionForecast(') < ensure.lastIndexOf('confirmFirstCommissionReceipt(contractId)'))
   assert.match(ensure, /\.rpc\('confirm_first_commission_receipt'/)
 })
+
+test('missing saved financial value is not treated as numeric zero', () => {
+  assert.match(contract, /current === null \|\| current === undefined/)
+})
+
+test('commercial lead origin migration keeps legacy contracts unclassified', () => {
+  const migration = readFileSync(new URL('../supabase/migrations/20261016155500_contract_commercial_lead_origin.sql', import.meta.url), 'utf8')
+  assert.match(migration, /add column if not exists origem_comercial_lead text/)
+  assert.match(migration, /origem_comercial_lead is null/)
+  assert.doesNotMatch(migration, /update\s+public\.contracts\s+set\s+origem_comercial_lead/i)
+})
