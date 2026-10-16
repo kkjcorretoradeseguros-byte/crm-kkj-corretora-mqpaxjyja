@@ -88,3 +88,10 @@ test('existing commission snapshot is checked before customer updates', () => {
   assert.ok(financialCheck >= 0 && financialCheck < companyWrite && financialCheck < contactWrite)
   assert.equal(fn.indexOf(".from('contract_financials')", financialCheck + 1), -1)
 })
+
+test('winning sale requires a date for confirmed payment before any write', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  const dateGuard = fn.indexOf('data.isPaymentConfirmed && !data.paymentConfirmedDate')
+  const companyWrite = fn.indexOf('companyService.updateCompany(')
+  assert.ok(dateGuard >= 0 && dateGuard < companyWrite)
+})
