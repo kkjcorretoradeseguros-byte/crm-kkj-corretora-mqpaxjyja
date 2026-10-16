@@ -633,9 +633,10 @@ export const contractService = {
       const { ensureConfirmedContractForecast } = await import('./commissionForecastService')
       await ensureConfirmedContractForecast(contractId)
     } catch (forecastErr) {
-      console.warn(
-        'Aviso: cronograma automático de comissão não pôde ser gerado imediatamente:',
-        forecastErr,
+      console.error('Falha no cronograma financeiro após confirmar pagamento:', forecastErr)
+      throw new Error(
+        'Pagamento registrado, mas houve falha ao atualizar as comissões. ' +
+          'Regularize o financeiro antes de prosseguir.',
       )
     }
 
