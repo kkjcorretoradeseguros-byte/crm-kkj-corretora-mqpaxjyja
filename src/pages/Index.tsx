@@ -275,6 +275,8 @@ export default function Index() {
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {
+      // Contratos cancelados permanecem no histórico, mas não representam vendas efetivas.
+      if (c.status === 'Cancelado') return false
       if (effectiveUserId && c.assigned_to !== effectiveUserId) return false
       return isWithinPeriod(c.start_date || c.created)
     })
