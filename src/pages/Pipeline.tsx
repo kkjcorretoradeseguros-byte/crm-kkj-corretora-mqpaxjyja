@@ -409,6 +409,10 @@ export default function Pipeline() {
     email: string
   }) => {
     if (!vendaGanhaTargetOpp) return
+    if (data.isPaymentConfirmed && !data.paymentConfirmedDate) {
+      alert('Informe a data do pagamento confirmado.')
+      return
+    }
     if (data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR') {
       alert('A confirmação de pagamento exige perfil administrador.')
       return
