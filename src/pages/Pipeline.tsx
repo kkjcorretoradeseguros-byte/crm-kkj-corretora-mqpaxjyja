@@ -482,30 +482,6 @@ export default function Pipeline() {
         contactId = newCont.id
       }
 
-      if (activeContract) {
-        // Não alterar a origem comercial após a geração do financeiro:
-        // o snapshot de comissões mantém os percentuais da origem anterior.
-        const { data: existingFinancial, error: financialCheckError } = await supabase
-          .from('contract_financials')
-          .select('id')
-          .eq('contract_id', activeContract.id)
-          .maybeSingle()
-        if (financialCheckError) {
-          throw new Error('Não foi possível verificar o financeiro existente: ' + financialCheckError.message)
-        }
-        if (existingFinancial && activeContract.origem_comercial_lead !== data.origem_comercial_lead) {
-          throw new Error('Contrato com comissões geradas: não é permitido alterar a origem comercial sem revisão financeira administrativa.')
-        }
-        if (existingFinancial && (
-          activeContract.carrier_id !== data.contractedCarrierId ||
-          Number(activeContract.sale_value) !== data.contractedValue ||
-          Number(activeContract.lives_count || 1) !== data.livesCount ||
-          (activeContract.first_installment_reference || '').slice(0, 7) !== data.firstInstallmentRef.slice(0, 7)
-        )) {
-          throw new Error('Contrato com financeiro existente: dados que afetam as comissões exigem revisão administrativa.')
-        }
-      }
-
       const contractNum = activeContract
         ? activeContract.contract_number
         : `KKJ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
