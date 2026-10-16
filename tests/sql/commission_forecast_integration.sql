@@ -44,6 +44,9 @@ insert into public.commission_rules values (
   '[{"month":1,"pct":100}]'::jsonb, null, null, null,
   false, 1, null, null, null, 100, 50, true
 );
+-- The contract must attest commercial origin before the commission snapshot.
+update public.contracts set origem_comercial_lead = 'kkj'
+where id = '00000000-0000-0000-0000-000000000001';
 -- Administrator identity is mocked in this disposable database.
 create or replace function public.is_admin() returns boolean
 language sql stable as 'select true';
