@@ -56,6 +56,7 @@ test('commission preview rejects invalid lives and monthly premiums', () => {
   const forecast = readFileSync(new URL('../src/services/commissionForecastService.ts', import.meta.url), 'utf8')
   const preview = forecast.slice(forecast.indexOf('export async function previewConfirmedContractCommissions'), forecast.indexOf('export async function ensureConfirmedContractForecast'))
   assert.match(preview, /Number\.isInteger\(lives\) \|\| lives < 1/)
+  assert.match(preview, /Number\.isFinite\(Number\(contract\.valor_mensal\)\)/)
   assert.match(preview, /Number\(contract\.valor_mensal\) > 0/)
   assert.ok(preview.indexOf('Number.isInteger(lives)') < preview.indexOf('const applicable ='))
 })
