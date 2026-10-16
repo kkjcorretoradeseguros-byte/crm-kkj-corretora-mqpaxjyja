@@ -39,6 +39,7 @@ interface ContractDbRow {
   data_implantacao?: string | null
   data_renovacao?: string | null
   data_vencimento_primeiro_pagamento?: string | null
+  origem_comercial_lead?: 'kkj' | 'vendedor' | null
   data_confirmacao_pagamento?: string | null
   usuario_confirmou_pagamento_id?: string | null
   usuario_implantacao_id?: string | null
@@ -109,6 +110,7 @@ const SELECT_EXPAND = `
   data_previsao_vigencia,
   data_pagamento,
   data_confirmacao_pagamento,
+  origem_comercial_lead,
   data_vencimento_primeiro_pagamento,
   primeira_competencia,
   usuario_confirmou_pagamento_id,
@@ -153,6 +155,7 @@ function mapContractRow(r: ContractDbRow): Contract {
     start_date: r.data_inicio_vigencia || undefined,
     data_vencimento_primeiro_pagamento: r.data_vencimento_primeiro_pagamento || r.data_previsao_vigencia || undefined,
     data_confirmacao_pagamento: r.data_confirmacao_pagamento || r.data_pagamento || undefined,
+    origem_comercial_lead: r.origem_comercial_lead || null,
     data_implantacao: r.data_implantacao || undefined,
     usuario_confirmou_pagamento_id: r.usuario_confirmou_pagamento_id || undefined,
     usuario_implantacao_id: r.usuario_implantacao_id || undefined,
@@ -403,6 +406,7 @@ export const contractService = {
       data_vencimento_primeiro_pagamento: paymentDueDate,
       data_pagamento: paymentConfirmedDate,
       data_confirmacao_pagamento: paymentConfirmedDate,
+      origem_comercial_lead: data.origem_comercial_lead || null,
       usuario_confirmou_pagamento_id: data.usuario_confirmou_pagamento_id || null,
       usuario_implantacao_id: data.usuario_implantacao_id || null,
       primeira_competencia: firstComp,
@@ -543,6 +547,7 @@ export const contractService = {
     if (data.lives_count !== undefined) payload.qtd_vidas = data.lives_count || null
     if (data.notes !== undefined) payload.observacoes = data.notes || null
     if (data.assigned_to !== undefined) payload.responsavel_id = data.assigned_to || null
+    if (data.origem_comercial_lead !== undefined) payload.origem_comercial_lead = data.origem_comercial_lead
 
     const { data: updated, error } = await supabase
       .from('contracts')
