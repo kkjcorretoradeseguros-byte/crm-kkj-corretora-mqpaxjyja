@@ -110,6 +110,8 @@ export async function previewConfirmedContractCommissions(contractId: string) {
     .eq('ativo', true)
   if (rulesError) throw new Error('Falha ao consultar regras de comissão: ' + rulesError.message)
   const lives = Number(contract.qtd_vidas)
+  if (!Number.isInteger(lives) || lives < 1) throw new Error('Quantidade de vidas inválida')
+  if (!(Number(contract.valor_mensal) > 0)) throw new Error('Mensalidade inválida')
   const applicable = (rules || []).filter(
     (rule) =>
       (!rule.product_id || rule.product_id === contract.product_id) &&
