@@ -1,7 +1,7 @@
 name: CRM validation
 on:
   push:
-    branches: [audit/auth-session-hardening-20261013]
+    branches: [audit/auth-session-hardening-20261013, fix/contract-fields-audit-20261015]
   pull_request:
     branches: [main]
   workflow_dispatch:
