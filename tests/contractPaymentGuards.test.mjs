@@ -71,3 +71,10 @@ test('direct commission preview rejects zero premium', () => {
   const preview = forecast.slice(forecast.indexOf('export async function previewContractCommissions'), forecast.indexOf('export async function persistContractCommissionForecast'))
   assert.match(preview, /params\.mensalidade <= 0/)
 })
+
+test('winning sale rejects multiple contracts instead of picking the first', () => {
+  const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
+  const guard = fn.indexOf('existingContracts.totalItems > 1')
+  const selection = fn.indexOf('existingContracts.items[0]')
+  assert.ok(guard >= 0 && selection > guard)
+})
