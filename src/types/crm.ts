@@ -250,6 +250,7 @@ export interface Opportunity {
   current_carrier_name?: string // Nome da operadora atual quando não cadastrada
   assigned_to?: string // owner_id
   origin?: string
+  commercial_origin?: 'kkj' | 'vendedor'
   tags?: string | string[]
   value?: number // Mensalidade Comercial (Cotação Principal)
   sale_value?: number // Mensalidade Comercial (Cotação Principal)

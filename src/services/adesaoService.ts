@@ -73,23 +73,26 @@ export const adesaoService = {
         '1ª mensalidade de adesão integral da KKJ gerada automaticamente na Venda Ganha.',
     }
 
-    if (!isSupabaseConfigured) return boleto as AdesaoBoleto
-
-    try {
-      const { data, error } = await supabase
-        .from('adesao_boletos')
-        .insert(boleto)
-        .select('*')
-        .single()
-
-      if (error) {
-        console.warn('Erro ao inserir em adesao_boletos:', error.message)
-        return boleto as AdesaoBoleto
-      }
-      return data as AdesaoBoleto
-    } catch {
-      return boleto as AdesaoBoleto
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase não configurado para registrar o boleto de adesão.')
     }
+
+    const { data, error } = await supabase
+      .from('adesao_boletos')
+      .insert(boleto)
+      .select('*')
+      .single()
+
+    if (error) {
+      console.error('Falha crítica ao gravar boleto de adesão no Supabase:', error.message)
+      throw new Error(`Não foi possível salvar o boleto de adesão: ${error.message}`)
+    }
+
+    if (!data) {
+      throw new Error('Falha ao registrar boleto de adesão: nenhum dado retornado pelo banco.')
+    }
+
+    return data as AdesaoBoleto
   },
 
   async confirmarPagamento(id: string, dataPagamento?: string): Promise<boolean> {

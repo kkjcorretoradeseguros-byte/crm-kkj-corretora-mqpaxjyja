@@ -389,9 +389,9 @@ export const commissionEngine = {
     // Caso especial Adesão: Primeira mensalidade é 100% KKJ via boleto próprio!
     if (normMod === 'ADESÃO' || normMod === 'ADESAO') {
       const primeiroBoletoIntegral = mensalidade
-      const imposto = primeiroBoletoIntegral * taxaDecimal
-      const receitaLiquida = primeiroBoletoIntegral - imposto
-      const comissaoVendedor = receitaLiquida * 0.3 // 30% da receita líquida na 1ª
+      const imposto = Math.round(primeiroBoletoIntegral * taxaDecimal * 100) / 100
+      const receitaLiquida = Math.round((primeiroBoletoIntegral - imposto) * 100) / 100
+      const comissaoVendedor = Math.round(receitaLiquida * 0.3 * 100) / 100 // 30% da comissão líquida na 1ª parcela
 
       return {
         carrier: carrierName,
@@ -408,7 +408,7 @@ export const commissionEngine = {
           },
         ],
         observacoes:
-          'Adesão: 1ª mensalidade 100% KKJ via boleto próprio. Comissões posteriores aguardam planilha oficial.',
+          'Adesão: 1ª mensalidade 100% KKJ via boleto próprio. Repasse de 30% da comissão líquida (repasse nasce pendente). Comissões posteriores aguardam planilha oficial.',
         isSpecialRule: true,
       }
     }
@@ -424,10 +424,12 @@ export const commissionEngine = {
 
         // Repasse vendedor na 1ª parcela:
         // PME lead KKJ -> 50% da líquida; Lead vendedor -> 100% da líquida
+        // Repasse nasce sempre pendente, nunca automático.
         let repasse = 0
         if (num === 1) {
-          const liq = valorPrevisto * (1 - taxaDecimal)
-          repasse = leadOrigin === 'vendedor' ? liq : liq * 0.5
+          const imposto = Math.round(valorPrevisto * taxaDecimal * 100) / 100
+          const liq = Math.round((valorPrevisto - imposto) * 100) / 100
+          repasse = leadOrigin === 'vendedor' ? liq : Math.round(liq * 0.5 * 100) / 100
         }
 
         parcelas.push({
@@ -461,8 +463,9 @@ export const commissionEngine = {
     // Modalidade Pessoa Física (PF)
     if (normMod === 'PF' || normMod.includes('FÍSICA') || normMod.includes('FISICA')) {
       const valor1a = mensalidade * 1.0 // Padrão 100% na 1ª
-      const liq = valor1a * (1 - taxaDecimal)
-      const repasse = liq * 0.3 // 30% da 1ª parcela para o vendedor
+      const imposto = Math.round(valor1a * taxaDecimal * 100) / 100
+      const liq = Math.round((valor1a - imposto) * 100) / 100
+      const repasse = Math.round(liq * 0.3 * 100) / 100 // 30% da comissão líquida para o vendedor (nasce pendente)
 
       return {
         carrier: carrierName,
@@ -478,7 +481,7 @@ export const commissionEngine = {
           },
         ],
         observacoes:
-          'Pessoa Física: 1ª parcela padrão; parcelas posteriores aguardam importação da planilha.',
+          'Pessoa Física: 30% da comissão líquida repassada ao vendedor na 1ª parcela (pendente de quitação); parcelas posteriores aguardam importação da planilha.',
         isSpecialRule: false,
       }
     }
