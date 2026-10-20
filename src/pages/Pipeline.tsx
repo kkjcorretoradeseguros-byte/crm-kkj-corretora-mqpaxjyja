@@ -84,6 +84,8 @@ const LOST_REASONS: LostReason[] = [
 export default function Pipeline() {
   const { user } = useAuth()
   const isAdmin = user?.role?.toUpperCase() === 'ADMINISTRADOR'
+  const isNat = user?.id === '75c3d247-8a9c-40c8-acb7-186f8d2af63e'
+  const canConfirmPayment = isAdmin || isNat
 
   // Funil ativo (VENDAS ou POS_VENDA)
   const [pipelineType, setPipelineType] = useState<PipelineType>('VENDAS')
@@ -422,8 +424,8 @@ export default function Pipeline() {
       alert('Informe a data do pagamento confirmado.')
       return
     }
-    if (data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR') {
-      alert('A confirmação de pagamento exige perfil administrador.')
+    if (data.isPaymentConfirmed && !canConfirmPayment) {
+      alert('Seu usuário não tem permissão para confirmar pagamentos.')
       return
     }
 
@@ -715,6 +717,10 @@ export default function Pipeline() {
   // Confirmação do Primeiro Pagamento (Exclusivo Administrador)
   const handleConfirmFirstPayment = async () => {
     if (!pendingConfirmPaymentOpp) return
+    if (!canConfirmPayment || (isNat && pendingConfirmPaymentOpp.assigned_to !== user?.id)) {
+      setConfirmPaymentError('Você só pode confirmar o pagamento de contratos sob sua responsabilidade.')
+      return
+    }
     if (!confirmPaymentDate) {
       setConfirmPaymentError('Informe a data efetiva do recebimento.')
       return
@@ -1107,6 +1113,7 @@ export default function Pipeline() {
                   stages={stages}
                   pipelineType={pipelineType}
                   isAdmin={isAdmin}
+                  canConfirmPayment={canConfirmPayment}
                   useDroppableHook={useDroppable}
                   useDraggableHook={useDraggable}
                   onOpenDetail={openDetail}
@@ -1955,6 +1962,7 @@ export default function Pipeline() {
         companies={companies}
         contacts={contacts}
         onConfirm={handleConfirmVendaGanha}
+        canConfirmPayment={canConfirmPayment && (!isNat || vendaGanhaTargetOpp?.assigned_to === user?.id)}
       />
     </div>
   )
