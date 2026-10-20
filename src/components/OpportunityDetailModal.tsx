@@ -731,10 +731,14 @@ export function OpportunityDetailModal({
                     })}
                     placeholder="Ex: 1.816,00"
                     onBlur={(e) => {
-                      const raw = e.target.value.trim().replace(/\\s/g, '').replace(/^R\\$/, '')
-                      const val = raw.includes(',')
-                        ? Number(raw.replace(/\\./g, '').replace(',', '.'))
-                        : Number(raw)
+                      const raw = e.target.value.trim().replace(/\s/g, '').replace(/^R\$/, '')
+                      // pt-BR: 1.816 e 1.816,00 representam 1816; 1.82 representa 1,82.
+                      const normalized = raw.includes(',')
+                        ? raw.replace(/\./g, '').replace(',', '.')
+                        : /^\d{1,3}(?:\.\d{3})+$/.test(raw)
+                          ? raw.replace(/\./g, '')
+                          : raw
+                      const val = Number(normalized)
                       if (!Number.isFinite(val) || val < 0) {
                         e.target.value = (opportunity.sale_value || 0).toLocaleString('pt-BR', {
                           minimumFractionDigits: 2,
