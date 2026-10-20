@@ -725,7 +725,10 @@ export function OpportunityDetailModal({
                   <Input
                     type="text"
                     inputMode="decimal"
-                    defaultValue={(opportunity.sale_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    defaultValue={(opportunity.sale_value || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                     placeholder="Ex: 1.816,00"
                     onBlur={(e) => {
                       const raw = e.target.value.trim().replace(/\\s/g, '').replace(/^R\\$/, '')
@@ -733,7 +736,9 @@ export function OpportunityDetailModal({
                         ? Number(raw.replace(/\\./g, '').replace(',', '.'))
                         : Number(raw)
                       if (!Number.isFinite(val) || val < 0) {
-                        e.target.value = (opportunity.sale_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                        e.target.value = (opportunity.sale_value || 0).toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                        })
                         return
                       }
                       if (val !== (opportunity.sale_value || 0)) {
