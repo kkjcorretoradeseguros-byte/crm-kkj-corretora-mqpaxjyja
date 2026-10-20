@@ -1936,6 +1936,7 @@ export default function Pipeline() {
           setDetailOppId(null)
         }}
         onUpdated={fetchData}
+        onRequestStageChange={executeStageTransition}
         users={users}
         salesStages={currentStageNames}
         postSalesStages={currentStageNames}
