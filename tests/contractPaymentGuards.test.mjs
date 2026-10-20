@@ -45,11 +45,13 @@ test('commercial lead origin migration keeps legacy contracts unclassified', () 
   assert.doesNotMatch(migration, /update\s+public\.contracts\s+set\s+origem_comercial_lead/i)
 })
 
-test('non-admin users cannot confirm client payment in winning sale flow', () => {
+test('only admin or Nat on her assigned sale can confirm client payment in winning sale flow', () => {
   const fn = pipeline.slice(pipeline.indexOf('const handleConfirmVendaGanha'))
-  const guard = fn.indexOf("data.isPaymentConfirmed && user?.role !== 'ADMINISTRADOR'")
+  const guard = fn.indexOf('data.isPaymentConfirmed && !canConfirmPayment')
+  const ownershipGuard = fn.indexOf('data.isPaymentConfirmed && isNat && vendaGanhaTargetOpp.assigned_to !== user?.id')
   const companyWrite = fn.indexOf('companyService.updateCompany(')
   assert.ok(guard >= 0 && guard < companyWrite)
+  assert.ok(ownershipGuard >= 0 && ownershipGuard < companyWrite)
 })
 
 test('commission preview rejects invalid lives and monthly premiums', () => {
