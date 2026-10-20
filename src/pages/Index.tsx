@@ -351,7 +351,7 @@ export default function Index() {
       ),
     [postSalesOpps],
   )
-  const implementationCount = activeImplementationContracts.length + implementationPostSales.length
+  const implementationCount = Math.max(activeImplementationContracts.length, implementationPostSales.length)
 
   // 5. Tarefas (Tarefas operacionais do período selecionado, pendentes/hoje)
   const pendingTasks = useMemo(
