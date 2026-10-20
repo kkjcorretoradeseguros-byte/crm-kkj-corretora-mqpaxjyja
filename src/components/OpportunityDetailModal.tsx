@@ -723,12 +723,19 @@ export function OpportunityDetailModal({
                     Mensalidade Cotada (R$)
                   </Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    defaultValue={opportunity.sale_value || ''}
-                    placeholder="Ex: 2500.00"
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={(opportunity.sale_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    placeholder="Ex: 1.816,00"
                     onBlur={(e) => {
-                      const val = parseFloat(e.target.value) || 0
+                      const raw = e.target.value.trim().replace(/\\s/g, '').replace(/^R\\$/, '')
+                      const val = raw.includes(',')
+                        ? Number(raw.replace(/\\./g, '').replace(',', '.'))
+                        : Number(raw)
+                      if (!Number.isFinite(val) || val < 0) {
+                        e.target.value = (opportunity.sale_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                        return
+                      }
                       if (val !== (opportunity.sale_value || 0)) {
                         saveInlineField(
                           'sale_value',
