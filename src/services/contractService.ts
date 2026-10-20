@@ -590,7 +590,7 @@ export const contractService = {
     if (data.data_vencimento_primeiro_pagamento !== undefined)
       payload.data_vencimento_primeiro_pagamento = data.data_vencimento_primeiro_pagamento || null
     if (data.primeira_competencia !== undefined)
-      payload.primeira_competencia = data.primeira_competencia || null
+      payload.primeira_competencia = data.primeira_competencia && /^\d{4}-\d{2}$/.test(data.primeira_competencia) ? `${data.primeira_competencia}-01` : data.primeira_competencia || null
     if (data.usuario_confirmou_pagamento_id !== undefined)
       payload.usuario_confirmou_pagamento_id = data.usuario_confirmou_pagamento_id || null
     if (data.usuario_implantacao_id !== undefined)
