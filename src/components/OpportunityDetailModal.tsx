@@ -54,6 +54,7 @@ interface OpportunityDetailModalProps {
   open: boolean
   onClose: () => void
   onUpdated: () => void
+  onRequestStageChange: (opportunity: Opportunity, targetStage: string) => Promise<void>
   users: UserType[]
   salesStages: string[]
   postSalesStages: string[]
@@ -65,6 +66,7 @@ export function OpportunityDetailModal({
   open,
   onClose,
   onUpdated,
+  onRequestStageChange,
   users,
   salesStages,
   postSalesStages,
@@ -214,30 +216,17 @@ export function OpportunityDetailModal({
 
   // Etapa
   const handleStageChange = async (targetStage: string) => {
-    if (targetStage === 'Venda perdida') {
-      setIsLostModalOpen(true)
+    if (targetStage === 'Venda ganha' && opportunity.pipeline_type === 'VENDAS') {
+      // O fechamento exige o formulário central, que gera o contrato e move o card.
+      onClose()
+      await onRequestStageChange(opportunity, targetStage)
       return
     }
-
     try {
-      if (opportunity.pipeline_type === 'POS_VENDA' && targetStage === 'Implantado') {
-        const linked = await contractService.getContracts({ opportunity_id: opportunity.id })
-        const contract = linked.items[0]
-        if (!contract) throw new Error('Não há contrato vinculado para implantação')
-        if (!contract.data_confirmacao_pagamento) {
-          throw new Error(
-            'Confirme o recebimento real do primeiro pagamento no contrato antes de implantar',
-          )
-        }
-      }
-      const prev = opportunity.stage
-      await opportunityService.updateStage(opportunity.id, targetStage, prev)
-      setOpportunity((o) => (o ? { ...o, stage: targetStage } : null))
-      const tl = await opportunityService.getTimeline(opportunity.id)
-      setTimeline(tl)
-      onUpdated()
-    } catch (err: any) {
-      setSaveError(err.message || 'Falha ao mudar etapa')
+      await onRequestStageChange(opportunity, targetStage)
+      await loadData(opportunity.id)
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Falha ao mudar etapa')
     }
   }
 
