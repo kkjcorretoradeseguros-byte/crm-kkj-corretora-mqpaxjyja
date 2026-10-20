@@ -137,7 +137,7 @@ export function ModernCommissionPanel({
         ''
       if (operatorFilter !== 'todas' && op !== operatorFilter) return false
 
-      const isPaid = Number(row.valor_recebido || 0) >= Number(row.valor_previsto)
+      const isPaid = row.status === 'recebido' || row.status === 'pago'
       const isOverdue = !isPaid && row.data_vencimento < todayStr
 
       if (filter === 'recebido') return isPaid
@@ -520,7 +520,7 @@ export function ModernCommissionPanel({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {visible.map((row) => {
                 const contract = contracts.find((c) => c.id === row.contract_id)
-                const isPaid = Number(row.valor_recebido || 0) >= Number(row.valor_previsto)
+                const isPaid = row.status === 'recebido' || row.status === 'pago'
                 const isOverdue = !isPaid && row.data_vencimento < todayStr
                 const isTest = isTestContract(contract)
 
