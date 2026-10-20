@@ -740,7 +740,15 @@ export default function Pipeline() {
         throw new Error('Nenhum contrato vinculado foi localizado para esta oportunidade.')
       }
 
-      await contractService.confirmFirstPayment(contract.id, confirmPaymentDate)
+      if (contract.data_confirmacao_pagamento) {
+        if (!isAdmin) {
+          throw new Error('Pagamento já registrado. Solicite ao administrador a regularização das comissões; não confirme novamente.')
+        }
+        const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
+        await ensureConfirmedContractForecast(contract.id)
+      } else {
+        await contractService.confirmFirstPayment(contract.id, confirmPaymentDate)
+      }
 
       setIsConfirmPaymentModalOpen(false)
       setPendingConfirmPaymentOpp(null)
@@ -1174,8 +1182,8 @@ export default function Pipeline() {
               Confirmação do Primeiro Pagamento
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Ação exclusiva do administrador da KKJ. Registre a data REAL em que o primeiro
-              pagamento foi recebido para auditar a liquidação financeira do contrato.
+              Registre a data real do recebimento. Pagamentos já confirmados não serão registrados novamente;
+              o administrador poderá regularizar as comissões pendentes.
             </DialogDescription>
           </DialogHeader>
 
