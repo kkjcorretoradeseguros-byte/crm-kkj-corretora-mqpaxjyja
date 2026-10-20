@@ -319,6 +319,14 @@ export const OpportunityCardView = React.memo(function OpportunityCardView({
         </div>
       )}
 
+      {pipelineType === 'VENDAS' && opp.stage.toLowerCase() === 'venda ganha' && !isOverlay && (
+        <div className="pt-1 border-t border-border" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+          <Button type="button" variant="outline" size="sm" className="w-full text-xs" onClick={() => onMoveToStage?.(opp, 'Venda ganha')}>
+            Concluir fechamento e enviar ao Pós-venda
+          </Button>
+        </div>
+      )}
+
       {/* Ações Especiais no Pós-Venda: Botão de Confirmar 1º Pagamento exclusivo do Administrador */}
       {pipelineType === 'POS_VENDA' && isAdmin && !isOverlay && (
         <div
