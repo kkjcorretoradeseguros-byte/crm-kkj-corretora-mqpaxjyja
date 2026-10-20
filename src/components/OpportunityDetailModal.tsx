@@ -728,7 +728,7 @@ export function OpportunityDetailModal({
                     defaultValue={(opportunity.sale_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     placeholder="Ex: 1.816,00"
                     onBlur={(e) => {
-                      const raw = e.target.value.trim().replace(/\\s/g, '').replace(/^R\\$/, '')
+                      const raw = e.target.value.trim().replace(/\s/g, '').replace(/^R\$/, '')
                       const val = raw.includes(',')
                         ? Number(raw.replace(/\\./g, '').replace(',', '.'))
                         : Number(raw)
