@@ -424,6 +424,10 @@ export default function Pipeline() {
       alert('Informe a data do pagamento confirmado.')
       return
     }
+    if (data.isPaymentConfirmed && isNat && vendaGanhaTargetOpp.assigned_to !== user?.id) {
+      alert('Você só pode confirmar pagamentos das suas próprias vendas.')
+      return
+    }
     if (data.isPaymentConfirmed && !canConfirmPayment) {
       alert('Seu usuário não tem permissão para confirmar pagamentos.')
       return
