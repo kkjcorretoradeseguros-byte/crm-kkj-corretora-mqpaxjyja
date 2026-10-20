@@ -4,9 +4,8 @@ const parseBRL = (input: string): number => {
   const lastComma = normalized.lastIndexOf(',')
   const lastDot = normalized.lastIndexOf('.')
   const decimal = lastComma > lastDot ? ',' : '.'
-  const numberText = decimal === ','
-    ? normalized.replace(/\./g, '').replace(',', '.')
-    : normalized.replace(/,/g, '')
+  const numberText =
+    decimal === ',' ? normalized.replace(/\./g, '').replace(',', '.') : normalized.replace(/,/g, '')
   return Number(numberText)
 }
 

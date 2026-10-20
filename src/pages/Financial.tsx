@@ -194,7 +194,10 @@ export default function Financial() {
   // 5. IMPOSTOS E REPASSES = Deduções reais
   // =========================================================================
   const totalSaleValue = useMemo(
-    () => contracts.filter((c) => c.status?.toLowerCase() !== 'cancelado').reduce((sum, c) => sum + (c.sale_value || 0), 0),
+    () =>
+      contracts
+        .filter((c) => c.status?.toLowerCase() !== 'cancelado')
+        .reduce((sum, c) => sum + (c.sale_value || 0), 0),
     [contracts],
   )
 
@@ -471,7 +474,8 @@ export default function Financial() {
               {totalSaleValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-muted-foreground mt-1">
-              {contracts.filter((c) => c.status?.toLowerCase() !== 'cancelado').length} contratos ativos
+              {contracts.filter((c) => c.status?.toLowerCase() !== 'cancelado').length} contratos
+              ativos
             </p>
           </CardContent>
         </Card>
