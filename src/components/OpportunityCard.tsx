@@ -322,8 +322,18 @@ export const OpportunityCardView = React.memo(function OpportunityCardView({
       )}
 
       {pipelineType === 'VENDAS' && opp.stage.toLowerCase() === 'venda ganha' && !isOverlay && (
-        <div className="pt-1 border-t border-border" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-          <Button type="button" variant="outline" size="sm" className="w-full text-xs" onClick={() => onMoveToStage?.(opp, 'Venda ganha')}>
+        <div
+          className="pt-1 border-t border-border"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full text-xs"
+            onClick={() => onMoveToStage?.(opp, 'Venda ganha')}
+          >
             Concluir fechamento e enviar ao Pós-venda
           </Button>
         </div>

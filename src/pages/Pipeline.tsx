@@ -251,7 +251,11 @@ export default function Pipeline() {
     targetStage: string,
     targetStageId?: string,
   ) => {
-    if (opp.stage === targetStage && !(pipelineType === 'VENDAS' && targetStage.toLowerCase() === 'venda ganha')) return
+    if (
+      opp.stage === targetStage &&
+      !(pipelineType === 'VENDAS' && targetStage.toLowerCase() === 'venda ganha')
+    )
+      return
 
     // 1. Venda Ganha no Funil de Vendas: EXIGIR conferência cadastral dos 4 marcos
     if (pipelineType === 'VENDAS' && targetStage.toLowerCase() === 'venda ganha') {
@@ -722,7 +726,9 @@ export default function Pipeline() {
   const handleConfirmFirstPayment = async () => {
     if (!pendingConfirmPaymentOpp) return
     if (!canConfirmPayment || (isNat && pendingConfirmPaymentOpp.assigned_to !== user?.id)) {
-      setConfirmPaymentError('Você só pode confirmar o pagamento de contratos sob sua responsabilidade.')
+      setConfirmPaymentError(
+        'Você só pode confirmar o pagamento de contratos sob sua responsabilidade.',
+      )
       return
     }
     if (!confirmPaymentDate) {
@@ -1966,7 +1972,9 @@ export default function Pipeline() {
         companies={companies}
         contacts={contacts}
         onConfirm={handleConfirmVendaGanha}
-        canConfirmPayment={canConfirmPayment && (!isNat || vendaGanhaTargetOpp?.assigned_to === user?.id)}
+        canConfirmPayment={
+          canConfirmPayment && (!isNat || vendaGanhaTargetOpp?.assigned_to === user?.id)
+        }
       />
     </div>
   )
