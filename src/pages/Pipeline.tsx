@@ -249,7 +249,7 @@ export default function Pipeline() {
     targetStage: string,
     targetStageId?: string,
   ) => {
-    if (opp.stage === targetStage) return
+    if (opp.stage === targetStage && !(pipelineType === 'VENDAS' && targetStage.toLowerCase() === 'venda ganha')) return
 
     // 1. Venda Ganha no Funil de Vendas: EXIGIR conferência cadastral dos 4 marcos
     if (pipelineType === 'VENDAS' && targetStage.toLowerCase() === 'venda ganha') {
