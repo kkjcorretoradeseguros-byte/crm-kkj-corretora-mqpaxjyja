@@ -390,7 +390,8 @@ export const contractService = {
 
     const paymentDueDate = data.data_vencimento_primeiro_pagamento || null
     const paymentConfirmedDate = data.data_confirmacao_pagamento || null
-    const firstComp = data.primeira_competencia || data.first_installment_reference || null
+    const firstCompInput = data.primeira_competencia || data.first_installment_reference || null
+    const firstComp = firstCompInput && /^\d{4}-\d{2}$/.test(firstCompInput) ? `${firstCompInput}-01` : firstCompInput
 
     const insertPayload: Record<string, unknown> = {
       opportunity_id: data.opportunity_id || null,
