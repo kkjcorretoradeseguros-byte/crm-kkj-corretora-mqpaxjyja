@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -55,6 +56,10 @@ export default function Financial() {
     })[]
   >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
+  const [editingContractId, setEditingContractId] = useState<string | null>(null)
+  const [editedContractAmount, setEditedContractAmount] = useState('')
+  const [contractEditBusy, setContractEditBusy] = useState(false)
+  const [contractEditError, setContractEditError] = useState<string | null>(null)
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
 
@@ -63,6 +68,38 @@ export default function Financial() {
   const isGestor = normalizedRole === 'GESTOR'
   const isAdmin = normalizedRole === 'ADMINISTRADOR'
   const isGlobalView = isAdmin
+
+  const saveContractAmount = async (contract: Contract) => {
+    if (!isAdmin || contractEditBusy) return
+    const raw = editedContractAmount.trim().replace(/\s/g, '').replace(/^R\$/, '')
+    const normalized = raw.includes(',')
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : /^\d{1,3}(?:\.\d{3})+$/.test(raw) ? raw.replace(/\./g, '') : raw
+    const amount = Number(normalized)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setContractEditError('Informe uma mensalidade válida.')
+      return
+    }
+    setContractEditBusy(true)
+    setContractEditError(null)
+    try {
+      await contractService.updateContract(contract.id, { sale_value: amount })
+      if (contract.opportunity_id) {
+        await opportunityService.addTimelineEvent(
+          contract.opportunity_id,
+          'valor_contrato_alterado',
+          `Mensalidade do contrato ${contract.contract_number || contract.id} alterada de R$ ${contract.sale_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} para R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} pelo administrador.`,
+          { anterior: contract.sale_value, novo: amount, contract_id: contract.id },
+        )
+      }
+      setEditingContractId(null)
+      await loadData()
+    } catch (err) {
+      setContractEditError(err instanceof Error ? err.message : 'Falha ao atualizar contrato')
+    } finally {
+      setContractEditBusy(false)
+    }
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -908,7 +945,23 @@ export default function Financial() {
                     {c.lives_count || 1} vidas
                   </TableCell>
                   <TableCell className="font-extrabold text-[#101f42] dark:text-primary">
-                    {c.sale_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    {editingContractId === c.id ? (
+                      <div className="flex flex-col gap-1 min-w-[180px]">
+                        <Input aria-label="Nova mensalidade contratual" value={editedContractAmount} onChange={(e) => setEditedContractAmount(e.target.value)} inputMode="decimal" placeholder="1.816,00" className="h-8" />
+                        <div className="flex gap-1">
+                          <Button size="sm" disabled={contractEditBusy} onClick={() => void saveContractAmount(c)}>Salvar</Button>
+                          <Button size="sm" variant="outline" disabled={contractEditBusy} onClick={() => { setEditingContractId(null); setContractEditError(null) }}>Cancelar</Button>
+                        </div>
+                        {contractEditError && <span role="alert" className="text-red-600 text-xs">{contractEditError}</span>}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span>{c.sale_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        {isAdmin && c.status !== 'Cancelado' && (
+                          <Button size="sm" variant="outline" onClick={() => { setEditingContractId(c.id); setEditedContractAmount(c.sale_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })); setContractEditError(null) }}>Editar</Button>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
                     {activeInstallments.some((p) => p.contract_id === c.id)
