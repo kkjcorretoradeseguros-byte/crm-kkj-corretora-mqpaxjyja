@@ -74,7 +74,9 @@ export default function Financial() {
     const raw = editedContractAmount.trim().replace(/\s/g, '').replace(/^R\$/, '')
     const normalized = raw.includes(',')
       ? raw.replace(/\./g, '').replace(',', '.')
-      : /^\d{1,3}(?:\.\d{3})+$/.test(raw) ? raw.replace(/\./g, '') : raw
+      : /^\d{1,3}(?:\.\d{3})+$/.test(raw)
+        ? raw.replace(/\./g, '')
+        : raw
     const amount = Number(normalized)
     if (!Number.isFinite(amount) || amount <= 0) {
       setContractEditError('Informe uma mensalidade válida.')
@@ -947,18 +949,62 @@ export default function Financial() {
                   <TableCell className="font-extrabold text-[#101f42] dark:text-primary">
                     {editingContractId === c.id ? (
                       <div className="flex flex-col gap-1 min-w-[180px]">
-                        <Input aria-label="Nova mensalidade contratual" value={editedContractAmount} onChange={(e) => setEditedContractAmount(e.target.value)} inputMode="decimal" placeholder="1.816,00" className="h-8" />
+                        <Input
+                          aria-label="Nova mensalidade contratual"
+                          value={editedContractAmount}
+                          onChange={(e) => setEditedContractAmount(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="1.816,00"
+                          className="h-8"
+                        />
                         <div className="flex gap-1">
-                          <Button size="sm" disabled={contractEditBusy} onClick={() => void saveContractAmount(c)}>Salvar</Button>
-                          <Button size="sm" variant="outline" disabled={contractEditBusy} onClick={() => { setEditingContractId(null); setContractEditError(null) }}>Cancelar</Button>
+                          <Button
+                            size="sm"
+                            disabled={contractEditBusy}
+                            onClick={() => void saveContractAmount(c)}
+                          >
+                            Salvar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={contractEditBusy}
+                            onClick={() => {
+                              setEditingContractId(null)
+                              setContractEditError(null)
+                            }}
+                          >
+                            Cancelar
+                          </Button>
                         </div>
-                        {contractEditError && <span role="alert" className="text-red-600 text-xs">{contractEditError}</span>}
+                        {contractEditError && (
+                          <span role="alert" className="text-red-600 text-xs">
+                            {contractEditError}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span>{c.sale_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        <span>
+                          {c.sale_value.toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </span>
                         {isAdmin && c.status !== 'Cancelado' && (
-                          <Button size="sm" variant="outline" onClick={() => { setEditingContractId(c.id); setEditedContractAmount(c.sale_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })); setContractEditError(null) }}>Editar</Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingContractId(c.id)
+                              setEditedContractAmount(
+                                c.sale_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+                              )
+                              setContractEditError(null)
+                            }}
+                          >
+                            Editar
+                          </Button>
                         )}
                       </div>
                     )}
