@@ -552,13 +552,15 @@ export const opportunityService = {
     let previousRow: any = null
     if (
       data.temperature !== undefined ||
+      data.sale_value !== undefined ||
+      data.value !== undefined ||
       data.stage !== undefined ||
       data.assigned_to !== undefined
     ) {
       try {
         const { data: cur } = await supabase
           .from('opportunities')
-          .select('temperatura, stage_id, owner_id')
+          .select('temperatura, stage_id, owner_id, valor_venda')
           .eq('id', id)
           .single()
         previousRow = cur
@@ -597,6 +599,15 @@ export const opportunityService = {
         console.warn('Falha ao gravar evento na timeline:', err)
       }
     } else if (previousRow) {
+      const newValue = data.sale_value ?? data.value
+      if (newValue !== undefined && Number(newValue) !== Number(previousRow.valor_venda)) {
+        await this.addTimelineEvent(
+          id,
+          'valor_alterado',
+          `Valor da oportunidade alterado de R$ ${Number(previousRow.valor_venda || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} para R$ ${Number(newValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          { anterior: Number(previousRow.valor_venda || 0), novo: Number(newValue) },
+        )
+      }
       // Registrar timeline apenas se houver mudança real de temperatura
       if (data.temperature !== undefined && data.temperature !== previousRow.temperatura) {
         await this.addTimelineEvent(
