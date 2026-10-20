@@ -1,3 +1,15 @@
+const parseBRL = (input: string): number => {
+  const normalized = input.trim().replace(/\s/g, '').replace(/^R\$/, '')
+  if (!normalized) return NaN
+  const lastComma = normalized.lastIndexOf(',')
+  const lastDot = normalized.lastIndexOf('.')
+  const decimal = lastComma > lastDot ? ',' : '.'
+  const numberText = decimal === ','
+    ? normalized.replace(/\./g, '').replace(',', '.')
+    : normalized.replace(/,/g, '')
+  return Number(numberText)
+}
+
 import React, { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -142,7 +154,7 @@ export function VendaGanhaModal({
       return 'Companhia / Operadora contratada é obrigatória.'
     }
 
-    const numVal = parseFloat(contractedValue)
+    const numVal = parseBRL(contractedValue)
     if (!numVal || numVal <= 0) {
       return 'Valor real da mensalidade contratada deve ser maior que zero.'
     }
@@ -182,7 +194,7 @@ export function VendaGanhaModal({
         contractedCarrierId: carrierId,
         contractedCarrierName: carrierName,
         contractedPlan: contractedPlan.trim(),
-        contractedValue: parseFloat(contractedValue),
+        contractedValue: parseBRL(contractedValue),
         modalidade,
         livesCount: parseInt(livesCount, 10) || 1,
         hiringDate,
@@ -370,11 +382,11 @@ export function VendaGanhaModal({
               <div className="space-y-1">
                 <Label className="text-xs">Mensalidade Real (R$) *</Label>
                 <Input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={contractedValue}
                   onChange={(e) => setContractedValue(e.target.value)}
-                  placeholder="Ex: 2450.00"
+                  placeholder="Ex: 1.816,00"
                   className="h-8 text-xs bg-white font-bold"
                   required
                 />
@@ -473,7 +485,7 @@ export function VendaGanhaModal({
             {modalidade === 'Adesão' && (
               <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
                 <strong>Regra KKJ para Adesão:</strong> A 1ª mensalidade de R${' '}
-                {parseFloat(contractedValue || '0').toLocaleString('pt-BR')} será gerada como boleto
+                {parseBRL(contractedValue || '0').toLocaleString('pt-BR')} será gerada como boleto
                 integral KKJ (100% receita bruta da corretora). Nenhum repasse será feito à
                 operadora referente a esta 1ª mensalidade.
               </div>
