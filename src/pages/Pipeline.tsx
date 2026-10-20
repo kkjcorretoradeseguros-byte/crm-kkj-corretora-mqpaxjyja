@@ -596,34 +596,17 @@ export default function Pipeline() {
         },
       )
 
-      // Encaminhar para o Funil de Pós-Venda
-      const existingPosVenda = opportunities.find(
-        (o) =>
-          o.pipeline_type === 'POS_VENDA' &&
-          (o.company_id === companyId || o.title.includes(data.companyName)),
+      // A mesma oportunidade segue para o pós-venda, preservando contrato e histórico.
+      await opportunityService.updateOpportunity(vendaGanhaTargetOpp.id, {
+        pipeline_type: 'POS_VENDA',
+        stage: 'Documentação',
+      })
+      await opportunityService.addTimelineEvent(
+        vendaGanhaTargetOpp.id,
+        'mudanca_etapa',
+        'Venda concluída e encaminhada ao Pós-venda. Etapa inicial: Documentação.',
+        { contract_id: activeContract.id },
       )
-
-      if (!existingPosVenda) {
-        const posVendaOpp = await opportunityService.createOpportunity({
-          title: `[Pós-Venda] ${data.companyName} (${data.contractedPlan})`,
-          pipeline_type: 'POS_VENDA',
-          stage: 'Documentação',
-          temperature: 'Quente',
-          company_id: companyId,
-          contact_id: contactId,
-          carrier_id: data.contractedCarrierId,
-          assigned_to: vendaGanhaTargetOpp.assigned_to || user?.id,
-          sale_value: data.contractedValue,
-          origin: vendaGanhaTargetOpp.origin,
-        })
-
-        await opportunityService.addTimelineEvent(
-          vendaGanhaTargetOpp.id,
-          'mudanca_etapa',
-          `Lead encaminhado para o Funil de Pós-Venda (${posVendaOpp.title}). Etapa inicial: Documentação.`,
-          { pos_venda_id: posVendaOpp.id },
-        )
-      }
 
       setIsVendaGanhaOpen(false)
       setVendaGanhaTargetOpp(null)

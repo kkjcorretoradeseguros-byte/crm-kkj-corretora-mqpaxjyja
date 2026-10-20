@@ -351,7 +351,10 @@ export default function Index() {
       ),
     [postSalesOpps],
   )
-  const implementationCount = activeImplementationContracts.length + implementationPostSales.length
+  const implementationCount = new Set([
+    ...activeImplementationContracts.map((c) => c.company_id || c.id),
+    ...implementationPostSales.map((o) => o.company_id || o.id),
+  ]).size
 
   // 5. Tarefas (Tarefas operacionais do período selecionado, pendentes/hoje)
   const pendingTasks = useMemo(
