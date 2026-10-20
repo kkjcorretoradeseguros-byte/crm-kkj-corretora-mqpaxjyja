@@ -736,15 +736,30 @@ export const opportunityService = {
     }
 
     if (stage.toLowerCase() === 'perdido' || stage.toLowerCase() === 'venda perdida') {
-      const { data: reason } = await supabase.from('loss_reasons').select('id').eq('nome', lostReason || '').eq('ativo', true).maybeSingle()
-      if (!reason || !resolvedStageId) throw new Error('Selecione um motivo válido e uma etapa Perdido cadastrada')
-      const { error } = await supabase.from('opportunities').update({
-        stage_id: resolvedStageId, status: 'perdida', loss_reason_id: reason.id,
-        loss_notes: lostReason, data_fechamento: new Date().toISOString(),
-      }).eq('id', id)
+      const { data: reason } = await supabase
+        .from('loss_reasons')
+        .select('id')
+        .eq('nome', lostReason || '')
+        .eq('ativo', true)
+        .maybeSingle()
+      if (!reason || !resolvedStageId)
+        throw new Error('Selecione um motivo válido e uma etapa Perdido cadastrada')
+      const { error } = await supabase
+        .from('opportunities')
+        .update({
+          stage_id: resolvedStageId,
+          status: 'perdida',
+          loss_reason_id: reason.id,
+          loss_notes: lostReason,
+          data_fechamento: new Date().toISOString(),
+        })
+        .eq('id', id)
       if (error) throw new Error(error.message)
     }
-    const updated = (stage.toLowerCase() === 'perdido' || stage.toLowerCase() === 'venda perdida') ? await this.getOpportunityById(id) : await this.updateOpportunity(id, updatePayload)
+    const updated =
+      stage.toLowerCase() === 'perdido' || stage.toLowerCase() === 'venda perdida'
+        ? await this.getOpportunityById(id)
+        : await this.updateOpportunity(id, updatePayload)
 
     try {
       const conteudoTimeline =
