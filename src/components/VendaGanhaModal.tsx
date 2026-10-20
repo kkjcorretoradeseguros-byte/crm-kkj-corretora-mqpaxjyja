@@ -38,6 +38,7 @@ interface VendaGanhaModalProps {
   carriers: Carrier[]
   companies: Company[]
   contacts: Contact[]
+  canConfirmPayment?: boolean
   onConfirm: (data: {
     origem_comercial_lead: 'kkj' | 'vendedor'
     contractedCarrierId: string
@@ -67,6 +68,7 @@ export function VendaGanhaModal({
   companies,
   contacts,
   onConfirm,
+  canConfirmPayment = false,
 }: VendaGanhaModalProps) {
   const [origemComercialLead, setOrigemComercialLead] = useState<'kkj' | 'vendedor' | ''>('')
   const [carrierId, setCarrierId] = useState('')
@@ -448,7 +450,8 @@ export function VendaGanhaModal({
                   <Label className="text-xs font-semibold text-slate-800 cursor-pointer flex items-center gap-1.5">
                     <input
                       type="checkbox"
-                      checked={isPaymentConfirmed}
+                      checked={canConfirmPayment && isPaymentConfirmed}
+                      disabled={!canConfirmPayment}
                       onChange={(e) => setIsPaymentConfirmed(e.target.checked)}
                       className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                     />
