@@ -726,7 +726,9 @@ export default function Pipeline() {
   const handleConfirmFirstPayment = async () => {
     if (!pendingConfirmPaymentOpp) return
     if (!canConfirmPayment || (isNat && pendingConfirmPaymentOpp.assigned_to !== user?.id)) {
-      setConfirmPaymentError('Você só pode confirmar o pagamento de contratos sob sua responsabilidade.')
+      setConfirmPaymentError(
+        'Você só pode confirmar o pagamento de contratos sob sua responsabilidade.',
+      )
       return
     }
     if (!confirmPaymentDate) {
@@ -746,9 +748,12 @@ export default function Pipeline() {
 
       if (contract.data_confirmacao_pagamento) {
         if (!isAdmin) {
-          throw new Error('Pagamento já registrado. Solicite ao administrador a regularização das comissões; não confirme novamente.')
+          throw new Error(
+            'Pagamento já registrado. Solicite ao administrador a regularização das comissões; não confirme novamente.',
+          )
         }
-        const { ensureConfirmedContractForecast } = await import('@/services/commissionForecastService')
+        const { ensureConfirmedContractForecast } =
+          await import('@/services/commissionForecastService')
         await ensureConfirmedContractForecast(contract.id)
       } else {
         await contractService.confirmFirstPayment(contract.id, confirmPaymentDate)
@@ -1186,8 +1191,8 @@ export default function Pipeline() {
               Confirmação do Primeiro Pagamento
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Registre a data real do recebimento. Pagamentos já confirmados não serão registrados novamente;
-              o administrador poderá regularizar as comissões pendentes.
+              Registre a data real do recebimento. Pagamentos já confirmados não serão registrados
+              novamente; o administrador poderá regularizar as comissões pendentes.
             </DialogDescription>
           </DialogHeader>
 
