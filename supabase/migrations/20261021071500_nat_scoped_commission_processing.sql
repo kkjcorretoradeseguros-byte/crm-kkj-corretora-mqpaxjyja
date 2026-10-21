@@ -46,7 +46,7 @@ BEGIN
     RAISE EXCEPTION 'Receipt RPC must execute with scoped definer privileges';
   END IF;
   EXECUTE v_fn;
-END $;
+END $$;
 
 -- Only authenticated sessions can invoke the guarded RPCs.
 REVOKE ALL ON FUNCTION public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) FROM PUBLIC, anon;
