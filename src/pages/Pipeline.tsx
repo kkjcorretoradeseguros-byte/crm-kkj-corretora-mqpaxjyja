@@ -296,7 +296,7 @@ export default function Pipeline() {
     // 5. Implantação / Implantado no Funil de Pós-Venda: VALIDAR antes de efetivar
     if (
       pipelineType === 'POS_VENDA' &&
-      (targetStage.toLowerCase() === 'implantado' || targetStage.toLowerCase() === 'implantação')
+      (targetStage.toLowerCase() === 'implantado')
     ) {
       setPendingImplantationOpp(opp)
       setImplantationBlockMessage(null)
