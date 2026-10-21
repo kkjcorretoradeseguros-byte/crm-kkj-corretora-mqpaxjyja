@@ -23,6 +23,11 @@ BEGIN
        (select data_confirmacao_pagamento from public.contracts where id=p_contract_id) then
        raise exception ''Primeiro vencimento deve coincidir com o pagamento confirmado'';
      end if;');
+  -- Preserve RLS: only this vetted RPC bypasses direct table policies.
+  v_fn := replace(v_fn, ' LANGUAGE plpgsql', ' LANGUAGE plpgsql SECURITY DEFINER');
+  IF position('SECURITY DEFINER' IN upper(v_fn)) = 0 THEN
+    RAISE EXCEPTION 'Forecast RPC must execute with scoped definer privileges';
+  END IF;
   EXECUTE v_fn;
 
   SELECT pg_get_functiondef(p.oid) INTO v_fn FROM pg_proc p
@@ -36,5 +41,16 @@ BEGIN
   -- Use actual confirmed payment date, not a potentially empty legacy column.
   v_fn := replace(v_fn,'select data_pagamento into v_date',
     'select coalesce(data_confirmacao_pagamento,data_pagamento) into v_date');
+  v_fn := replace(v_fn, ' LANGUAGE plpgsql', ' LANGUAGE plpgsql SECURITY DEFINER');
+  IF position('SECURITY DEFINER' IN upper(v_fn)) = 0 THEN
+    RAISE EXCEPTION 'Receipt RPC must execute with scoped definer privileges';
+  END IF;
   EXECUTE v_fn;
-END $$;
+END $;
+
+-- Only authenticated sessions can invoke the guarded RPCs.
+REVOKE ALL ON FUNCTION public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.confirm_first_commission_receipt(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.persist_contract_commission_forecast(uuid,uuid,text,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.confirm_first_commission_receipt(uuid) TO authenticated;
+
