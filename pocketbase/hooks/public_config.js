@@ -161,6 +161,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
       encodeURIComponent(metaAppSecret) +
       '&code=' +
       encodeURIComponent(code) +
+      '&redirect_uri=' +
       '&grant_type=authorization_code'
 
     const tokenRes = $http.send({
@@ -462,6 +463,7 @@ routerAdd('GET', '/backend/v1/meta-whatsapp/status', (e) => {
   const supabaseServiceKey = ($os.getenv('SUPABASE_SERVICE_ROLE_KEY') || '').trim()
 
   return e.json(200, {
+    backend_revision: 'oauth-redirect-check-20261027',
     ready: Boolean(metaAppId && metaAppSecret && metaConfigId),
     meta: {
       has_app_id: Boolean(metaAppId),
