@@ -49,7 +49,7 @@ const mainNavigationItems = [
   { name: 'Contatos', href: '/contatos', icon: Users },
   { name: 'Empresas / Clientes', href: '/empresas', icon: Building2 },
   { name: 'Tarefas', href: '/tarefas', icon: CheckSquare },
-  { name: 'Conversas', href: '/conversas', icon: MessageSquare },
+  { name: 'WhatsApp', href: '/conversas', icon: MessageSquare },
   { name: 'Financeiro', href: '/financeiro', icon: DollarSign },
 ]
 
@@ -78,7 +78,7 @@ export default function Layout() {
     if (path.startsWith('/contatos')) return 'Contatos'
     if (path.startsWith('/empresas')) return 'Empresas & Clientes'
     if (path.startsWith('/tarefas')) return 'Gestão de Tarefas'
-    if (path.startsWith('/conversas')) return 'Conversas & WhatsApp'
+    if (path.startsWith('/conversas')) return 'WhatsApp & Mensageria'
     if (path.startsWith('/financeiro')) return 'Financeiro & Produção'
     if (path.startsWith('/configuracoes')) return 'Configurações do Sistema'
     return 'CRM KKJ Corretora'

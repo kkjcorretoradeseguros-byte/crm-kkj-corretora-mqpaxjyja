@@ -718,6 +718,8 @@ export interface WhatsappChannel {
   provedor: string
   ativo: boolean
   metadata?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
 }
 
 export interface MessageTemplate {
@@ -737,8 +739,35 @@ export interface Conversation {
   contact_id?: string
   opportunity_id?: string
   responsible_user_id?: string
-  status: string
+  status: 'aberta' | 'aguardando' | 'resolvida' | 'fechada' | string
   nao_lidas: number
+  created_at?: string
+  updated_at?: string
+  // Relações enriquecidas opcionais para UI
+  contact?: {
+    id: string
+    nome: string
+    celular?: string
+    email?: string
+  }
+  opportunity?: {
+    id: string
+    title?: string
+    status?: string
+    stage_id?: string
+  }
+  responsible_user?: {
+    id: string
+    nome: string
+    email?: string
+    role?: string
+  }
+  channel?: {
+    id: string
+    nome: string
+    numero_telefone: string
+  }
+  last_message?: Message
 }
 
 export interface Message {
