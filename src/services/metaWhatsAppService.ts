@@ -323,7 +323,13 @@ export const metaWhatsAppService = {
                 signupEvent.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING' ||
                 signupEvent.event === 'FINISH_ONLY_WABA')
             ) {
-              executeBackendExchange(authCode, sessionData)
+              if (sessionData.waba_id && sessionData.phone_number_id) {
+                executeBackendExchange(authCode, sessionData)
+              } else {
+                isSettled = true
+                cleanUp()
+                reject(new Error('A Meta concluiu o login, mas não retornou os identificadores de WABA e telefone. Nenhuma conexão foi criada.'))
+              }
             }
           }
         } catch {
@@ -395,13 +401,10 @@ export const metaWhatsAppService = {
           authCode = response.authResponse.code
           options?.onProgress?.('Código de autorização obtido. Finalizando validação...')
 
-          // Se a sessão já capturou os dados via postMessage, executa imediatamente a troca
-          // O token da Meta expira em 30 segundos, disparar sem demora
-          setTimeout(() => {
-            if (!isSettled && authCode) {
-              executeBackendExchange(authCode, sessionData)
-            }
-          }, 350)
+          // Somente um evento oficial de conclusão do Embedded Signup autoriza a troca.
+          // Não trocar o código ao fechar o popup sem FINISH: isso pode representar
+          // um login genérico, sem número/WABA e sem confirmação de coexistência.
+          // A troca é disparada pelo messageHandler quando FINISH e os IDs chegarem.
         } else {
           // O usuário fechou a janela sem autorizar
           if (!isSettled) {
