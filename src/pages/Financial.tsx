@@ -53,6 +53,7 @@ export default function Financial() {
     (CommissionRow & {
       imposto_retido?: number | null
       repasse_previsto_vendedor?: number | null
+      repasse_pago_vendedor?: number | null
     })[]
   >([])
   const [installmentError, setInstallmentError] = useState<string | null>(null)
@@ -147,16 +148,25 @@ export default function Financial() {
               imposto_retido: p.imposto_retido == null ? null : Number(p.imposto_retido),
               repasse_previsto_vendedor:
                 p.repasse_previsto_vendedor == null ? null : Number(p.repasse_previsto_vendedor),
+              repasse_pago_vendedor: null,
               status: p.status,
             })),
           )
         }
       } else {
         // Vendedor e Gestor: usar get_minhas_parcelas RPC
+        // Regra de exibição: mostrar somente parcelas em que repasse_previsto > 0 OU repasse_pago > 0
+        // Ocultar parcelas com repasse zerado (ex: vitalícias de 2% ou 0% de repasse)
         try {
           const parcelasRPC = await financialService.getMinhasParcelas()
+          const parcelasValidas = parcelasRPC.filter((p) => {
+            const repassePrevisto = Number(p.repasse_previsto_vendedor) || 0
+            const repassePago = Number(p.repasse_pago_vendedor) || 0
+            return repassePrevisto > 0 || repassePago > 0
+          })
+
           setInstallments(
-            parcelasRPC.map((p) => ({
+            parcelasValidas.map((p) => ({
               id: p.parcela_id,
               contract_id: p.contract_id,
               numero_parcela: p.numero_parcela,
@@ -164,6 +174,9 @@ export default function Financial() {
               data_vencimento: p.data_vencimento,
               valor_previsto: Number(p.repasse_previsto_vendedor) || 0,
               valor_recebido:
+                p.repasse_pago_vendedor != null ? Number(p.repasse_pago_vendedor) : null,
+              repasse_previsto_vendedor: Number(p.repasse_previsto_vendedor) || 0,
+              repasse_pago_vendedor:
                 p.repasse_pago_vendedor != null ? Number(p.repasse_pago_vendedor) : null,
               status: p.status,
             })),
@@ -281,7 +294,10 @@ export default function Financial() {
   // Comissão total registrada nas parcelas (ou estimativa baseada nos contratos caso não haja parcelas ainda)
   const totalComissaoPrevista = useMemo(() => {
     if (activeInstallments.length > 0) {
-      return activeInstallments.reduce((sum, p) => sum + Number(p.valor_previsto), 0)
+      return activeInstallments.reduce(
+        (sum, p) => sum + Math.max(Number(p.valor_previsto || 0), Number(p.valor_recebido || 0)),
+        0,
+      )
     }
     return contracts.reduce((sum, c) => sum + (c.commission_value || 0), 0)
   }, [activeInstallments, contracts])
@@ -590,13 +606,13 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-blue-900 dark:text-blue-200">
-                {(meuFinanceiro?.total_repasse_previsto ?? 0).toLocaleString('pt-BR', {
+                {totalComissaoPrevista.toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL',
                 })}
               </div>
               <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-1">
-                Baseada nas parcelas financeiras registradas
+                Baseada nas parcelas de repasse ativas
               </p>
             </CardContent>
           </Card>
@@ -682,13 +698,13 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200">
-                {(meuFinanceiro?.total_repasse_pago ?? 0).toLocaleString('pt-BR', {
+                {totalComissaoRecebida.toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL',
                 })}
               </div>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
-                Lançamentos já pagos em conta
+                Lançamentos já repassados e pagos
               </p>
             </CardContent>
           </Card>
@@ -772,13 +788,18 @@ export default function Financial() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-black text-amber-950 dark:text-foreground">
-                {(meuFinanceiro?.total_repasse_pendente ?? 0).toLocaleString('pt-BR', {
+                {totalComissaoPendente.toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL',
                 })}
               </div>
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                {meuFinanceiro?.parcelas_a_vencer || 0} parcelas programadas
+                {
+                  activeInstallments.filter(
+                    (p) => Number(p.valor_previsto) > (Number(p.valor_recebido) || 0),
+                  ).length
+                }{' '}
+                parcelas programadas
               </p>
             </CardContent>
           </Card>

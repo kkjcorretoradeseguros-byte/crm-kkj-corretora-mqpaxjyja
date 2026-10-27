@@ -53,10 +53,21 @@ export function ModernCommissionPanel({
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
-  // Ignorar canceladas e estornadas da receita recebida/pendente
+  // Ignorar canceladas e estornadas da receita recebida/pendente.
+  // Para perfis não-administrador (gestor e vendedor), garantir como salvaguarda
+  // de exibição que parcelas com repasse previsto e pago zerados fiquem ocultas.
   const activeRows = useMemo(
-    () => installments.filter((row) => row.status !== 'cancelado' && row.status !== 'estornado'),
-    [installments],
+    () =>
+      installments.filter((row) => {
+        if (row.status === 'cancelado' || row.status === 'estornado') return false
+        if (!isGlobalCommissionView) {
+          const previsto = Number(row.valor_previsto || 0)
+          const recebido = Number(row.valor_recebido || 0)
+          if (previsto <= 0 && recebido <= 0) return false
+        }
+        return true
+      }),
+    [installments, isGlobalCommissionView],
   )
 
   const received = activeRows.reduce((sum, row) => sum + Number(row.valor_recebido || 0), 0)
@@ -309,7 +320,8 @@ export function ModernCommissionPanel({
           {/* Card 1: Recebido */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <CheckCircle2 size={16} className="text-emerald-400" /> {isGlobalCommissionView ? 'Recebido pela KKJ' : 'Repasse pago'}
+              <CheckCircle2 size={16} className="text-emerald-400" />{' '}
+              {isGlobalCommissionView ? 'Recebido pela KKJ' : 'Repasse pago'}
             </p>
             <p className="mt-2 text-2xl font-black text-emerald-400">{currency(received)}</p>
             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -321,7 +333,8 @@ export function ModernCommissionPanel({
           {/* Card 2: A receber */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <Clock3 size={16} className="text-blue-300" /> {isGlobalCommissionView ? 'A receber' : 'Repasse pendente'}
+              <Clock3 size={16} className="text-blue-300" />{' '}
+              {isGlobalCommissionView ? 'A receber' : 'Repasse pendente'}
             </p>
             <p className="mt-2 text-2xl font-black text-blue-200">{currency(pending)}</p>
             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -336,7 +349,8 @@ export function ModernCommissionPanel({
           {/* Card 3: Próximo vencimento */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <CalendarDays size={16} className="text-amber-300" /> {isGlobalCommissionView ? 'Próximo vencimento' : 'Próximo repasse previsto'}
+              <CalendarDays size={16} className="text-amber-300" />{' '}
+              {isGlobalCommissionView ? 'Próximo vencimento' : 'Próximo repasse previsto'}
             </p>
             <p className="mt-2 text-2xl font-black text-white">
               {nextPendingInstallment

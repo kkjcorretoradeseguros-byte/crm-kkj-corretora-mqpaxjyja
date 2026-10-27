@@ -405,8 +405,16 @@ export function DraggableOpportunityCard({
   useDraggableHook,
   ...props
 }: DraggableOpportunityCardProps) {
-  const { opp, stages, pipelineType, isAdmin, onOpenDetail, onMoveToStage, onOpenConfirmPayment } =
-    props
+  const {
+    opp,
+    stages,
+    pipelineType,
+    isAdmin,
+    canConfirmPayment,
+    onOpenDetail,
+    onMoveToStage,
+    onOpenConfirmPayment,
+  } = props
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggableHook({
     id: opp.id,

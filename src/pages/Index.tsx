@@ -135,7 +135,8 @@ export default function Index() {
           })
           setCommissionLoadError(false)
         } else {
-          // Gestor e Vendedor: respeitar RLS chamando get_minhas_parcelas() ou get_meu_financeiro()
+          // Gestor e Vendedor: respeitar RLS chamando get_minhas_parcelas()
+          // Filtrar somente parcelas com repasse previsto > 0 ou repasse pago > 0 (ocultar repasses zerados)
           const { data, error } = await supabase.rpc('get_minhas_parcelas')
           if (!active) return
           if (error) {
@@ -143,8 +144,14 @@ export default function Index() {
             setPendingCommissions(null)
             return
           }
-          const pending = (data || [])
-            .filter((p: any) => p.status !== 'cancelado' && p.status !== 'estornado')
+          const validInstallments = (data || []).filter((p: any) => {
+            if (p.status === 'cancelado' || p.status === 'estornado') return false
+            const repassePrevisto = Number(p.repasse_previsto_vendedor) || 0
+            const repassePago = Number(p.repasse_pago_vendedor) || 0
+            return repassePrevisto > 0 || repassePago > 0
+          })
+
+          const pending = validInstallments
             .map((p: any) => ({
               value: Math.max(
                 0,
