@@ -239,7 +239,8 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
     return e.json(422, {
       success: false,
       code: 'COEXISTENCE_NOT_VERIFIED',
-      message: 'Não foi possível comprovar a coexistência do número com o WhatsApp Business. Nenhum canal foi ativado.',
+      message:
+        'Não foi possível comprovar a coexistência do número com o WhatsApp Business. Nenhum canal foi ativado.',
     })
   }
 
@@ -265,7 +266,11 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
   }
 
   if (!supabaseServiceKey) {
-    return e.json(503, { success: false, code: 'SERVICE_ROLE_MISSING', message: 'Chave segura do Supabase não configurada. Nenhum canal foi conectado.' })
+    return e.json(503, {
+      success: false,
+      code: 'SERVICE_ROLE_MISSING',
+      message: 'Chave segura do Supabase não configurada. Nenhum canal foi conectado.',
+    })
   }
 
   // 7. Gravação segura no Supabase
@@ -301,12 +306,14 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
         timeout: 15,
       })
 
-      if (existingCheckRes.statusCode !== 200) return e.json(502, { success: false, code: 'CHANNEL_LOOKUP_FAILED' })
+      if (existingCheckRes.statusCode !== 200)
+        return e.json(502, { success: false, code: 'CHANNEL_LOOKUP_FAILED' })
       const existingRecords = existingCheckRes.json || []
       const existingChannel =
         Array.isArray(existingRecords) && existingRecords.length > 0 ? existingRecords[0] : null
 
-      if (existingChannel && existingChannel.owner_user_id !== authenticatedUserId) return e.json(409, { success: false, code: 'CHANNEL_ALREADY_ASSIGNED' })
+      if (existingChannel && existingChannel.owner_user_id !== authenticatedUserId)
+        return e.json(409, { success: false, code: 'CHANNEL_ALREADY_ASSIGNED' })
       const channelPayload = {
         nome: channelName,
         numero_telefone: targetNumber,
@@ -415,7 +422,11 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
   }
 
   if (!channelId || channelSaveError) {
-    return e.json(502, { success: false, code: 'CHANNEL_SAVE_FAILED', message: channelSaveError || 'Canal não foi salvo no Supabase.' })
+    return e.json(502, {
+      success: false,
+      code: 'CHANNEL_SAVE_FAILED',
+      message: channelSaveError || 'Canal não foi salvo no Supabase.',
+    })
   }
 
   // 8. Resposta de sucesso segura (NENHUM TOKEN É EXPOSTO AO FRONTEND)

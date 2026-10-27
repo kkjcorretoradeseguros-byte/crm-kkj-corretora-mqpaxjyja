@@ -37,7 +37,16 @@ export const whatsappService = {
         waba_id: c.waba_id,
         phone_number_id: c.provider_phone_number_id,
         business_id: c.business_id,
-        status: ({ conectado: 'connected', pendente: 'connecting', erro: 'error', nao_conectado: 'not_connected', desativado: 'not_connected' } as Record<string,string>)[c.connection_status] || 'not_connected',
+        status:
+          (
+            {
+              conectado: 'connected',
+              pendente: 'connecting',
+              erro: 'error',
+              nao_conectado: 'not_connected',
+              desativado: 'not_connected',
+            } as Record<string, string>
+          )[c.connection_status] || 'not_connected',
         status_coexistencia: c.status_coexistencia || 'not_verified',
         erro_conexao: c.erro_conexao,
         metadata: c.metadata || {},
