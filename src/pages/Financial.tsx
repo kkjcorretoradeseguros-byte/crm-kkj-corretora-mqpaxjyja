@@ -66,7 +66,7 @@ export default function Financial() {
 
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
-  const isGestor = normalizedRole === 'GESTOR'
+  const isGestor = normalizedRole === 'GESTOR' || user?.role?.toLowerCase() === 'gestora'
   const isAdmin = normalizedRole === 'ADMINISTRADOR'
   const isGlobalView = isAdmin
 
@@ -468,12 +468,14 @@ export default function Financial() {
             </strong>
             <span>Total da fatura mensal paga pelo cliente/empresa à operadora.</span>
           </div>
-          <div>
-            <strong className="text-emerald-800 dark:text-emerald-300 block">
-              Faturamento KKJ
-            </strong>
-            <span>Comissão e receita bruta recebida pela corretora das operadoras.</span>
-          </div>
+          {isAdmin && (
+            <div>
+              <strong className="text-emerald-800 dark:text-emerald-300 block">
+                Faturamento KKJ
+              </strong>
+              <span>Comissão e receita bruta recebida pela corretora das operadoras.</span>
+            </div>
+          )}
           <div>
             <strong className="text-purple-800 dark:text-purple-300 block">
               {isSeller ? 'Sua Comissão' : 'Comissão dos Corretores'}
@@ -928,9 +930,11 @@ export default function Financial() {
                 <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Valor da Venda
                 </TableHead>
-                <TableHead className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
-                  Faturamento KKJ
-                </TableHead>
+                {isAdmin && (
+                  <TableHead className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
+                    Faturamento KKJ
+                  </TableHead>
+                )}
                 <TableHead className="text-xs font-bold text-slate-900 dark:text-foreground">
                   Status
                 </TableHead>
@@ -1030,14 +1034,16 @@ export default function Financial() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
-                    {activeInstallments.some((p) => p.contract_id === c.id)
-                      ? activeInstallments
-                          .filter((p) => p.contract_id === c.id)
-                          .reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0)
-                          .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                      : 'Sem parcelas registradas'}
-                  </TableCell>
+                  {isAdmin && (
+                    <TableCell className="font-extrabold text-emerald-700 dark:text-emerald-400">
+                      {activeInstallments.some((p) => p.contract_id === c.id)
+                        ? activeInstallments
+                            .filter((p) => p.contract_id === c.id)
+                            .reduce((sum, p) => sum + Number(p.valor_recebido || 0), 0)
+                            .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : 'Sem parcelas registradas'}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Badge
                       variant="outline"
