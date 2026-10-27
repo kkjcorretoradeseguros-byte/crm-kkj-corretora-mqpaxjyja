@@ -301,10 +301,12 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
         timeout: 15,
       })
 
+      if (existingCheckRes.statusCode !== 200) return e.json(502, { success: false, code: 'CHANNEL_LOOKUP_FAILED' })
       const existingRecords = existingCheckRes.json || []
       const existingChannel =
         Array.isArray(existingRecords) && existingRecords.length > 0 ? existingRecords[0] : null
 
+      if (existingChannel && existingChannel.owner_user_id !== authenticatedUserId) return e.json(409, { success: false, code: 'CHANNEL_ALREADY_ASSIGNED' })
       const channelPayload = {
         nome: channelName,
         numero_telefone: targetNumber,
