@@ -45,6 +45,7 @@ export function ModernCommissionPanel({
   onGenerateForecast?: (contractId: string) => void
   generatingForecastId?: string | null
 }) {
+  const isGlobalCommissionView = userRole === 'Administrador Geral'
   const [filter, setFilter] = useState<'todas' | 'recebido' | 'previsto' | 'atrasado'>('todas')
   const [month, setMonth] = useState('todos')
   const [operatorFilter, setOperatorFilter] = useState('todas')
@@ -255,7 +256,7 @@ export function ModernCommissionPanel({
               )}
             </div>
             <h2 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl text-white">
-              Comissões da KKJ
+              {isGlobalCommissionView ? 'Comissões da KKJ' : 'Meus repasses de comissão'}
             </h2>
             <div className="mt-2 text-3xl font-black text-white sm:text-4xl md:text-5xl">
               {currency(total)}
@@ -308,7 +309,7 @@ export function ModernCommissionPanel({
           {/* Card 1: Recebido */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <CheckCircle2 size={16} className="text-emerald-400" /> Recebido
+              <CheckCircle2 size={16} className="text-emerald-400" /> {isGlobalCommissionView ? 'Recebido pela KKJ' : 'Repasse pago'}
             </p>
             <p className="mt-2 text-2xl font-black text-emerald-400">{currency(received)}</p>
             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -320,7 +321,7 @@ export function ModernCommissionPanel({
           {/* Card 2: A receber */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <Clock3 size={16} className="text-blue-300" /> A receber
+              <Clock3 size={16} className="text-blue-300" /> {isGlobalCommissionView ? 'A receber' : 'Repasse pendente'}
             </p>
             <p className="mt-2 text-2xl font-black text-blue-200">{currency(pending)}</p>
             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -335,7 +336,7 @@ export function ModernCommissionPanel({
           {/* Card 3: Próximo vencimento */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
-              <CalendarDays size={16} className="text-amber-300" /> Próximo vencimento
+              <CalendarDays size={16} className="text-amber-300" /> {isGlobalCommissionView ? 'Próximo vencimento' : 'Próximo repasse previsto'}
             </p>
             <p className="mt-2 text-2xl font-black text-white">
               {nextPendingInstallment
@@ -601,7 +602,7 @@ export function ModernCommissionPanel({
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Wallet size={18} className="text-blue-600 dark:text-blue-400" />
-            Comissões por contrato
+            {isGlobalCommissionView ? 'Comissões por contrato' : 'Meus repasses por contrato'}
           </h3>
           <span className="text-xs text-slate-500">
             {contractsWithInstallments.length} contratos com parcelas
