@@ -10,6 +10,7 @@ export interface User {
   id: string
   email: string
   name?: string
+  nome?: string
   avatar?: string
   role?: UserRole
   phone?: string
@@ -717,6 +718,13 @@ export interface WhatsappChannel {
   numero_telefone: string
   provedor: string
   ativo: boolean
+  user_id?: string
+  waba_id?: string
+  phone_number_id?: string
+  business_id?: string
+  status?: 'not_connected' | 'connecting' | 'connected' | 'error' | string
+  status_coexistencia?: 'not_verified' | 'eligible' | 'ineligible' | 'verified' | string
+  erro_conexao?: string | null
   metadata?: Record<string, unknown>
   created_at?: string
   updated_at?: string
