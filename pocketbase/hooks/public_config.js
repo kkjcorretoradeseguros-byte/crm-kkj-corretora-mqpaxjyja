@@ -390,7 +390,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
             },
           }
 
-          $http.send({
+          const savedCredentials = $http.send({
             url:
               supabaseUrl.replace(/\/+$/, '') +
               '/rest/v1/whatsapp_integration_credentials?on_conflict=channel_id',
@@ -404,11 +404,9 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
             },
             timeout: 15,
           })
+          if (savedCredentials.statusCode >= 400) channelSaveError = 'CREDENTIAL_WRITE_FAILED'
         } catch (credErr) {
-          console.log(
-            'Aviso: gravação em whatsapp_integration_credentials pendente de migration:',
-            credErr,
-          )
+          channelSaveError = 'CREDENTIAL_WRITE_EXCEPTION'
         }
       }
     } catch (dbErr) {
