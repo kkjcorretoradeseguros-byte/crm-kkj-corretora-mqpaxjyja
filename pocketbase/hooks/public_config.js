@@ -161,6 +161,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
       encodeURIComponent(metaAppSecret) +
       '&code=' +
       encodeURIComponent(code) +
+      '&redirect_uri=' +
       '&grant_type=authorization_code'
 
     const tokenRes = $http.send({
