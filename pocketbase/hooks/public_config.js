@@ -206,7 +206,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
   let phoneDetails = null
   let displayPhoneNumber = ''
   let verifiedName = ''
-  let isCoexistenceEligible = true
+  let isCoexistenceEligible = false
 
   if (phoneNumberId) {
     try {
@@ -226,13 +226,21 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
         phoneDetails = phoneCheckRes.json
         displayPhoneNumber = phoneDetails.display_phone_number || ''
         verifiedName = phoneDetails.verified_name || ''
-        if (phoneDetails.is_on_biz_app === true || phoneDetails.platform_type === 'CLOUD_API') {
+        if (phoneDetails.is_on_biz_app === true) {
           isCoexistenceEligible = true
         }
       }
     } catch (checkErr) {
       console.log('Aviso: consulta de detalhes do telefone:', checkErr)
     }
+  }
+
+  if (!phoneNumberId || !wabaId || !isCoexistenceEligible) {
+    return e.json(422, {
+      success: false,
+      code: 'COEXISTENCE_NOT_VERIFIED',
+      message: 'Não foi possível comprovar a coexistência do número com o WhatsApp Business. Nenhum canal foi ativado.',
+    })
   }
 
   // 6. Consultar dados da WABA
@@ -256,8 +264,12 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
     } catch (_) {}
   }
 
+  if (!supabaseServiceKey) {
+    return e.json(503, { success: false, code: 'SERVICE_ROLE_MISSING', message: 'Chave segura do Supabase não configurada. Nenhum canal foi conectado.' })
+  }
+
   // 7. Gravação segura no Supabase
-  const effectiveSupabaseKey = supabaseServiceKey || userToken
+  const effectiveSupabaseKey = supabaseServiceKey
   const targetNumber = displayPhoneNumber || '+' + (phoneNumberId || 'canal_' + Date.now())
   const channelName =
     customChannelName ||
@@ -272,7 +284,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
     try {
       const queryUrl =
         supabaseUrl.replace(/\/+$/, '') +
-        '/rest/v1/whatsapp_channels?select=id,user_id,numero_telefone&or=(numero_telefone.eq.' +
+        '/rest/v1/whatsapp_channels?select=id,owner_user_id,numero_telefone&or=(numero_telefone.eq.' +
         encodeURIComponent(targetNumber) +
         ',waba_id.eq.' +
         encodeURIComponent(wabaId || 'none') +
@@ -298,16 +310,16 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
         numero_telefone: targetNumber,
         provedor: 'oficial',
         ativo: true,
-        user_id: authenticatedUserId,
+        owner_user_id: authenticatedUserId,
         waba_id: wabaId || null,
-        phone_number_id: phoneNumberId || null,
+        provider_phone_number_id: phoneNumberId || null,
         business_id: businessId || null,
-        status: 'connected',
-        status_coexistencia: isCoexistenceEligible ? 'eligible' : 'verified',
+        connection_status: 'conectado',
+        status_coexistencia: 'verified',
         metadata: {
           verified_name: verifiedName,
           platform_type: (phoneDetails && phoneDetails.platform_type) || 'CLOUD_API',
-          is_on_biz_app: phoneDetails ? phoneDetails.is_on_biz_app : true,
+          is_on_biz_app: phoneDetails ? phoneDetails.is_on_biz_app : false,
           waba_name: wabaDetails ? wabaDetails.name : null,
           coexistence_mode: 'active',
           connected_at: new Date().toISOString(),
@@ -402,6 +414,10 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
     }
   }
 
+  if (!channelId || channelSaveError) {
+    return e.json(502, { success: false, code: 'CHANNEL_SAVE_FAILED', message: channelSaveError || 'Canal não foi salvo no Supabase.' })
+  }
+
   // 8. Resposta de sucesso segura (NENHUM TOKEN É EXPOSTO AO FRONTEND)
   return e.json(200, {
     success: true,
@@ -413,7 +429,7 @@ routerAdd('POST', '/backend/v1/meta-whatsapp/exchange', (e) => {
       waba_id: wabaId,
       phone_number_id: phoneNumberId,
       business_id: businessId,
-      coexistence_status: 'eligible',
+      coexistence_status: 'verified',
       verified_name: verifiedName,
       user_id: authenticatedUserId,
       warning: channelSaveError
