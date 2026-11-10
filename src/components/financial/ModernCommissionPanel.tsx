@@ -41,6 +41,7 @@ export function ModernCommissionPanel({
   userRole,
   onGenerateForecast,
   generatingForecastId,
+  onConfirmReceipt,
 }: {
   installments: CommissionRow[]
   contracts: Contract[]
@@ -48,8 +49,14 @@ export function ModernCommissionPanel({
   userRole?: string
   onGenerateForecast?: (contractId: string) => void
   generatingForecastId?: string | null
+  onConfirmReceipt?: (installmentId: string, receiptDate: string) => Promise<void>
 }) {
   const navigate = useNavigate()
+  const [pendingOpen, setPendingOpen] = useState(false)
+  const [pendingClients, setPendingClients] = useState<Record<string,string>>({})
+  const [receiptDates, setReceiptDates] = useState<Record<string,string>>({})
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [receiptError, setReceiptError] = useState<string | null>(null)
   const [selectedInstallment, setSelectedInstallment] = useState<{
     row: CommissionRow
     clientName: string
@@ -83,6 +90,48 @@ export function ModernCommissionPanel({
       setSelectedInstallment((previous) => previous?.row.id === row.id ? { ...previous, clientName, opportunityId: linked.opportunity_id, loading: false } : previous)
     } catch (error) {
       setSelectedInstallment((previous) => previous?.row.id === row.id ? { ...previous, loading: false, error: error instanceof Error ? error.message : 'Não foi possível carregar o cliente.' } : previous)
+    }
+  }
+
+  const openPendingList = async () => {
+    setReceiptError(null)
+    setPendingOpen(true)
+    const ids = Array.from(new Set(installments.filter((r) => !['recebido','repassado','pago','cancelado','estornado'].includes(r.status) && Number(r.valor_previsto) > Number(r.valor_recebido || 0)).map((r) => r.contract_id)))
+    if (!ids.length) return
+    const { data: linked, error } = await supabase.from('contracts')
+      .select('id,contact_id,company_id').in('id', ids)
+    if (error || !linked?.length) return
+    const contactIds = linked.map((x) => x.contact_id).filter((x): x is string => Boolean(x))
+    const companyIds = linked.map((x) => x.company_id).filter((x): x is string => Boolean(x))
+    const [contactsResult, companiesResult] = await Promise.all([
+      contactIds.length ? supabase.from('contacts').select('id,nome').in('id',contactIds) : Promise.resolve({data:[],error:null}),
+      companyIds.length ? supabase.from('companies').select('id,razao_social,nome_fantasia').in('id',companyIds) : Promise.resolve({data:[],error:null}),
+    ])
+    const contactsMap = new Map((contactsResult.data || []).map((item) => [item.id,item.nome]))
+    const companiesMap = new Map((companiesResult.data || []).map((item) => [item.id,item.razao_social || item.nome_fantasia]))
+    const resolved: Record<string,string> = {}
+    linked.forEach((contract) => {
+      resolved[contract.id] = (contract.contact_id && contactsMap.get(contract.contact_id)) || (contract.company_id && companiesMap.get(contract.company_id)) || 'Cliente não identificado'
+    })
+    setPendingClients(resolved)
+  }
+
+  const confirmReceipt = async (row: CommissionRow) => {
+    if (!onConfirmReceipt || confirmingId) return
+    const date = receiptDates[row.id] || new Date().toLocaleDateString('en-CA')
+    if (!date || date > new Date().toLocaleDateString('en-CA')) {
+      setReceiptError('Informe uma data de recebimento válida, não futura.')
+      return
+    }
+    if (!window.confirm(`Confirmar recebimento pela KKJ da parcela ${row.numero_parcela}/${row.total_parcelas}, no valor de ${currency(row.valor_previsto)}, em ${formatDate(date)}? Esta ação NÃO confirma o repasse à vendedora.`)) return
+    setConfirmingId(row.id)
+    setReceiptError(null)
+    try {
+      await onConfirmReceipt(row.id,date)
+    } catch (err) {
+      setReceiptError(err instanceof Error ? err.message : 'Não foi possível confirmar o recebimento.')
+    } finally {
+      setConfirmingId(null)
     }
   }
 
@@ -139,6 +188,11 @@ export function ModernCommissionPanel({
     })
     return Array.from(set).sort()
   }, [contracts])
+
+  const pendingRows = useMemo(() => activeRows.filter((row) =>
+    !['recebido','repassado','pago','cancelado','estornado'].includes(row.status) &&
+    Number(row.valor_previsto) > Number(row.valor_recebido || 0)
+  ).sort((a,b) => a.data_vencimento.localeCompare(b.data_vencimento)), [activeRows])
 
   // Próximo vencimento com saldo pendente (menor data >= hoje com saldo, ou menor data global com saldo)
   const nextPendingInstallment = useMemo(() => {
@@ -372,7 +426,9 @@ export function ModernCommissionPanel({
           </div>
 
           {/* Card 2: A receber */}
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
+          <button type="button" onClick={() => void openPendingList()}
+            className="w-full rounded-2xl bg-white/10 p-4 text-left backdrop-blur-sm border border-white/10 transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
+            aria-label="Ver todas as parcelas previstas para recebimento">
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
               <Clock3 size={16} className="text-blue-300" />{' '}
               {isGlobalCommissionView ? 'A receber' : 'Repasse pendente'}
@@ -383,9 +439,9 @@ export function ModernCommissionPanel({
                 activeRows.filter((r) => Number(r.valor_previsto) > Number(r.valor_recebido || 0))
                   .length
               }{' '}
-              parcelas pendentes
+              parcelas pendentes · Clique para consultar
             </p>
-          </div>
+          </button>
 
           {/* Card 3: Próximo vencimento */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
@@ -737,6 +793,50 @@ export function ModernCommissionPanel({
           })}
         </div>
       </div>
+
+      <Dialog open={pendingOpen} onOpenChange={setPendingOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Previsão de recebimentos</DialogTitle>
+            <DialogDescription>Todas as parcelas pendentes de comissão. Confirme apenas quando a KKJ efetivamente receber da operadora. O repasse à vendedora é controlado separadamente.</DialogDescription>
+          </DialogHeader>
+          {receiptError && <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-700">{receiptError}</p>}
+          <div className="space-y-3">
+            {pendingRows.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma parcela pendente.</p>}
+            {pendingRows.map((row) => {
+              const contract = contracts.find((c) => c.id === row.contract_id)
+              const overdue = row.data_vencimento < new Date().toLocaleDateString('en-CA')
+              return <div key={row.id} className="rounded-xl border p-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">{pendingClients[row.contract_id] || 'Carregando cliente...'}</p>
+                    <p className="text-xs text-muted-foreground">{contract?.contracted_carrier_name || contract?.operator || 'Operadora'} · {contract?.contract_number || row.contract_id.slice(0,8)}</p>
+                  </div>
+                  <Badge variant="outline" className={overdue ? 'text-amber-600' : ''}>{overdue ? 'Vencida' : 'Prevista'}</Badge>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span>Parcela {row.numero_parcela}/{row.total_parcelas} · {formatDate(row.data_vencimento)}</span>
+                  <strong>{currency(Math.max(0,row.valor_previsto - Number(row.valor_recebido || 0)))}</strong>
+                </div>
+                {onConfirmReceipt && row.numero_parcela > 1 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor={`receipt-date-${row.id}`} className="text-xs text-muted-foreground">Data recebida</label>
+                    <input id={`receipt-date-${row.id}`} type="date" max={new Date().toLocaleDateString('en-CA')}
+                      value={receiptDates[row.id] || new Date().toLocaleDateString('en-CA')}
+                      onChange={(event) => setReceiptDates((previous) => ({...previous,[row.id]:event.target.value}))}
+                      className="rounded-md border bg-background px-2 py-1 text-sm" />
+                    <Button size="sm" disabled={confirmingId !== null}
+                      onClick={() => void confirmReceipt(row)}>
+                      {confirmingId === row.id ? 'Confirmando...' : 'Confirmar recebimento'}
+                    </Button>
+                  </div>
+                )}
+                {onConfirmReceipt && row.numero_parcela === 1 && <p className="text-xs text-muted-foreground">A primeira parcela é confirmada pelo fluxo de primeiro pagamento do pipeline.</p>}
+              </div>
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={selectedInstallment !== null} onOpenChange={(open) => { if (!open) setSelectedInstallment(null) }}>
         <DialogContent className="max-w-md">
