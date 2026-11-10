@@ -64,6 +64,18 @@ export default function Financial() {
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
 
+  const confirmInstallmentReceipt = async (installmentId: string, receiptDate: string) => {
+    if (user?.role?.toUpperCase() !== 'ADMINISTRADOR') {
+      throw new Error('Somente o administrador pode confirmar recebimentos.')
+    }
+    const { error } = await supabase.rpc('confirm_commission_installment_receipt', {
+      p_installment_id: installmentId,
+      p_receipt_date: receiptDate,
+    })
+    if (error) throw new Error(error.message)
+    await loadData()
+  }
+
   const normalizedRole = user?.role?.toUpperCase()
   const isSeller = normalizedRole === 'VENDEDOR'
   const isGestor = normalizedRole === 'GESTOR' || user?.role?.toLowerCase() === 'gestora'
@@ -453,6 +465,7 @@ export default function Financial() {
         }
         onGenerateForecast={isAdmin ? registerForecast : undefined}
         generatingForecastId={forecastBusy}
+        onConfirmReceipt={isAdmin ? confirmInstallmentReceipt : undefined}
       />
 
       {/* Banner Explicativo: Distinção entre Conceitos */}
