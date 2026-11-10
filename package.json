@@ -2,7 +2,7 @@
   "name": "crm-kkj-corretora",
   "description": "CRM KK JEKABSON Corretora de Seguros e Benefícios",
   "private": true,
-  "version": "0.0.129",
+  "version": "0.0.130",
   "type": "module",
   "scripts": {
     "start": "vite dev",
