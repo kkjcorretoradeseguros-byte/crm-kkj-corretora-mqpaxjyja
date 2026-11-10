@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { Contract } from '@/types/crm'
+import { PendingReceiptsDialog } from '@/components/financial/PendingReceiptsDialog'
 
 export interface CommissionRow {
   id: string
@@ -47,6 +48,8 @@ export function ModernCommissionPanel({
   userRole,
   onGenerateForecast,
   generatingForecastId,
+  onConfirmReceipt,
+  confirmingReceiptId,
 }: {
   installments: CommissionRow[]
   contracts: Contract[]
@@ -54,6 +57,11 @@ export function ModernCommissionPanel({
   userRole?: string
   onGenerateForecast?: (contractId: string) => void
   generatingForecastId?: string | null
+  onConfirmReceipt?: (
+    installmentId: string,
+    receiptDate: string,
+  ) => Promise<{ ok: boolean; message: string }>
+  confirmingReceiptId?: string | null
 }) {
   const navigate = useNavigate()
   const [selectedInstallment, setSelectedInstallment] = useState<{
@@ -131,6 +139,7 @@ export function ModernCommissionPanel({
   }
 
   const isGlobalCommissionView = userRole === 'Administrador Geral'
+  const [pendingReceiptsOpen, setPendingReceiptsOpen] = useState(false)
   const [filter, setFilter] = useState<'todas' | 'recebido' | 'previsto' | 'atrasado'>('todas')
   const [month, setMonth] = useState('todos')
   const [operatorFilter, setOperatorFilter] = useState('todas')
@@ -415,11 +424,18 @@ export function ModernCommissionPanel({
             </p>
           </div>
 
-          {/* Card 2: A receber */}
-          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">
+          {/* Card 2: A receber — clicável para abrir a lista de parcelas pendentes */}
+          <button
+            type="button"
+            onClick={() => setPendingReceiptsOpen(true)}
+            aria-haspopup="dialog"
+            aria-label={`Abrir lista de parcelas pendentes: ${currency(pending)}`}
+            className="rounded-2xl bg-white/10 p-4 text-left backdrop-blur-sm border border-white/10 transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
+          >
             <p className="flex items-center gap-2 text-xs font-semibold text-slate-200">
               <Clock3 size={16} className="text-blue-300" />{' '}
               {isGlobalCommissionView ? 'A receber' : 'Repasse pendente'}
+              <span className="ml-auto text-[10px] font-medium text-blue-200/80">Ver lista</span>
             </p>
             <p className="mt-2 text-2xl font-black text-blue-200">{currency(pending)}</p>
             <p className="text-[11px] text-slate-300 mt-0.5">
@@ -429,7 +445,16 @@ export function ModernCommissionPanel({
               }{' '}
               parcelas pendentes
             </p>
-          </div>
+          </button>
+          <PendingReceiptsDialog
+            open={pendingReceiptsOpen}
+            onOpenChange={setPendingReceiptsOpen}
+            installments={installments}
+            contracts={contracts}
+            isAdmin={isGlobalCommissionView}
+            confirmingId={confirmingReceiptId}
+            onConfirm={onConfirmReceipt}
+          />
 
           {/* Card 3: Próximo vencimento */}
           <div className="rounded-2xl bg-white/10 p-4 backdrop-blur-sm border border-white/10">

@@ -64,16 +64,71 @@ export default function Financial() {
   const [forecastBusy, setForecastBusy] = useState<string | null>(null)
   const [forecastNotice, setForecastNotice] = useState<string | null>(null)
 
-  const confirmInstallmentReceipt = async (installmentId: string, receiptDate: string) => {
+  const [confirmingReceiptId, setConfirmingReceiptId] = useState<string | null>(null)
+
+  /**
+   * Confirma o recebimento de UMA parcela prevista via RPC SECURITY DEFINER
+   * `confirm_commission_installment_receipt(p_installment_id, p_receipt_date)`.
+   * Não altera repasses às vendedoras: apenas registra a data de recebimento.
+   * Após confirmar, refaz as queries (loadData) para atualizar Recebido / A receber
+   * e remover a parcela da lista de pendentes.
+   */
+  const confirmInstallmentReceipt = async (
+    installmentId: string,
+    receiptDate: string,
+  ): Promise<{ ok: boolean; message: string }> => {
     if (user?.role?.toUpperCase() !== 'ADMINISTRADOR') {
-      throw new Error('Somente o administrador pode confirmar recebimentos.')
+      return { ok: false, message: 'Somente o administrador pode confirmar recebimentos.' }
     }
-    const { error } = await supabase.rpc('confirm_commission_installment_receipt', {
-      p_installment_id: installmentId,
-      p_receipt_date: receiptDate,
-    })
-    if (error) throw new Error(error.message)
-    await loadData()
+    if (!installmentId) return { ok: false, message: 'Parcela inválida.' }
+    if (!receiptDate) return { ok: false, message: 'Informe a data de recebimento.' }
+    setConfirmingReceiptId(installmentId)
+    try {
+      const { data, error } = await supabase.rpc('confirm_commission_installment_receipt', {
+        p_installment_id: installmentId,
+        p_receipt_date: receiptDate,
+      })
+      if (error) {
+        const code = (error as { code?: string }).code
+        if (code === 'PGRST202' || code === '404' || code === '42883') {
+          return {
+            ok: false,
+            message:
+              'A função confirm_commission_installment_receipt não existe no Supabase. ' +
+              'Solicite ao administrador do banco a criação dela antes de confirmar recebimentos.',
+          }
+        }
+        if (error.message.toLowerCase().includes('já foi recebida') || code === 'P0001') {
+          return { ok: false, message: error.message }
+        }
+        return { ok: false, message: 'Falha ao confirmar recebimento: ' + error.message }
+      }
+      const result = Array.isArray(data) ? data[0] : data
+      if (result && typeof result === 'object' && 'success' in result) {
+        const typed = result as { success: boolean; message?: string }
+        if (!typed.success) {
+          return {
+            ok: false,
+            message: typed.message || 'A confirmação foi recusada pelo banco.',
+          }
+        }
+      }
+      await loadData()
+      return {
+        ok: true,
+        message:
+          (result && typeof result === 'object' && 'message' in result
+            ? String((result as { message?: string }).message)
+            : '') || 'Recebimento confirmado com sucesso.',
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : 'Falha inesperada ao confirmar recebimento.',
+      }
+    } finally {
+      setConfirmingReceiptId(null)
+    }
   }
 
   const normalizedRole = user?.role?.toUpperCase()
@@ -466,6 +521,7 @@ export default function Financial() {
         onGenerateForecast={isAdmin ? registerForecast : undefined}
         generatingForecastId={forecastBusy}
         onConfirmReceipt={isAdmin ? confirmInstallmentReceipt : undefined}
+        confirmingReceiptId={confirmingReceiptId}
       />
 
       {/* Banner Explicativo: Distinção entre Conceitos */}
