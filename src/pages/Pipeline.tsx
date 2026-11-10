@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   DndContext,
   DragOverlay,
@@ -83,6 +84,9 @@ const LOST_REASONS: LostReason[] = [
 
 export default function Pipeline() {
   const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const linkedOpportunityId = new URLSearchParams(location.search).get('opportunity')
   const isAdmin = user?.role?.toUpperCase() === 'ADMINISTRADOR'
   const isNat = user?.id === '75c3d247-8a9c-40c8-acb7-186f8d2af63e'
   const canConfirmPayment = isAdmin || isNat
@@ -231,6 +235,18 @@ export default function Pipeline() {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Abre automaticamente a oportunidade indicada pelo Financeiro, inclusive no pós-venda.
+  useEffect(() => {
+    if (!linkedOpportunityId || loading) return
+    const match = opportunities.find((item) => item.id === linkedOpportunityId)
+    if (match) {
+      setDetailOppId(match.id)
+      setIsDetailOpen(true)
+    } else if (pipelineType === 'VENDAS') {
+      setPipelineType('POS_VENDA')
+    }
+  }, [linkedOpportunityId, opportunities, loading, pipelineType])
 
   // Contatos disponíveis pela empresa
   const availableContacts = useMemo(() => {
@@ -1962,6 +1978,7 @@ export default function Pipeline() {
         onClose={() => {
           setIsDetailOpen(false)
           setDetailOppId(null)
+          if (linkedOpportunityId) navigate('/pipeline', { replace: true })
         }}
         onUpdated={fetchData}
         onRequestStageChange={executeStageTransition}

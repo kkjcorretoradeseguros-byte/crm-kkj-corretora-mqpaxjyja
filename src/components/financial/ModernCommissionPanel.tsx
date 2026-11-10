@@ -1,4 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '@/lib/supabase/client'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import {
   CalendarDays,
   CheckCircle2,
@@ -45,6 +49,43 @@ export function ModernCommissionPanel({
   onGenerateForecast?: (contractId: string) => void
   generatingForecastId?: string | null
 }) {
+  const navigate = useNavigate()
+  const [selectedInstallment, setSelectedInstallment] = useState<{
+    row: CommissionRow
+    clientName: string
+    contractNumber: string
+    operatorName: string
+    opportunityId: string | null
+    loading: boolean
+    error: string | null
+  } | null>(null)
+
+  const openInstallmentDetails = async (row: CommissionRow) => {
+    const contract = contracts.find((c) => c.id === row.contract_id)
+    const contractNumber = contract?.contract_number || row.contract_id.slice(0, 8)
+    const operatorName = contract?.contracted_carrier_name || contract?.operator || contract?.expand?.carrier_id?.nome || 'Operadora não identificada'
+    setSelectedInstallment({ row, clientName: '', contractNumber, operatorName, opportunityId: null, loading: true, error: null })
+    try {
+      // A leitura respeita o RLS: nunca expor dados de um contrato não autorizado.
+      const { data: linked, error } = await supabase.from('contracts')
+        .select('contact_id,company_id,opportunity_id')
+        .eq('id', row.contract_id)
+        .maybeSingle()
+      if (error) throw error
+      if (!linked) throw new Error('Contrato não encontrado ou sem permissão de acesso.')
+      const [contactResult, companyResult] = await Promise.all([
+        linked.contact_id ? supabase.from('contacts').select('nome').eq('id', linked.contact_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+        linked.company_id ? supabase.from('companies').select('razao_social,nome_fantasia').eq('id', linked.company_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+      ])
+      if (contactResult.error) throw contactResult.error
+      if (companyResult.error) throw companyResult.error
+      const clientName = contactResult.data?.nome || companyResult.data?.razao_social || companyResult.data?.nome_fantasia || 'Cliente não identificado'
+      setSelectedInstallment((previous) => previous?.row.id === row.id ? { ...previous, clientName, opportunityId: linked.opportunity_id, loading: false } : previous)
+    } catch (error) {
+      setSelectedInstallment((previous) => previous?.row.id === row.id ? { ...previous, loading: false, error: error instanceof Error ? error.message : 'Não foi possível carregar o cliente.' } : previous)
+    }
+  }
+
   const isGlobalCommissionView = userRole === 'Administrador Geral'
   const [filter, setFilter] = useState<'todas' | 'recebido' | 'previsto' | 'atrasado'>('todas')
   const [month, setMonth] = useState('todos')
@@ -566,7 +607,20 @@ export function ModernCommissionPanel({
                 }
 
                 return (
-                  <tr key={row.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                  <tr
+                    key={row.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver cliente e contrato da parcela ${row.numero_parcela} de ${row.total_parcelas}`}
+                    onClick={() => void openInstallmentDetails(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        void openInstallmentDetails(row)
+                      }
+                    }}
+                    className="cursor-pointer hover:bg-blue-50/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:hover:bg-blue-950/30"
+                  >
                     <td className="py-3">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-900 dark:text-white">
@@ -683,6 +737,39 @@ export function ModernCommissionPanel({
           })}
         </div>
       </div>
+
+      <Dialog open={selectedInstallment !== null} onOpenChange={(open) => { if (!open) setSelectedInstallment(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Detalhes da parcela</DialogTitle>
+            <DialogDescription>Identificação do cliente e do contrato vinculado à comissão.</DialogDescription>
+          </DialogHeader>
+          {selectedInstallment && (
+            <div className="space-y-3 text-sm">
+              {selectedInstallment.loading ? (
+                <p className="text-muted-foreground">Carregando dados do contrato...</p>
+              ) : selectedInstallment.error ? (
+                <p role="alert" className="text-red-600">{selectedInstallment.error}</p>
+              ) : (
+                <>
+                  <div><p className="text-xs text-muted-foreground">Cliente</p><p className="text-lg font-bold">{selectedInstallment.clientName}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Operadora e contrato</p><p className="font-medium">{selectedInstallment.operatorName} · {selectedInstallment.contractNumber}</p></div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><p className="text-xs text-muted-foreground">Parcela</p><p>{selectedInstallment.row.numero_parcela}/{selectedInstallment.row.total_parcelas}</p></div>
+                    <div><p className="text-xs text-muted-foreground">Vencimento</p><p>{formatDate(selectedInstallment.row.data_vencimento)}</p></div>
+                  </div>
+                  <div><p className="text-xs text-muted-foreground">Valor previsto</p><p className="font-bold">{currency(selectedInstallment.row.valor_previsto)}</p></div>
+                  {selectedInstallment.opportunityId && (
+                    <Button className="w-full" onClick={() => navigate(`/pipeline?opportunity=${encodeURIComponent(selectedInstallment.opportunityId!)}`)}>
+                      Abrir oportunidade do cliente
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Valores de parcelas iniciais conciliados. Comissões vitalícias (recorrência) são calculadas
