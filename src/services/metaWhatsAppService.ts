@@ -328,7 +328,11 @@ export const metaWhatsAppService = {
               } else {
                 isSettled = true
                 cleanUp()
-                reject(new Error('A Meta concluiu o login, mas não retornou os identificadores de WABA e telefone. Nenhuma conexão foi criada.'))
+                reject(
+                  new Error(
+                    'A Meta concluiu o login, mas não retornou os identificadores de WABA e telefone. Nenhuma conexão foi criada.',
+                  ),
+                )
               }
             }
           }
